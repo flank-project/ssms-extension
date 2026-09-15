@@ -2,8 +2,8 @@
 
 public static class ExcelExporter
 {
-    public static void Generate()
+    public static void Generate(string templatePath, string outputPath)
     {
-        Console.WriteLine("Flank Excel generator ran!");
+        File.Copy(templatePath, outputPath, overwrite: true);
     }
 }
