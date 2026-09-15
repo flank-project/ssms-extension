@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="Flank.Excel/Flank.Excel.csproj" />
+  <Project Path="Flank.TestExcelApp/Flank.TestExcelApp.csproj" />
+</Solution>
