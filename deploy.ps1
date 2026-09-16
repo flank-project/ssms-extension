@@ -1,0 +1,28 @@
+$ErrorActionPreference = "Stop"
+
+$repo = "C:\Users\angus\source\repos\flank-project\ssms-extension"
+$dest = "C:\Program Files\Microsoft SQL Server Management Studio 22\Release\Common7\IDE\Extensions\Flank"
+$ssms = "C:\Program Files\Microsoft SQL Server Management Studio 22\Release\Common7\IDE\SSMS.exe"
+
+Write-Host "Building Flank..."
+dotnet build "$repo\ssms-extension.slnx"
+
+Write-Host "Closing SSMS..."
+Stop-Process -Name SSMS -Force -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 1
+
+Write-Host "Installing extension..."
+Remove-Item $dest -Recurse -Force -ErrorAction SilentlyContinue
+New-Item $dest -ItemType Directory | Out-Null
+
+Copy-Item `
+    "$repo\Flank.SsmsExtension\bin\Debug\net472\*" `
+    $dest -Recurse
+
+Write-Host "Registering extension..."
+& $ssms /setup
+
+Write-Host "Launching SSMS..."
+Start-Process $ssms
+
+Write-Host "Done."
