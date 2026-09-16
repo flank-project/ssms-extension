@@ -1,4 +1,7 @@
 <Solution>
   <Project Path="Flank.Excel/Flank.Excel.csproj" />
+  <Project Path="Flank.SsmsExtension/Flank.SsmsExtension.csproj" Id="e036fe1d-a587-4e77-af7d-87d424ff6dbf">
+    <Deploy />
+  </Project>
   <Project Path="Flank.TestExcelApp/Flank.TestExcelApp.csproj" />
 </Solution>
