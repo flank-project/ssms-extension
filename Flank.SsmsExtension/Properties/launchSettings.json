@@ -1,0 +1,11 @@
+{
+  "profiles": {
+    "Flank.SsmsExtension": {
+      "commandName": "VsixDebugger"
+    },
+    "SSMS": {
+      "commandName": "Executable",
+      "executablePath": "C:\\Program Files\\Microsoft SQL Server Management Studio 22\\Release\\Common7\\IDE\\SSMS.exe"
+    }
+  }
+}
