@@ -7,13 +7,21 @@ namespace Flank.Excel;
 public static class ExcelExporter
 {
     public static void Generate(
-        string templatePath,
         string outputPath,
         string sql,
         string server,
         string database)
     {
-        File.Copy(templatePath, outputPath, overwrite: true);
+        var assembly = typeof(ExcelExporter).Assembly;
+
+        using var templateStream =
+            assembly.GetManifestResourceStream("Flank.Excel.template.xlsx")
+            ?? throw new Exception("Could not find embedded template.xlsx");
+
+        using (var outputStream = File.Create(outputPath))
+        {
+            templateStream.CopyTo(outputStream);
+        }
 
         using var workbook = ZipFile.Open(
             outputPath,

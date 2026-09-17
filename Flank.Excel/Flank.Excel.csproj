@@ -8,7 +8,9 @@
 		<SignAssembly>true</SignAssembly>
 		<AssemblyOriginatorKeyFile>..\Flank.SsmsExtension\Key.snk</AssemblyOriginatorKeyFile>
 	</PropertyGroup>
-
+	<ItemGroup>
+		<EmbeddedResource Include="template.xlsx" />
+	</ItemGroup>
 	<ItemGroup Condition="'$(TargetFramework)' == 'net472'">
 		<Reference Include="System.IO.Compression" />
 		<Reference Include="System.IO.Compression.FileSystem" />

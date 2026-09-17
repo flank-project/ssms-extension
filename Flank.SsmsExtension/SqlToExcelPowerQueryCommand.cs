@@ -197,7 +197,6 @@ namespace Flank.SsmsExtension
             string outputPath = dialog.FileName;
 
             ExcelExporter.Generate(
-                @"C:\Users\angus\source\repos\flank-project\ssms-extension\Flank.Excel\template.xlsx",
                 outputPath,
                 server,
                 database,
