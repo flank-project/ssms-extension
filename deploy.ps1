@@ -13,7 +13,7 @@ Start-Sleep -Seconds 1
 
 Write-Host "Installing extension..."
 Remove-Item $dest -Recurse -Force -ErrorAction SilentlyContinue
-New-Item $dest -ItemType Directory | Out-Null
+New-Item $dest -ItemType Directory -Force | Out-Null
 
 Copy-Item `
     "$repo\Flank.SsmsExtension\bin\Debug\net472\*" `
