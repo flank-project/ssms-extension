@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Task = System.Threading.Tasks.Task;
 using Microsoft.SqlServer.Management.UI.VSIntegration;
+using Flank.Excel;
 
 namespace Flank.SsmsExtension
 {
@@ -132,6 +133,11 @@ namespace Flank.SsmsExtension
                 var start = textDoc.StartPoint.CreateEditPoint();
                 sql = start.GetText(textDoc.EndPoint);
             }
+
+            ExcelExporter.Generate(
+                @"C:\Users\angus\source\repos\flank-project\ssms-extension\Flank.Excel\template.xlsx",
+                @"C:\temp\flank-test.xlsx",
+                sql);
 
             VsShellUtilities.ShowMessageBox(
                 this.package,
