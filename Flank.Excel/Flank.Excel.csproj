@@ -7,14 +7,9 @@
 		<LangVersion>latest</LangVersion>
 	</PropertyGroup>
 
-	<PropertyGroup Condition="'$(TargetFramework)' == 'net472'">
-		<GenerateResourceUsePreserializedResources>true</GenerateResourceUsePreserializedResources>
-	</PropertyGroup>
-
 	<ItemGroup Condition="'$(TargetFramework)' == 'net472'">
 		<Reference Include="System.IO.Compression" />
 		<Reference Include="System.IO.Compression.FileSystem" />
-		<PackageReference Include="System.Resources.Extensions" Version="10.0.0" />
 	</ItemGroup>
 
 </Project>
