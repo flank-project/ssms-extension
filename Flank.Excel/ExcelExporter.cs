@@ -48,7 +48,7 @@ public static class ExcelExporter
 
         // Make a writable copy of the embedded ZIP.
         using var zipStream = new MemoryStream();
-        zipStream.Write(oldZipBytes);
+        zipStream.Write(oldZipBytes, 0, oldZipBytes.Length);
         zipStream.Position = 0;
 
         using (var mashupZip =
@@ -60,7 +60,10 @@ public static class ExcelExporter
             string mCode;
 
             using (var reader =
-                new StreamReader(section.Open(), Encoding.UTF8))
+                new StreamReader(
+                    section.Open(),
+                    Encoding.UTF8,
+                    detectEncodingFromByteOrderMarks: true))
             {
                 mCode = reader.ReadToEnd();
             }
@@ -91,13 +94,14 @@ public static class ExcelExporter
         newMashup.Write(mashupBytes, 0, 4);
 
         // Bytes 4-7 = new ZIP length.
-        newMashup.Write(BitConverter.GetBytes(newZipBytes.Length));
-
+        var lengthBytes = BitConverter.GetBytes(newZipBytes.Length);
+        newMashup.Write(lengthBytes, 0, lengthBytes.Length);
+        
         // New embedded ZIP.
-        newMashup.Write(newZipBytes);
+        newMashup.Write(newZipBytes, 0, newZipBytes.Length);
 
         // Preserve everything after it.
-        newMashup.Write(trailingBytes);
+        newMashup.Write(trailingBytes, 0, trailingBytes.Length);
 
         dataMashup.Value =
             Convert.ToBase64String(newMashup.ToArray());
