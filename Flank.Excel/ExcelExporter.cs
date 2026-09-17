@@ -69,8 +69,9 @@ public static class ExcelExporter
             }
 
             // For now, replace our known test SQL.
+            // Need 4 double quotes to represent 2 double quotes in the M code.
             mCode = mCode.Replace(
-                @"SELECT CAST(NULL AS varchar(1)) AS [Click [Data]] > ""Refresh All"" to load data] WHERE 1 = 0",
+                @"SELECT CAST(NULL AS varchar(1)) AS [Click [Data]] > """"Refresh All"""" to load data] WHERE 1 = 0",
                 sql);
 
             // ZIP entries can't be overwritten directly.
