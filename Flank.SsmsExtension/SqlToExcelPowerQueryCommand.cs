@@ -6,6 +6,7 @@ using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using Task = System.Threading.Tasks.Task;
+using Microsoft.SqlServer.Management.UI.VSIntegration;
 
 namespace Flank.SsmsExtension
 {
@@ -136,6 +137,40 @@ namespace Flank.SsmsExtension
                 this.package,
                 sql,
                 "Flank SQL",
+                OLEMSGICON.OLEMSGICON_INFO,
+                OLEMSGBUTTON.OLEMSGBUTTON_OK,
+                OLEMSGDEFBUTTON.OLEMSGDEFBUTTON_FIRST);
+
+            var scriptFactory = ServiceCache.ScriptFactory;
+            var connection = scriptFactory.CurrentlyActiveWndConnectionInfo;
+            var info = connection.UIConnectionInfo;
+            if (info == null)
+            {
+                VsShellUtilities.ShowMessageBox(
+                    this.package,
+                    "No active connection.",
+                    "Flank",
+                    OLEMSGICON.OLEMSGICON_INFO,
+                    OLEMSGBUTTON.OLEMSGBUTTON_OK,
+                    OLEMSGDEFBUTTON.OLEMSGDEFBUTTON_FIRST);
+
+                return;
+            }
+            var details =
+                $"ServerName: {info.ServerName}\n" +
+                $"DisplayName: {info.DisplayName}\n" +
+                $"OtherParams: {info.OtherParams}\n\n" +
+                "AdvancedOptions:\n";
+
+            foreach (string key in info.AdvancedOptions.AllKeys)
+            {
+                details += $"{key} = {info.AdvancedOptions[key]}\n";
+            }
+
+            VsShellUtilities.ShowMessageBox(
+                this.package,
+                details,
+                "Flank Connection",
                 OLEMSGICON.OLEMSGICON_INFO,
                 OLEMSGBUTTON.OLEMSGBUTTON_OK,
                 OLEMSGDEFBUTTON.OLEMSGDEFBUTTON_FIRST);
