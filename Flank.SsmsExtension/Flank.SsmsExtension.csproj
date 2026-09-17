@@ -20,7 +20,19 @@
     <PackageReference Include="Microsoft.VSSDK.BuildTools" Version="18.9.820" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\Flank.Excel\Flank.Excel.csproj" />
+  </ItemGroup>
+  <ItemGroup>
     <Reference Include="Microsoft.CSharp" />
+    <Reference Include="Microsoft.SqlServer.RegSvrEnum">
+      <HintPath>..\..\..\..\..\..\..\Program Files\Microsoft SQL Server Management Studio 22\Release\Common7\IDE\Extensions\Flank\Microsoft.SqlServer.RegSvrEnum.dll</HintPath>
+    </Reference>
+    <Reference Include="SqlPackageBase">
+      <HintPath>..\..\..\..\..\..\..\Program Files\Microsoft SQL Server Management Studio 22\Release\Common7\IDE\SqlPackageBase.dll</HintPath>
+    </Reference>
+    <Reference Include="SqlWorkbench.Interfaces">
+      <HintPath>..\..\..\..\..\..\..\Program Files\Microsoft SQL Server Management Studio 22\Release\Common7\IDE\SqlWorkbench.Interfaces.dll</HintPath>
+    </Reference>
     <Reference Include="System.Design" />
     <Reference Include="System.Windows.Forms" />
   </ItemGroup>
