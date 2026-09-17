@@ -134,10 +134,6 @@ namespace Flank.SsmsExtension
                 sql = start.GetText(textDoc.EndPoint);
             }
 
-            ExcelExporter.Generate(
-                @"C:\Users\angus\source\repos\flank-project\ssms-extension\Flank.Excel\template.xlsx",
-                @"C:\temp\flank-test.xlsx",
-                sql);
 
             VsShellUtilities.ShowMessageBox(
                 this.package,
@@ -180,6 +176,33 @@ namespace Flank.SsmsExtension
                 OLEMSGICON.OLEMSGICON_INFO,
                 OLEMSGBUTTON.OLEMSGBUTTON_OK,
                 OLEMSGDEFBUTTON.OLEMSGDEFBUTTON_FIRST);
+
+            string server = info.ServerName;
+            string database = info.AdvancedOptions["DATABASE"];
+
+            using var dialog = new System.Windows.Forms.SaveFileDialog
+            {
+                Filter = "Excel Workbook (*.xlsx)|*.xlsx",
+                DefaultExt = "xlsx",
+                AddExtension = true,
+                FileName = "report.xlsx",
+                Title = "Save as refreshable Excel"
+            };
+
+            if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
+            {
+                return;
+            }
+
+            string outputPath = dialog.FileName;
+
+            ExcelExporter.Generate(
+                @"C:\Users\angus\source\repos\flank-project\ssms-extension\Flank.Excel\template.xlsx",
+                outputPath,
+                server,
+                database,
+                sql);
+            System.Diagnostics.Process.Start(outputPath);
         }
     }
 }

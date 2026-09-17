@@ -9,7 +9,9 @@ public static class ExcelExporter
     public static void Generate(
         string templatePath,
         string outputPath,
-        string sql)
+        string sql,
+        string server,
+        string database)
     {
         File.Copy(templatePath, outputPath, overwrite: true);
 
@@ -69,17 +71,39 @@ public static class ExcelExporter
             }
 
             // For now, replace our known test SQL.
+            string oldServer =
+                "fomf-sandbox-ssdb.database.windows.net";
+
+            string oldDatabase =
+                "fomf-ss-sandbox-db";
             // Need 4 double quotes to represent 2 double quotes in the M code.
             string oldSql =
                 @"SELECT CAST(NULL AS varchar(1)) AS [Click [Data]] > """"Refresh All"""" to load data] WHERE 1 = 0";
 
-            if (!mCode.Contains(oldSql))
+            if (!mCode.Contains(oldServer))
             {
-                throw new Exception(
-                    "Could not find template SQL.\n\nActual M code:\n" + mCode);
+                throw new Exception("Could not find template server.");
             }
 
-            mCode = mCode.Replace(oldSql, sql);
+            if (!mCode.Contains(oldDatabase))
+            {
+                throw new Exception("Could not find template database.");
+            }
+
+            if (!mCode.Contains(oldSql))
+            {
+                throw new Exception("Could not find template SQL.");
+            }
+
+            static string EscapeM(string value)
+            {
+                return value.Replace("\"", "\"\"");
+            }
+
+            mCode = mCode
+                .Replace(oldServer, EscapeM(server))
+                .Replace(oldDatabase, EscapeM(database))
+                .Replace(oldSql, EscapeM(sql));
 
             // ZIP entries can't be overwritten directly.
             section.Delete();
