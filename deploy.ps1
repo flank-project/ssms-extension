@@ -5,7 +5,9 @@ $dest = "C:\Program Files\Microsoft SQL Server Management Studio 22\Release\Comm
 $ssms = "C:\Program Files\Microsoft SQL Server Management Studio 22\Release\Common7\IDE\SSMS.exe"
 
 Write-Host "Building Flank..."
-dotnet build "$repo\ssms-extension.slnx"
+msbuild "$repo\Flank.SsmsExtension\Flank.SsmsExtension.csproj" `
+    /t:Rebuild `
+    /p:Configuration=Debug
 
 Write-Host "Closing SSMS..."
 Stop-Process -Name SSMS -Force -ErrorAction SilentlyContinue
