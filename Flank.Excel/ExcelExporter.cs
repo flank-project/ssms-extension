@@ -70,7 +70,7 @@ public static class ExcelExporter
 
             // For now, replace our known test SQL.
             mCode = mCode.Replace(
-                @"SELECT CAST(NULL AS varchar(1)) AS [Click ""Refresh All"" to load data] WHERE 1 = 0",
+                @"SELECT CAST(NULL AS varchar(1)) AS [Click [Data]] > ""Refresh All"" to load data] WHERE 1 = 0",
                 sql);
 
             // ZIP entries can't be overwritten directly.
