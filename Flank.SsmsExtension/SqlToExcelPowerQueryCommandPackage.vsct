@@ -8,15 +8,35 @@
 
   <Commands package="guidSqlToExcelPowerQueryCommandPackage">
 
-    <Groups>
-      <!-- Flank's group inside the SSMS SQL query-editor context menu -->
-      <Group
+    <Menus>
+      <!-- "Convert to..." submenu in the SQL editor context menu -->
+      <Menu
           guid="guidSqlToExcelPowerQueryCommandPackageCmdSet"
-          id="QueryEditorContextGroup"
-          priority="0x0600">
+          id="ConvertToMenu"
+          priority="0x0600"
+          type="Menu">
+
         <Parent
             guid="guidSsmsSqlEditorGroup"
             id="IDM_SQLWB_SQLSCRIPT_CONTEXT"/>
+
+        <Strings>
+          <ButtonText>Convert to...</ButtonText>
+        </Strings>
+      </Menu>
+    </Menus>
+
+    <Groups>
+      <!-- Container for commands inside "Convert to..." -->
+      <Group
+          guid="guidSqlToExcelPowerQueryCommandPackageCmdSet"
+          id="ConvertToMenuGroup"
+          priority="0x0100">
+
+        <Parent
+            guid="guidSqlToExcelPowerQueryCommandPackageCmdSet"
+            id="ConvertToMenu"/>
+
       </Group>
     </Groups>
 
@@ -29,12 +49,12 @@
 
         <Parent
             guid="guidSqlToExcelPowerQueryCommandPackageCmdSet"
-            id="QueryEditorContextGroup"/>
+            id="ConvertToMenuGroup"/>
 
         <Icon guid="guidImages" id="bmpPic1"/>
 
         <Strings>
-          <ButtonText>Save as refreshable Excel...</ButtonText>
+          <ButtonText>Refreshable Excel</ButtonText>
         </Strings>
       </Button>
     </Buttons>
@@ -61,7 +81,11 @@
         value="{4aefd085-bfeb-4d3d-8199-201b0c86abc0}">
 
       <IDSymbol
-          name="QueryEditorContextGroup"
+          name="ConvertToMenu"
+          value="0x1020"/>
+
+      <IDSymbol
+          name="ConvertToMenuGroup"
           value="0x1021"/>
 
       <IDSymbol
@@ -70,7 +94,7 @@
 
     </GuidSymbol>
 
-    <!-- SSMS's actual SQL query-editor context menu -->
+    <!-- SSMS SQL query-editor context menu -->
     <GuidSymbol
         name="guidSsmsSqlEditorGroup"
         value="{33f13ac3-80bb-4ecb-85bc-225435603a5e}">
