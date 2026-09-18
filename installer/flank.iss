@@ -26,7 +26,6 @@ Compression=lzma2
 SolidCompression=yes
 
 UninstallDisplayName=Flank for SSMS
-UninstallFilesDir={app}\uninstall
 
 CloseApplications=yes
 RestartApplications=no
@@ -58,24 +57,31 @@ Filename: "{#SsmsExe}"; \
 
 function IsSsmsRunning(): Boolean;
 var
-  WbemLocator: Variant;
-  WbemServices: Variant;
-  Processes: Variant;
+  ResultCode: Integer;
+  PowerShell: String;
 begin
-  Result := False;
+  PowerShell := ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe');
 
-  try
-    WbemLocator := CreateOleObject('WbemScripting.SWbemLocator');
-    WbemServices := WbemLocator.ConnectServer('.', 'root\CIMV2');
-
-    Processes := WbemServices.ExecQuery(
-      'SELECT * FROM Win32_Process WHERE Name="SSMS.exe"');
-
-    Result := Processes.Count > 0;
-  except
-    { If process detection fails, don't block installation. }
+  if not FileExists(PowerShell) then
+  begin
     Result := False;
+    exit;
   end;
+
+  if not Exec(
+    PowerShell,
+    '-NoProfile -NonInteractive -Command "if (Get-Process SSMS -ErrorAction SilentlyContinue) { exit 10 } else { exit 20 }"',
+    '',
+    SW_HIDE,
+    ewWaitUntilTerminated,
+    ResultCode
+  ) then
+  begin
+    Result := False;
+    exit;
+  end;
+
+  Result := ResultCode = 10;
 end;
 
 
@@ -101,7 +107,7 @@ begin
     MsgBox(
       'SQL Server Management Studio is currently running.' +
       Chr(13) + Chr(10) + Chr(13) + Chr(10) +
-      'Please close SSMS, then run the Flank installer again.',
+      'Close SSMS, then run the Flank installer again.',
       mbInformation,
       MB_OK
     );
@@ -122,7 +128,7 @@ begin
     MsgBox(
       'SQL Server Management Studio is currently running.' +
       Chr(13) + Chr(10) + Chr(13) + Chr(10) +
-      'Please close SSMS before uninstalling Flank.',
+      'Close SSMS, then uninstall Flank again.',
       mbInformation,
       MB_OK
     );
