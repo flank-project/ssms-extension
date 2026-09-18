@@ -171,60 +171,22 @@ namespace Flank.SsmsExtension
 
                 step = "Creating Excel workbook";
 
-                var waitDialogFactory =
-                    Package.GetGlobalService(
-                        typeof(SVsThreadedWaitDialogFactory))
-                    as IVsThreadedWaitDialogFactory;
-
-                IVsThreadedWaitDialog2 waitDialog = null;
-
-                try
+                await Task.Run(() =>
                 {
-                    if (waitDialogFactory != null)
-                    {
-                        waitDialogFactory.CreateInstance(
-                            out waitDialog);
+                    ExcelExporter.Generate(
+                        outputPath,
+                        sql,
+                        server,
+                        database);
+                });
 
-                        waitDialog.StartWaitDialog(
-                            "Flank",
-                            "Creating refreshable Excel workbook...",
-                            null,
-                            null,
-                            null,
-                            0,
-                            false,
-                            true);
-                    }
-
-                    // Only the pure file-generation work
-                    // happens off the SSMS UI thread.
-                    await Task.Run(() =>
-                    {
-                        ExcelExporter.Generate(
-                            outputPath,
-                            sql,
-                            server,
-                            database);
-                    });
-
-                    // Anything involving SSMS/VS goes back
-                    // onto its UI thread.
-                    await ThreadHelper.JoinableTaskFactory
-                        .SwitchToMainThreadAsync();
-                }
-                finally
-                {
-                    await ThreadHelper.JoinableTaskFactory
-                        .SwitchToMainThreadAsync();
-
-                    if (waitDialog != null)
-                    {
-                        int canceled;
-                        waitDialog.EndWaitDialog(out canceled);
-                    }
-                }
+                await ThreadHelper.JoinableTaskFactory
+                    .SwitchToMainThreadAsync();
 
                 step = "Opening Excel workbook";
+
+                SetStatusBar(
+                    "Refreshable Excel created — opening Excel...");
 
                 System.Diagnostics.Process.Start(outputPath);
             }
@@ -239,6 +201,20 @@ namespace Flank.SsmsExtension
                     server,
                     database,
                     outputPath);
+            }
+        }
+
+        private void SetStatusBar(string text)
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+
+            var statusBar =
+                Package.GetGlobalService(typeof(SVsStatusbar))
+                as IVsStatusbar;
+
+            if (statusBar != null)
+            {
+                statusBar.SetText(text);
             }
         }
 
