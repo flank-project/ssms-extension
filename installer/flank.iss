@@ -87,7 +87,7 @@ begin
   begin
     MsgBox(
       'Flank requires SQL Server Management Studio 22.' +
-      #13#10 + #13#10 +
+      Chr(13) + Chr(10) + Chr(13) + Chr(10) +
       'SSMS 22 could not be found.',
       mbError,
       MB_OK
@@ -100,7 +100,7 @@ begin
   begin
     MsgBox(
       'SQL Server Management Studio is currently running.' +
-      #13#10 + #13#10 +
+      Chr(13) + Chr(10) + Chr(13) + Chr(10) +
       'Please close SSMS, then run the Flank installer again.',
       mbInformation,
       MB_OK
@@ -121,7 +121,7 @@ begin
   begin
     MsgBox(
       'SQL Server Management Studio is currently running.' +
-      #13#10 + #13#10 +
+      Chr(13) + Chr(10) + Chr(13) + Chr(10) +
       'Please close SSMS before uninstalling Flank.',
       mbInformation,
       MB_OK
