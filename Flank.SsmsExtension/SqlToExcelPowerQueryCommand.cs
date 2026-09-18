@@ -52,7 +52,15 @@ namespace Flank.SsmsExtension
 
         private void Execute(object sender, EventArgs e)
         {
-            ThreadHelper.ThrowIfNotOnUIThread();
+            ThreadHelper.JoinableTaskFactory.RunAsync(async () =>
+            {
+                await ExecuteAsync();
+            });
+        }
+
+        private async Task ExecuteAsync()
+        {
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
             string step = "Reading query";
             string server = null;
@@ -65,7 +73,8 @@ namespace Flank.SsmsExtension
                     as EnvDTE.DTE;
 
                 if (dte == null)
-                    throw new Exception("Could not access the SSMS editor.");
+                    throw new Exception(
+                        "Could not access the SSMS editor.");
 
                 var doc = dte.ActiveDocument;
 
@@ -81,7 +90,8 @@ namespace Flank.SsmsExtension
                 var selection = doc.Selection as EnvDTE.TextSelection;
 
                 if (selection == null)
-                    throw new Exception("Could not read the current SQL editor.");
+                    throw new Exception(
+                        "Could not read the current SQL editor.");
 
                 string sql;
 
@@ -186,14 +196,27 @@ namespace Flank.SsmsExtension
                             true);
                     }
 
-                    ExcelExporter.Generate(
-                        outputPath,
-                        sql,
-                        server,
-                        database);
+                    // Only the pure file-generation work
+                    // happens off the SSMS UI thread.
+                    await Task.Run(() =>
+                    {
+                        ExcelExporter.Generate(
+                            outputPath,
+                            sql,
+                            server,
+                            database);
+                    });
+
+                    // Anything involving SSMS/VS goes back
+                    // onto its UI thread.
+                    await ThreadHelper.JoinableTaskFactory
+                        .SwitchToMainThreadAsync();
                 }
                 finally
                 {
+                    await ThreadHelper.JoinableTaskFactory
+                        .SwitchToMainThreadAsync();
+
                     if (waitDialog != null)
                     {
                         int canceled;
@@ -207,6 +230,9 @@ namespace Flank.SsmsExtension
             }
             catch (Exception ex)
             {
+                await ThreadHelper.JoinableTaskFactory
+                    .SwitchToMainThreadAsync();
+
                 ShowFailure(
                     step,
                     ex,
