@@ -8,39 +8,55 @@
 
   <Commands package="guidSqlToExcelPowerQueryCommandPackage">
 
+    <!-- Our submenu -->
     <Menus>
-      <!-- "Convert to..." submenu in the SQL editor context menu -->
       <Menu
           guid="guidSqlToExcelPowerQueryCommandPackageCmdSet"
-          id="ConvertToMenu"
-          priority="0x0600"
+          id="MakeSelfServeMenu"
+          priority="0x0100"
           type="Menu">
 
+        <!-- Put the submenu inside our proven context-menu group -->
         <Parent
-            guid="guidSsmsSqlEditorGroup"
-            id="IDM_SQLWB_SQLSCRIPT_CONTEXT"/>
+            guid="guidSqlToExcelPowerQueryCommandPackageCmdSet"
+            id="QueryEditorContextGroup"/>
 
         <Strings>
-          <ButtonText>Convert to...</ButtonText>
+          <ButtonText>Make self-serve</ButtonText>
         </Strings>
       </Menu>
     </Menus>
 
     <Groups>
-      <!-- Container for commands inside "Convert to..." -->
+
+      <!-- PROVEN: our group lives inside SSMS's SQL editor right-click menu -->
       <Group
           guid="guidSqlToExcelPowerQueryCommandPackageCmdSet"
-          id="ConvertToMenuGroup"
+          id="QueryEditorContextGroup"
+          priority="0x0600">
+
+        <Parent
+            guid="guidSsmsSqlEditorGroup"
+            id="IDM_SQLWB_SQLSCRIPT_CONTEXT"/>
+
+      </Group>
+
+      <!-- Commands inside the "Make self-serve" submenu -->
+      <Group
+          guid="guidSqlToExcelPowerQueryCommandPackageCmdSet"
+          id="MakeSelfServeMenuGroup"
           priority="0x0100">
 
         <Parent
             guid="guidSqlToExcelPowerQueryCommandPackageCmdSet"
-            id="ConvertToMenu"/>
+            id="MakeSelfServeMenu"/>
 
       </Group>
+
     </Groups>
 
     <Buttons>
+
       <Button
           guid="guidSqlToExcelPowerQueryCommandPackageCmdSet"
           id="SqlToExcelPowerQueryCommandId"
@@ -49,14 +65,16 @@
 
         <Parent
             guid="guidSqlToExcelPowerQueryCommandPackageCmdSet"
-            id="ConvertToMenuGroup"/>
+            id="MakeSelfServeMenuGroup"/>
 
         <Icon guid="guidImages" id="bmpPic1"/>
 
         <Strings>
           <ButtonText>Refreshable Excel</ButtonText>
         </Strings>
+
       </Button>
+
     </Buttons>
 
     <Bitmaps>
@@ -70,23 +88,27 @@
 
   <Symbols>
 
-    <!-- Flank VS package -->
+    <!-- Flank package -->
     <GuidSymbol
         name="guidSqlToExcelPowerQueryCommandPackage"
         value="{b59dc7e2-bab1-4740-ac03-72500650d999}"/>
 
-    <!-- Flank command set -->
+    <!-- Flank commands -->
     <GuidSymbol
         name="guidSqlToExcelPowerQueryCommandPackageCmdSet"
         value="{4aefd085-bfeb-4d3d-8199-201b0c86abc0}">
 
       <IDSymbol
-          name="ConvertToMenu"
-          value="0x1020"/>
+          name="QueryEditorContextGroup"
+          value="0x1021"/>
 
       <IDSymbol
-          name="ConvertToMenuGroup"
-          value="0x1021"/>
+          name="MakeSelfServeMenu"
+          value="0x1022"/>
+
+      <IDSymbol
+          name="MakeSelfServeMenuGroup"
+          value="0x1023"/>
 
       <IDSymbol
           name="SqlToExcelPowerQueryCommandId"
@@ -94,7 +116,7 @@
 
     </GuidSymbol>
 
-    <!-- SSMS SQL query-editor context menu -->
+    <!-- SSMS SQL editor context menu -->
     <GuidSymbol
         name="guidSsmsSqlEditorGroup"
         value="{33f13ac3-80bb-4ecb-85bc-225435603a5e}">
@@ -105,7 +127,7 @@
 
     </GuidSymbol>
 
-    <!-- Flank icon -->
+    <!-- Icon strip -->
     <GuidSymbol
         name="guidImages"
         value="{8a6d3409-5912-4705-bde5-2ff745dc9cf3}">
