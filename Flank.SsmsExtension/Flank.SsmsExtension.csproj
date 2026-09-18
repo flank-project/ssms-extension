@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net472</TargetFramework>
@@ -25,7 +25,7 @@
   <ItemGroup>
     <Reference Include="Microsoft.CSharp" />
     <Reference Include="Microsoft.SqlServer.RegSvrEnum">
-      <HintPath>..\..\..\..\..\..\..\Program Files\Microsoft SQL Server Management Studio 22\Release\Common7\IDE\Extensions\Flank\Microsoft.SqlServer.RegSvrEnum.dll</HintPath>
+      <HintPath>..\..\..\..\..\..\..\Program Files\Microsoft SQL Server Management Studio 22\Release\Common7\IDE\Microsoft.SqlServer.RegSvrEnum.dll</HintPath>
     </Reference>
     <Reference Include="SqlPackageBase">
       <HintPath>..\..\..\..\..\..\..\Program Files\Microsoft SQL Server Management Studio 22\Release\Common7\IDE\SqlPackageBase.dll</HintPath>
