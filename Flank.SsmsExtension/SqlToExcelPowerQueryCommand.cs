@@ -1,6 +1,5 @@
 ﻿using Flank.Excel;
 using Microsoft.SqlServer.Management.UI.VSIntegration;
-using System.Windows.Forms;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
 using System;
@@ -96,7 +95,8 @@ namespace Flank.SsmsExtension
                         as EnvDTE.TextDocument;
 
                     if (textDoc == null)
-                        throw new Exception("Could not read the current SQL document.");
+                        throw new Exception(
+                            "Could not read the current SQL document.");
 
                     var start = textDoc.StartPoint.CreateEditPoint();
                     sql = start.GetText(textDoc.EndPoint);
@@ -116,21 +116,28 @@ namespace Flank.SsmsExtension
                 var scriptFactory = ServiceCache.ScriptFactory;
 
                 if (scriptFactory == null)
-                    throw new Exception("Could not access the SSMS connection service.");
+                    throw new Exception(
+                        "Could not access the SSMS connection service.");
 
-                var connection = scriptFactory.CurrentlyActiveWndConnectionInfo;
+                var connection =
+                    scriptFactory.CurrentlyActiveWndConnectionInfo;
+
                 var info = connection.UIConnectionInfo;
 
                 if (info == null)
-                    throw new Exception("No active SQL Server connection was found.");
+                    throw new Exception(
+                        "No active SQL Server connection was found.");
+
                 server = info.ServerName;
                 database = info.AdvancedOptions["DATABASE"];
 
                 if (string.IsNullOrWhiteSpace(server))
-                    throw new Exception("Could not determine the SQL Server name.");
+                    throw new Exception(
+                        "Could not determine the SQL Server name.");
 
                 if (string.IsNullOrWhiteSpace(database))
-                    throw new Exception("Could not determine the database name.");
+                    throw new Exception(
+                        "Could not determine the database name.");
 
                 step = "Choosing output file";
 
@@ -154,10 +161,31 @@ namespace Flank.SsmsExtension
 
                 step = "Creating Excel workbook";
 
-                Cursor.Current = Cursors.WaitCursor;
+                var waitDialogFactory =
+                    Package.GetGlobalService(
+                        typeof(SVsThreadedWaitDialogFactory))
+                    as IVsThreadedWaitDialogFactory;
+
+                IVsThreadedWaitDialog2 waitDialog = null;
 
                 try
                 {
+                    if (waitDialogFactory != null)
+                    {
+                        waitDialogFactory.CreateInstance(
+                            out waitDialog);
+
+                        waitDialog.StartWaitDialog(
+                            "Flank",
+                            "Creating refreshable Excel workbook...",
+                            null,
+                            null,
+                            null,
+                            0,
+                            false,
+                            true);
+                    }
+
                     ExcelExporter.Generate(
                         outputPath,
                         sql,
@@ -166,7 +194,11 @@ namespace Flank.SsmsExtension
                 }
                 finally
                 {
-                    Cursor.Current = Cursors.Default;
+                    if (waitDialog != null)
+                    {
+                        int canceled;
+                        waitDialog.EndWaitDialog(out canceled);
+                    }
                 }
 
                 step = "Opening Excel workbook";
