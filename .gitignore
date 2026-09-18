@@ -11,3 +11,5 @@ obj/
 
 # VS Code
 .vscode/
+
+installer/output/
