@@ -155,9 +155,9 @@ namespace Flank.SsmsExtension
 
                 ExcelExporter.Generate(
                     outputPath,
+                    sql,
                     server,
-                    database,
-                    sql);
+                    database);
 
                 step = "Opening Excel workbook";
 
