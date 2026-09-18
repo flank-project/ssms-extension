@@ -70,7 +70,7 @@
         <Icon guid="guidImages" id="bmpPic1"/>
 
         <Strings>
-          <ButtonText>Excel (PowerQuery)</ButtonText>
+          <ButtonText>Excel (Power Query)</ButtonText>
         </Strings>
 
       </Button>
