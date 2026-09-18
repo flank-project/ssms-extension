@@ -17,9 +17,11 @@ Write-Host "Installing extension..."
 Remove-Item $dest -Recurse -Force -ErrorAction SilentlyContinue
 New-Item $dest -ItemType Directory -Force | Out-Null
 
-Copy-Item `
-    "$repo\Flank.SsmsExtension\bin\Debug\net472\*" `
-    $dest -Recurse
+$build = "$repo\Flank.SsmsExtension\bin\Debug\net472"
+
+Copy-Item "$build\Flank.SsmsExtension.dll" $dest
+Copy-Item "$build\Flank.SsmsExtension.pkgdef" $dest
+Copy-Item "$build\Flank.Excel.dll" $dest
 
 Write-Host "Registering extension..."
 & $ssms /setup
