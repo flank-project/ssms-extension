@@ -1,5 +1,6 @@
 ﻿using Flank.Excel;
 using Microsoft.SqlServer.Management.UI.VSIntegration;
+using System.Windows.Forms;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
 using System;
@@ -153,11 +154,20 @@ namespace Flank.SsmsExtension
 
                 step = "Creating Excel workbook";
 
-                ExcelExporter.Generate(
-                    outputPath,
-                    sql,
-                    server,
-                    database);
+                Cursor.Current = Cursors.WaitCursor;
+
+                try
+                {
+                    ExcelExporter.Generate(
+                        outputPath,
+                        sql,
+                        server,
+                        database);
+                }
+                finally
+                {
+                    Cursor.Current = Cursors.Default;
+                }
 
                 step = "Opening Excel workbook";
 
