@@ -22,7 +22,7 @@
             id="QueryEditorContextGroup"/>
 
         <Strings>
-          <ButtonText>Make self-serve</ButtonText>
+          <ButtonText>Make Self-Serve</ButtonText>
         </Strings>
       </Menu>
     </Menus>
@@ -41,7 +41,7 @@
 
       </Group>
 
-      <!-- Commands inside the "Make self-serve" submenu -->
+      <!-- Commands inside the "Make Self-Serve" submenu -->
       <Group
           guid="guidSqlToExcelPowerQueryCommandPackageCmdSet"
           id="MakeSelfServeMenuGroup"
@@ -70,7 +70,7 @@
         <Icon guid="guidImages" id="bmpPic1"/>
 
         <Strings>
-          <ButtonText>Refreshable Excel</ButtonText>
+          <ButtonText>Excel (PowerQuery)</ButtonText>
         </Strings>
 
       </Button>
