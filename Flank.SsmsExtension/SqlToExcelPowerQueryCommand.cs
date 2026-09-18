@@ -198,9 +198,9 @@ namespace Flank.SsmsExtension
 
             ExcelExporter.Generate(
                 outputPath,
+                sql,
                 server,
-                database,
-                sql);
+                database);
             System.Diagnostics.Process.Start(outputPath);
         }
     }
