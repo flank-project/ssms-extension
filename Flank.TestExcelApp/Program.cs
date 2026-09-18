@@ -1,7 +1,9 @@
 ﻿using Flank.Excel;
 
 ExcelExporter.Generate(
-    @"..\..\..\..\Flank.Excel\template.xlsx",
-    @"C:\temp\flank-test.xlsx", "select * from leagues");
+    @"C:\temp\flank-test.xlsx",
+    "select * from leagues",
+    "fomf-sandbox-ssdb.database.windows.net",
+    "fomf-ss-sandbox-db");
 
 Console.WriteLine("Done!");
