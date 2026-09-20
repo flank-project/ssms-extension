@@ -6,15 +6,22 @@ Instead of running a query, exporting the results to CSV, and sending someone a 
 
 <img width="1600" height="900" alt="Flank SSMS Screenshot - Top of Menu2x" src="https://github.com/user-attachments/assets/af5316db-e739-45ee-a842-372c804066ed" />
 
-## Requirements
+## Current support
 
-Flank is currently an early experiment and has only been tested with:
+Flank current supports:
 
-- Windows
-- SQL Server Management Studio 22
-- Desktop Microsoft Excel with Power Query
+- **SSMS 22** on Windows
+- **Desktop Excel** with Power Query
+- SQL queries run against **SQL Server / Azure SQL**
+- Selected SQL, or the entire query if nothing is selected
+- Sharing the generated workbook with another user, who can **Refresh All** using their own database credentials
 
-The person refreshing the workbook also needs network access to the database and a way to authenticate to it (see below).
+Not supported yet:
+
+- Query parameters / user inputs
+- Excel for the web
+- End users who cannot connect directly to the database
+- Older versions of SSMS
 
 ## Install
 
@@ -26,7 +33,7 @@ Right-click inside a SQL query and you should see **Make Self-Serve → Refresha
 
 ## How do I give an end user access?
 
-The workbook connects directly to your database, so the person refreshing it needs their own credentials. Flank does not put your credentials in the workbook.
+The workbook connects directly to your database through Power Query, so the person refreshing it needs their own credentials. Flank does not put your credentials in the workbook.
 
 If this is the first time you're giving an end user database access, there are a few common options.
 
