@@ -1,8 +1,8 @@
 # Flank
 
-Turn a SQL query into a refreshable Excel workbook directly from SSMS.
+Flank is an **SSMS extension** that turns a SQL query into a **refreshable Excel workbook.**
 
-Instead of running a query, exporting the results to CSV, and sending someone a new file every time they need updated data, Flank lets you turn the query into an Excel workbook they can refresh themselves.
+Right-click a query, choose `Make Self-Serve` → `Refreshable Excel`, and Flank creates an `.xlsx` file that you can send to an end user. Then, they can refresh the data themselves in Excel.
 
 <img width="1600" height="900" alt="Flank SSMS Screenshot - Top of Menu2x" src="https://github.com/user-attachments/assets/af5316db-e739-45ee-a842-372c804066ed" />
 
