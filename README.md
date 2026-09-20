@@ -26,39 +26,109 @@ Right-click inside a SQL query and you should see **Make Self-Serve → Refresha
 
 ## How do I give an end user access?
 
-The Excel workbook connects directly to your database, so the person refreshing it needs their own way to authenticate. Flank does not put your credentials in the workbook.
+The workbook connects directly to your database, so the person refreshing it needs their own credentials. Flank does not put your credentials in the workbook.
 
-If your end users don't already have database access, here's the usual setup:
+If this is the first time you're giving an end user database access, there are a few common options.
 
-**Azure SQL / Microsoft Entra**
+### Azure SQL + Microsoft Entra
 
-This is usually the simplest option if your organization already uses Microsoft Entra.
+If you're using Azure SQL and the end user already has an account in your Microsoft Entra tenant, they can use that same account to authenticate from Excel.
 
-Add the user to the database with their existing work Microsoft account, or create an Entra group for users who should be able to refresh these workbooks.
+First, your Azure SQL logical server needs a Microsoft Entra administrator configured. This connects the SQL server to your Entra tenant and allows Entra identities to be created as database users.
 
-On their first refresh, Excel will ask them to sign in with that account.
+Then, while connected using an Entra identity with sufficient permissions, create a database user for the end user:
 
-**SQL Server with Windows / Active Directory**
+```sql
+CREATE USER [user@company.com] FROM EXTERNAL PROVIDER;
+```
 
-Grant access to the user's Windows/AD account, or preferably to an AD group they're a member of.
+Or create a user for an Entra group instead:
 
-Excel can then connect using their Windows identity.
+```sql
+CREATE USER [Reporting Users] FROM EXTERNAL PROVIDER;
+```
 
-**SQL Server authentication**
+Grant that user or group the permissions needed to run the query.
 
-Create a SQL login for the user and give it the necessary database permissions.
+On first refresh, Excel will prompt the end user to sign in with their Microsoft account. Excel then connects to Azure SQL as that user.
 
-On their first refresh, Excel will ask for the SQL username and password. Those credentials are stored by Excel on the user's machine, not embedded by Flank in the workbook.
+### SQL Server + Windows / Active Directory
 
-**Your organization doesn't allow end users to connect directly to databases**
+If you're using SQL Server with Windows Authentication and your end users already have Windows/Active Directory accounts that SQL Server can recognize, you can use those identities instead.
 
-Flank's refreshable Excel output isn't currently a fit. Excel connects directly to the database; there is no Flank server or service account sitting between the user and SQL Server.
+Grant the individual Windows account or, more commonly, an AD group access to SQL Server and the database.
 
-### What permissions should I give them?
+For example:
 
-Avoid giving users broad access just to refresh a workbook.
+```sql
+CREATE LOGIN [DOMAIN\Reporting Users] FROM WINDOWS;
+CREATE USER [DOMAIN\Reporting Users] FOR LOGIN [DOMAIN\Reporting Users];
+```
 
-For repeatable reports, a good pattern is to put the query behind a stored procedure and grant the user (or group) permission to execute that procedure rather than read access to all of the underlying tables.
+The end user can then select Windows authentication in Excel and connect using their existing Windows identity.
+
+### SQL Server authentication
+
+If neither of the above is available and you use SQL Server authentication (username + password), you can create a SQL login for the end user:
+
+```sql
+CREATE LOGIN report_user
+WITH PASSWORD = '...';
+
+CREATE USER report_user
+FOR LOGIN report_user;
+```
+
+Excel will prompt the user for that username and password when they first refresh the workbook.
+
+The tradeoff is that you're now managing another set of credentials. Users have another password to store, rotate, and potentially share, and identity/auditing is generally cleaner when you can use their existing Entra or Windows identity instead.
+
+The credentials are handled by Excel and are not embedded in the workbook by Flank.
+
+### What permissions does the user need?
+
+The end user needs permission to execute whatever SQL is embedded in the workbook.
+
+For example, if the workbook contains:
+
+```sql
+SELECT *
+FROM dbo.vehicle_trips;
+```
+
+the user needs `SELECT` permission on `dbo.vehicle_trips` (either directly or through a role/group with that permission).
+
+For a more constrained interface, put the query behind a stored procedure:
+
+```sql
+CREATE PROCEDURE dbo.GetVehicleTrips
+AS
+BEGIN
+    SELECT *
+    FROM dbo.vehicle_trips;
+END;
+```
+
+Then grant the end user permission to execute only that procedure:
+
+```sql
+GRANT EXECUTE ON OBJECT::dbo.GetVehicleTrips
+TO [Reporting Users];
+```
+
+The query embedded in the workbook can then simply be:
+
+```sql
+EXEC dbo.GetVehicleTrips;
+```
+
+This lets the user refresh the workbook without giving them direct `SELECT` permission on the underlying tables.
+
+### What if end users aren't allowed to connect to the database?
+
+Flank's refreshable Excel output isn't currently a fit for that environment.
+
+Excel connects directly from the end user's machine to SQL Server. There is no Flank server or service account sitting between Excel and the database.
 
 ## Uninstall
 
