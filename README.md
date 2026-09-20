@@ -4,7 +4,8 @@ Turn a SQL query into a refreshable Excel workbook directly from SSMS.
 
 Instead of running a query, exporting the results to CSV, and sending someone a new file every time they need updated data, Flank lets you turn the query into an Excel workbook they can refresh themselves.
 
-<!-- GIF / screenshot here -->
+<img width="1600" height="900" alt="Flank SSMS Screenshot - Top of Menu2x" src="https://github.com/user-attachments/assets/af5316db-e739-45ee-a842-372c804066ed" />
+
 
 ## How it works
 
