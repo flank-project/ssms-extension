@@ -42,38 +42,6 @@ The workbook contains the SQL query and connection information. When another use
 
 For Azure SQL with Microsoft Entra authentication, this means you can give users access to the underlying database objects — ideally through a stored procedure or another narrowly permissioned interface — without sharing your own credentials.
 
-## Why?
-
-A pretty common SQL Server workflow looks like this:
-
-    Someone asks for data
-            ↓
-    Write a query in SSMS
-            ↓
-    Save Results As...
-            ↓
-    Send CSV
-            ↓
-    "Can you send me updated numbers?"
-
-For frequently reused data, you might eventually build an SSRS or Power BI report.
-
-Flank is for the space in between.
-
-If a query already answers the question, turning it into something another person can refresh should take seconds.
-
-## Current status
-
-Flank is an early experiment.
-
-Right now it does one thing:
-
-**SSMS query → refreshable Excel workbook**
-
-Currently tested with SSMS 22 and Azure SQL using Microsoft Entra authentication.
-
-If you try it and something breaks, please open an issue and include a screenshot of the Flank error message.
-
 ## Uninstall
 
 Flank can be removed normally from **Windows Settings → Apps → Installed apps**.
