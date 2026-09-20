@@ -24,29 +24,41 @@ Close SSMS, run the installer, then reopen SSMS.
 
 Right-click inside a SQL query and you should see **Make Self-Serve → Refreshable Excel**.
 
-## How do I give someone access to refresh the workbook?
+## How do I give an end user access?
 
-Flank doesn't put your database credentials in the workbook. When someone clicks **Refresh All**, Excel connects to the database and authenticates that user.
+The Excel workbook connects directly to your database, so the person refreshing it needs their own way to authenticate. Flank does not put your credentials in the workbook.
 
-How you set that up depends on how your organization already manages database access:
+If your end users don't already have database access, here's the usual setup:
 
-**Users already connect to SQL Server with Windows/Active Directory authentication**
+**Azure SQL / Microsoft Entra**
 
-Give the recipient (or an AD group they're in) access to the database. Excel can connect using their Windows identity.
+This is usually the simplest option if your organization already uses Microsoft Entra.
 
-**You use Azure SQL with Microsoft Entra authentication**
+Add the user to the database with their existing work Microsoft account, or create an Entra group for users who should be able to refresh these workbooks.
 
-Give the recipient (or preferably an Entra group they're in) access to the database. On first refresh, Excel will prompt them to authenticate with their Microsoft account.
+On their first refresh, Excel will ask them to sign in with that account.
 
-**You use SQL Server authentication**
+**SQL Server with Windows / Active Directory**
 
-The recipient can enter their SQL Server username and password when Excel prompts them. Flank does not embed those credentials in the workbook.
+Grant access to the user's Windows/AD account, or preferably to an AD group they're a member of.
 
-**End users aren't allowed to connect to the database**
+Excel can then connect using their Windows identity.
 
-Flank's refreshable Excel output isn't currently a fit. The workbook connects directly from Excel to SQL Server; there is no Flank server sitting between the user and the database.
+**SQL Server authentication**
 
-For least-privilege access, consider exposing the data through a stored procedure and granting users permission to execute that procedure rather than broad read access to the underlying tables.
+Create a SQL login for the user and give it the necessary database permissions.
+
+On their first refresh, Excel will ask for the SQL username and password. Those credentials are stored by Excel on the user's machine, not embedded by Flank in the workbook.
+
+**Your organization doesn't allow end users to connect directly to databases**
+
+Flank's refreshable Excel output isn't currently a fit. Excel connects directly to the database; there is no Flank server or service account sitting between the user and SQL Server.
+
+### What permissions should I give them?
+
+Avoid giving users broad access just to refresh a workbook.
+
+For repeatable reports, a good pattern is to put the query behind a stored procedure and grant the user (or group) permission to execute that procedure rather than read access to all of the underlying tables.
 
 ## Uninstall
 
