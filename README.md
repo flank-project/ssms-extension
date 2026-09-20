@@ -12,13 +12,16 @@ Flank current supports:
 
 - **SSMS 22** on Windows
 - **Desktop Excel** with Power Query
-- SQL queries run against **SQL Server / Azure SQL**
+- SQL Server / Azure SQL using Power Query's **native SQL query** support
+  - Includes normal `SELECT` queries, CTEs, temp tables, variables, and stored procedures that return a result set
 - Selected SQL, or the entire query if nothing is selected
-- Sharing the generated workbook with another user, who can **Refresh All** using their own database credentials
+- Sharing the generated workbook with another user, who can "Refresh All" using their own database credentials
 
 Not supported yet:
 
 - Query parameters / user inputs
+- Multiple result sets
+- Power Query queries built from tables/views using Power Query transformations (query folding)
 - Excel for the web
 - End users who cannot connect directly to the database
 - Older versions of SSMS
