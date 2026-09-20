@@ -34,24 +34,43 @@ If this is the first time you're giving an end user database access, there are a
 
 If you're using Azure SQL and the end user already has an account in your Microsoft Entra tenant, they can use that same account to authenticate from Excel.
 
-First, your Azure SQL logical server needs a Microsoft Entra administrator configured. This connects the SQL server to your Entra tenant and allows Entra identities to be created as database users.
+#### 1. Check that Microsoft Entra authentication is enabled for your SQL server
 
-Then, while connected using an Entra identity with sufficient permissions, create a database user for the end user:
+In the Azure Portal:
+
+1. Open the **SQL server** that contains your database (the logical server, not the individual database).
+2. Under **Settings**, open **Microsoft Entra ID**.
+3. Look for a **Microsoft Entra admin**.
+
+If an admin is already listed, you're ready for the next step.
+
+If not, click **Set admin**, select an Entra user or group, and click **Save**. This enables Microsoft Entra authentication for the logical server and establishes the Entra identity that can initially create other Entra users in SQL Server.
+
+> This is a server-level setting, so you only need to configure it once for the Azure SQL logical server — not once per workbook or end user.
+
+#### 2. Connect to the database using Microsoft Entra authentication
+
+In SSMS, connect to the Azure SQL database using a Microsoft Entra authentication method rather than SQL Server authentication.
+
+The account you connect with needs permission to create users in the database. If you're setting this up for the first time, connecting as the Microsoft Entra admin you configured above is the simplest option.
+
+#### 3. Add the end user to the database
+
+For an individual user:
 
 ```sql
 CREATE USER [user@company.com] FROM EXTERNAL PROVIDER;
 ```
 
-Or create a user for an Entra group instead:
+Or, if multiple people will refresh these workbooks, you can create an Entra group and add that group instead:
 
 ```sql
 CREATE USER [Reporting Users] FROM EXTERNAL PROVIDER;
 ```
 
-Grant that user or group the permissions needed to run the query.
+Then grant that user or group the permissions needed to run the query.
 
-On first refresh, Excel will prompt the end user to sign in with their Microsoft account. Excel then connects to Azure SQL as that user.
-
+On their first refresh, Excel will prompt the end user to sign in with their Microsoft account. Excel then connects to Azure SQL as that user.
 ### SQL Server + Windows / Active Directory
 
 If you're using SQL Server with Windows Authentication and your end users already have Windows/Active Directory accounts that SQL Server can recognize, you can use those identities instead.
