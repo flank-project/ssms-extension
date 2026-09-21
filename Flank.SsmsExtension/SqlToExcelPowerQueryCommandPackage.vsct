@@ -33,7 +33,7 @@
       <Group
           guid="guidSqlToExcelPowerQueryCommandPackageCmdSet"
           id="QueryEditorContextGroup"
-          priority="0x0600">
+          priority="0x0100">
 
         <Parent
             guid="guidSsmsSqlEditorGroup"
