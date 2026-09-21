@@ -21,7 +21,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 
 OutputDir=output
-OutputBaseFilename=Flank-SSMS-Setup
+OutputBaseFilename=Flank-SSMS-Setup-{#MyAppVersion}
 Compression=lzma2
 SolidCompression=yes
 
