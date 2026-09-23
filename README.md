@@ -100,18 +100,71 @@ After authentication, Excel will run the workbook's query as that user and load 
 
 ### SQL Server + Windows / Active Directory
 
-If you're using SQL Server with Windows Authentication and your end users already have Windows/Active Directory accounts that SQL Server can recognize, you can use those identities instead.
+If you're using SQL Server with Windows Authentication and the end user already has a Windows/Active Directory account that SQL Server can recognize, they can use that identity to refresh the workbook.
 
-Grant the individual Windows account or, more commonly, an AD group access to SQL Server and the database.
+This assumes the end user's computer can reach the SQL Server — for example, because they're on the corporate network or connected through a VPN.
 
-For example:
+#### 1. Check the end user's Windows identity
 
-```sql
-CREATE LOGIN [DOMAIN\Reporting Users] FROM WINDOWS;
-CREATE USER [DOMAIN\Reporting Users] FOR LOGIN [DOMAIN\Reporting Users];
+The user will normally have an Active Directory identity that looks something like:
+
+```text
+COMPANY\jsmith
 ```
 
-The end user can then select Windows authentication in Excel and connect using their existing Windows identity.
+This is the identity SQL Server will use when the user connects with Windows Authentication.
+
+If you're not sure of the username, the end user can open Command Prompt and run:
+
+```cmd
+whoami
+```
+
+#### 2. Create a SQL Server login for the end user
+
+In SSMS, connect to the SQL Server as an administrator and run:
+
+```sql
+CREATE LOGIN [COMPANY\jsmith] FROM WINDOWS;
+```
+
+This allows that Windows identity to authenticate to SQL Server.
+
+#### 3. Create a user in the database
+
+Switch to the database containing the data:
+
+```sql
+USE MyDatabase;
+GO
+
+CREATE USER [COMPANY\jsmith]
+FOR LOGIN [COMPANY\jsmith];
+```
+
+The login gives the user access to the SQL Server. The database user gives that login an identity inside this particular database.
+
+#### 4. Give the user access to the data
+
+For the simplest setup, add the user to the built-in `db_datareader` role:
+
+```sql
+ALTER ROLE db_datareader ADD MEMBER [COMPANY\jsmith];
+```
+
+This allows the user to read all user tables and views in that database.
+
+That's intentionally broad. It's a convenient way to get your first workbook working, but you can narrow the user's permissions later.
+
+For example, you can grant `SELECT` on only the tables/views the workbook needs, or put the query behind a stored procedure and grant the user `EXECUTE` permission on that procedure.
+
+#### 5. Send the workbook
+
+Send the generated `.xlsx` file to the end user. They do **not** need Flank installed.
+
+When they click **Data → Refresh All** for the first time, Excel will ask them to authenticate to the database. Choose **Windows** authentication.
+
+Excel will connect to SQL Server using their Windows identity, run the workbook's query as that user, and load the results.
 
 ### SQL Server authentication
 
