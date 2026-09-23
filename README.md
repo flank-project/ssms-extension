@@ -46,7 +46,12 @@ Right-click inside a SQL query and you should see **Make Self-Serve → Refresha
 
 The workbook connects directly to your database through Power Query, so the person refreshing it needs their own credentials. Flank does not put your credentials in the workbook.
 
-If this is the first time you're giving an end user database access, there are a few common options.
+Choose your setup:
+
+- **Azure SQL + Microsoft Entra** → [setup instructions](#azure-sql--microsoft-entra)
+- **SQL Server + Windows / Active Directory** → [setup instructions](#sql-server--windows--active-directory)
+- **SQL Server authentication (username + password)** → [setup instructions](#sql-server-authentication)
+- **End users can't connect directly to the database** → [read this](#what-if-end-users-arent-allowed-to-connect-to-the-database)
 
 ### Azure SQL + Microsoft Entra
 
