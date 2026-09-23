@@ -8,23 +8,25 @@ Right-click a query, choose `Make Self-Serve` → `Refreshable Excel`, and Flank
 
 ## Current support
 
-Flank current supports:
+Flank currently supports:
 
 - **SSMS 22** on Windows
   - Selected SQL, or the entire query if nothing is selected
 - **Desktop Excel** with Power Query
-  - Power Query's "native SQL query"
-  - Includes normal `SELECT` queries, CTEs, temp tables, variables, and stored procedures that return a result set
-  - End user can "Refresh All" using their own database credentials
+  - End users can "Refresh All" using their own database credentials
+- **Native SQL queries**
+  - Uses Power Query's "native SQL query" support
+  - Includes `SELECT` queries, CTEs, temp tables, variables, and stored procedures that return a result set
 
 Not supported yet:
 
-- Query parameters / user inputs
-- Multiple result sets
-- Power Query queries built from tables/views using Power Query transformations (query folding)
-- Excel for the web
-- End users who cannot connect directly to the database
-- Older versions of SSMS / Excel
+- SQL
+  - Query parameters / user inputs
+  - Multiple result sets
+- Excel
+  - Excel for the web
+- SSMS
+  - Versions earlier than SSMS 22
 
 ## Install
 
