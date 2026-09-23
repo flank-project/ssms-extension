@@ -28,7 +28,7 @@ Not supported yet:
 
 ## Install
 
-Download [Flank-SSMS-Setup-0.1.0.exe](https://github.com/flank-project/ssms-extension/releases/download/v0.1.1/Flank-SSMS-Setup-0.1.1.exe).
+Download [Flank-SSMS-Setup-0.1.1.exe](https://github.com/flank-project/ssms-extension/releases/download/v0.1.1/Flank-SSMS-Setup-0.1.1.exe).
 
 Close SSMS, run the installer, then reopen SSMS.
 
