@@ -44,9 +44,9 @@ If this is the first time you're giving an end user database access, there are a
 
 ### Azure SQL + Microsoft Entra
 
-If you're using Azure SQL and the end user already has an account in your Microsoft Entra tenant, they can use that same account to authenticate from Excel.
+If you're using Azure SQL and the end user already has an account in your Microsoft Entra tenant, they can use that identity to refresh the workbook.
 
-#### 1. Check that Microsoft Entra authentication is enabled for your SQL server
+#### 1. Check that your Azure SQL server has a Microsoft Entra admin
 
 In the Azure Portal:
 
@@ -54,35 +54,50 @@ In the Azure Portal:
 2. Under **Settings**, open **Microsoft Entra ID**.
 3. Look for a **Microsoft Entra admin**.
 
-If an admin is already listed, you're ready for the next step.
+If an admin is already listed, continue to the next step.
 
-If not, click **Set admin**, select an Entra user or group, and click **Save**. This enables Microsoft Entra authentication for the logical server and establishes the Entra identity that can initially create other Entra users in SQL Server.
+If not, click **Set admin**, select an Entra user or group, and click **Save**.
 
-> This is a server-level setting, so you only need to configure it once for the Azure SQL logical server — not once per workbook or end user.
+This is a server-level setting, so you only need to configure it once for the Azure SQL logical server.
 
-#### 2. Connect to the database using Microsoft Entra authentication
+#### 2. Connect to the database as the Microsoft Entra admin
 
-In SSMS, connect to the Azure SQL database using a Microsoft Entra authentication method rather than SQL Server authentication.
+In SSMS, connect to the database using **Microsoft Entra MFA** authentication and the Entra admin account from the previous step.
 
-The account you connect with needs permission to create users in the database. If you're setting this up for the first time, connecting as the Microsoft Entra admin you configured above is the simplest option.
+#### 3. Create a database user for the end user
 
-#### 3. Add the end user to the database
-
-For an individual user:
+Run:
 
 ```sql
 CREATE USER [user@company.com] FROM EXTERNAL PROVIDER;
 ```
 
-Or, if multiple people will refresh these workbooks, you can create an Entra group and add that group instead:
+`user@company.com` should be the user's **User Principal Name (UPN)** in Microsoft Entra. This often looks like their email address, but the two can be different.
+
+You can find the user's UPN in the Azure Portal under **Microsoft Entra ID → Users → [user] → User principal name**.
+
+#### 4. Give the user access to the data
+
+For the simplest setup, add the user to the built-in `db_datareader` role:
 
 ```sql
-CREATE USER [Reporting Users] FROM EXTERNAL PROVIDER;
+ALTER ROLE db_datareader ADD MEMBER [user@company.com];
 ```
 
-Then grant that user or group the permissions needed to run the query.
+This allows the user to read all user tables and views in that database.
 
-On their first refresh, Excel will prompt the end user to sign in with their Microsoft account. Excel then connects to Azure SQL as that user.
+That's intentionally broad. It's a convenient way to get your first workbook working, but you can narrow the user's permissions later.
+
+For example, you can grant `SELECT` on only the tables/views the workbook needs, or put the query behind a stored procedure and grant the user `EXECUTE` permission on that procedure.
+
+#### 5. Send the workbook
+
+Send the generated `.xlsx` file to the end user. They do **not** need Flank installed.
+
+When they click **Data → Refresh All** for the first time, Excel will ask them to authenticate to the database. Choose the Microsoft/Entra authentication option and sign in using the same Entra account you added above.
+
+After authentication, Excel will run the workbook's query as that user and load the results.
+
 ### SQL Server + Windows / Active Directory
 
 If you're using SQL Server with Windows Authentication and your end users already have Windows/Active Directory accounts that SQL Server can recognize, you can use those identities instead.
