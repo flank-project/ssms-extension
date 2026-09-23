@@ -123,14 +123,21 @@ begin
     WizardForm.ProgressGauge.Style := npbstMarquee;
 
     try
-      Exec(
+      if (not Exec(
         ExpandConstant('{#SsmsExe}'),
         '/setup',
         '',
         SW_HIDE,
         ewWaitUntilTerminated,
         ResultCode
-      );
+      )) or (ResultCode <> 0) then
+      begin
+        MsgBox(
+          'Flank could not be registered with SSMS.',
+          mbError,
+          MB_OK
+        );
+      end;
     finally
       WizardForm.ProgressGauge.Style := npbstNormal;
     end;
@@ -158,19 +165,27 @@ begin
   Result := True;
 end;
 
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   ResultCode: Integer;
 begin
   if CurUninstallStep = usPostUninstall then
   begin
-    Exec(
+    if (not Exec(
       ExpandConstant('{#SsmsExe}'),
       '/setup',
       '',
       SW_HIDE,
       ewWaitUntilTerminated,
       ResultCode
-    );
+    )) or (ResultCode <> 0) then
+    begin
+      MsgBox(
+        'Flank could not be unregistered from SSMS.',
+        mbError,
+        MB_OK
+      );
+    end;
   end;
 end;
