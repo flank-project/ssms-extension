@@ -53,9 +53,7 @@ Choose your setup:
 - **SQL Server authentication (username + password)** → [setup instructions](#sql-server-authentication)
 - **End users can't connect directly to the database** → [read this](#what-if-end-users-arent-allowed-to-connect-to-the-database)
 
-### Which authentication method should I use?
-
-If you're not sure:
+### Not sure which authentication method to use?
 
 - **Azure SQL:** Prefer Microsoft Entra if your end users already have Entra accounts.
 - **SQL Server:** Prefer Windows / Active Directory authentication if your end users already have domain accounts.
