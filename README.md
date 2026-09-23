@@ -105,7 +105,7 @@ ALTER ROLE db_datareader ADD MEMBER [user@company.com];
 
 This allows the user to read all user tables and views in that database.
 
-That's intentionally broad. It's a convenient way to get your first workbook working, but you can narrow the user's permissions later.
+That's intentionally broad. It's a convenient way to get your first workbook working, but you can [narrow the user's permissions](#narrowing-database-permissions) later.
 
 For example, you can grant `SELECT` on only the tables/views the workbook needs, or put the query behind a stored procedure and grant the user `EXECUTE` permission on that procedure.
 
@@ -173,7 +173,7 @@ ALTER ROLE db_datareader ADD MEMBER [COMPANY\jsmith];
 
 This allows the user to read all user tables and views in that database.
 
-That's intentionally broad. It's a convenient way to get your first workbook working, but you can narrow the user's permissions later.
+That's intentionally broad. It's a convenient way to get your first workbook working, but you can [narrow the user's permissions](#narrowing-database-permissions) later.
 
 For example, you can grant `SELECT` on only the tables/views the workbook needs, or put the query behind a stored procedure and grant the user `EXECUTE` permission on that procedure.
 
@@ -236,7 +236,7 @@ ALTER ROLE db_datareader ADD MEMBER report_user;
 
 This allows the user to read all user tables and views in that database.
 
-That's intentionally broad. It's a convenient way to get your first workbook working, but you can narrow the user's permissions later.
+That's intentionally broad. It's a convenient way to get your first workbook working, but you can [narrow the user's permissions](#narrowing-database-permissions) later.
 
 For example, you can grant `SELECT` on only the tables/views the workbook needs, or put the query behind a stored procedure and grant the user `EXECUTE` permission on that procedure.
 
@@ -248,9 +248,15 @@ When they click **Data → Refresh All** for the first time, Excel will ask them
 
 Excel will connect to SQL Server using those credentials, run the workbook's query as that user, and load the results.
 
-### What permissions does the user need?
+### What if end users aren't allowed to connect to the database?
 
-The end user needs permission to execute whatever SQL is embedded in the workbook.
+Flank's refreshable Excel output isn't currently a fit for that environment.
+
+Excel connects directly from the end user's machine to SQL Server. There is no Flank server or service account sitting between Excel and the database.
+
+### Narrowing database permissions
+
+`db_datareader` gives the user read access to all user tables and views in the database. You don't have to give Flank users that much access.
 
 For example, if the workbook contains:
 
@@ -286,12 +292,6 @@ EXEC dbo.GetVehicleTrips;
 ```
 
 This lets the user refresh the workbook without giving them direct `SELECT` permission on the underlying tables.
-
-### What if end users aren't allowed to connect to the database?
-
-Flank's refreshable Excel output isn't currently a fit for that environment.
-
-Excel connects directly from the end user's machine to SQL Server. There is no Flank server or service account sitting between Excel and the database.
 
 ## Uninstall
 
