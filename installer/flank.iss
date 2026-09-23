@@ -30,28 +30,26 @@ UninstallDisplayName=Flank for SSMS
 CloseApplications=yes
 RestartApplications=no
 
+
 [Files]
 Source: "..\Flank.SsmsExtension\bin\Release\net472\Flank.SsmsExtension.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\Flank.SsmsExtension\bin\Release\net472\Flank.SsmsExtension.pkgdef"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\Flank.SsmsExtension\bin\Release\net472\Flank.Excel.dll"; DestDir: "{app}"; Flags: ignoreversion
 
-[Run]
-; Register Flank with SSMS
-Filename: "{#SsmsExe}"; \
-    Parameters: "/setup"; \
-    StatusMsg: "Registering Flank with SSMS..."; \
-    Flags: runhidden waituntilterminated
 
+[Run]
 ; Optional launch from Finish page
 Filename: "{#SsmsExe}"; \
     Description: "Launch SQL Server Management Studio"; \
     Flags: nowait postinstall skipifsilent
+
 
 [UninstallRun]
 Filename: "{#SsmsExe}"; \
     Parameters: "/setup"; \
     Flags: runhidden waituntilterminated; \
     RunOnceId: "SsmsSetup"
+
 
 [Code]
 
@@ -116,6 +114,34 @@ begin
   end;
 
   Result := True;
+end;
+
+
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  ResultCode: Integer;
+begin
+  if CurStep = ssPostInstall then
+  begin
+    WizardForm.StatusLabel.Caption := 'Registering Flank with SSMS...';
+
+    { SSMS /setup can take several seconds and doesn't expose progress,
+      so show an indeterminate progress bar while we wait. }
+    WizardForm.ProgressGauge.Style := npbstMarquee;
+
+    try
+      Exec(
+        ExpandConstant('{#SsmsExe}'),
+        '/setup',
+        '',
+        SW_HIDE,
+        ewWaitUntilTerminated,
+        ResultCode
+      );
+    finally
+      WizardForm.ProgressGauge.Style := npbstNormal;
+    end;
+  end;
 end;
 
 
