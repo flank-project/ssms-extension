@@ -168,21 +168,72 @@ Excel will connect to SQL Server using their Windows identity, run the workbook'
 
 ### SQL Server authentication
 
-If neither of the above is available and you use SQL Server authentication (username + password), you can create a SQL login for the end user:
+If you don't have Microsoft Entra or Windows/Active Directory authentication available and your SQL Server accepts SQL Server authentication (username + password), you can create a SQL login for the end user.
+
+This assumes the end user's computer can reach the SQL Server — for example, because they're on the corporate network, connected through a VPN, or the server is otherwise reachable from their machine.
+
+#### 1. Check that SQL Server authentication is enabled
+
+In SSMS:
+
+1. Right-click the SQL Server in **Object Explorer** and select **Properties**.
+2. Open **Security**.
+3. Under **Server authentication**, check that **SQL Server and Windows Authentication mode** is selected.
+
+If you change this setting, SQL Server needs to be restarted before the change takes effect.
+
+#### 2. Create a SQL Server login for the end user
+
+Connect to SQL Server as an administrator and run:
 
 ```sql
 CREATE LOGIN report_user
-WITH PASSWORD = '...';
+WITH PASSWORD = 'use-a-strong-password-here';
+```
+
+This creates a username and password that the end user can use to authenticate to SQL Server.
+
+#### 3. Create a user in the database
+
+Switch to the database containing the data:
+
+```sql
+USE MyDatabase;
+GO
 
 CREATE USER report_user
 FOR LOGIN report_user;
 ```
 
-Excel will prompt the user for that username and password when they first refresh the workbook.
+The login gives the user access to the SQL Server. The database user gives that login an identity inside this particular database.
 
-The tradeoff is that you're now managing another set of credentials. Users have another password to store, rotate, and potentially share, and identity/auditing is generally cleaner when you can use their existing Entra or Windows identity instead.
+#### 4. Give the user access to the data
 
-The credentials are handled by Excel and are not embedded in the workbook by Flank.
+For the simplest setup, add the user to the built-in `db_datareader` role:
+
+```sql
+ALTER ROLE db_datareader ADD MEMBER report_user;
+```
+
+This allows the user to read all user tables and views in that database.
+
+That's intentionally broad. It's a convenient way to get your first workbook working, but you can narrow the user's permissions later.
+
+For example, you can grant `SELECT` on only the tables/views the workbook needs, or put the query behind a stored procedure and grant the user `EXECUTE` permission on that procedure.
+
+#### 5. Send the workbook
+
+Send the generated `.xlsx` file to the end user. They do **not** need Flank installed.
+
+When they click **Data → Refresh All** for the first time, Excel will ask them to authenticate to the database. Choose **Database** authentication and enter the SQL Server username and password you created above.
+
+Excel will connect to SQL Server using those credentials, run the workbook's query as that user, and load the results.
+
+### Tradeoffs
+
+SQL Server authentication works, but it means creating and managing a separate database password for the end user.
+
+If Microsoft Entra or Windows authentication is available, those options are generally easier to manage because the user can authenticate with an identity they already have.
 
 ### What permissions does the user need?
 
