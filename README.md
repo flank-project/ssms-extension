@@ -6,6 +6,12 @@ Right-click a query, choose `Make Self-Serve` → `Refreshable Excel`, and Flank
 
 <img width="1600" height="682" alt="Flank SSMS Screenshot - Top of Menu Thin" src="https://github.com/user-attachments/assets/8bc7f562-acf3-4a22-b4b6-1f8f2feb6be6" />
 
+---
+
+**Jump to:** [Install](#install) · [Current support](#current-support) · [Set up end-user access](#how-do-i-give-an-end-user-access) · [Uninstall](#uninstall)
+
+---
+
 ## Current support
 
 Flank currently supports:
