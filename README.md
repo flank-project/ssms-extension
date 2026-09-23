@@ -53,6 +53,16 @@ Choose your setup:
 - **SQL Server authentication (username + password)** → [setup instructions](#sql-server-authentication)
 - **End users can't connect directly to the database** → [read this](#what-if-end-users-arent-allowed-to-connect-to-the-database)
 
+### Which authentication method should I use?
+
+If you're not sure:
+
+- **Azure SQL:** Prefer Microsoft Entra if your end users already have Entra accounts.
+- **SQL Server:** Prefer Windows / Active Directory authentication if your end users already have domain accounts.
+- **SQL Server authentication:** Use this when the other options aren't available. It works, but requires giving the end user a separate database username and password.
+
+In general, using an identity the user already has is easier to manage than creating another set of credentials.
+
 ### Azure SQL + Microsoft Entra
 
 If you're using Azure SQL and the end user already has an account in your Microsoft Entra tenant, they can use that identity to refresh the workbook.
@@ -239,12 +249,6 @@ Send the generated `.xlsx` file to the end user. They do **not** need Flank inst
 When they click **Data → Refresh All** for the first time, Excel will ask them to authenticate to the database. Choose **Database** authentication and enter the SQL Server username and password you created above.
 
 Excel will connect to SQL Server using those credentials, run the workbook's query as that user, and load the results.
-
-### Tradeoffs
-
-SQL Server authentication works, but it means creating and managing a separate database password for the end user.
-
-If Microsoft Entra or Windows authentication is available, those options are generally easier to manage because the user can authenticate with an identity they already have.
 
 ### What permissions does the user need?
 
