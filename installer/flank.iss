@@ -44,13 +44,6 @@ Filename: "{#SsmsExe}"; \
     Flags: nowait postinstall skipifsilent
 
 
-[UninstallRun]
-Filename: "{#SsmsExe}"; \
-    Parameters: "/setup"; \
-    Flags: runhidden waituntilterminated; \
-    RunOnceId: "SsmsSetup"
-
-
 [Code]
 
 function IsSsmsRunning(): Boolean;
@@ -163,4 +156,21 @@ begin
   end;
 
   Result := True;
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  ResultCode: Integer;
+begin
+  if CurUninstallStep = usPostUninstall then
+  begin
+    Exec(
+      ExpandConstant('{#SsmsExe}'),
+      '/setup',
+      '',
+      SW_HIDE,
+      ewWaitUntilTerminated,
+      ResultCode
+    );
+  end;
 end;
