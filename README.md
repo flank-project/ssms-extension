@@ -12,6 +12,14 @@ Right-click a query, choose `Make Self-Serve` → `Refreshable Excel`, and Flank
 
 ---
 
+## Install
+
+Download [Flank-SSMS-Setup-0.1.2.exe](https://github.com/flank-project/ssms-extension/releases/download/v0.1.2/Flank-SSMS-Setup-0.1.2.exe).
+
+Close SSMS, run the installer, then reopen SSMS.
+
+Right-click inside a SQL query and you should see **Make Self-Serve → Refreshable Excel**.
+
 ## Current support
 
 Flank currently supports:
@@ -33,14 +41,6 @@ Not supported yet:
   - Excel for the web
 - SSMS
   - Versions earlier than SSMS 22
-
-## Install
-
-Download [Flank-SSMS-Setup-0.1.2.exe](https://github.com/flank-project/ssms-extension/releases/download/v0.1.2/Flank-SSMS-Setup-0.1.2.exe).
-
-Close SSMS, run the installer, then reopen SSMS.
-
-Right-click inside a SQL query and you should see **Make Self-Serve → Refreshable Excel**.
 
 ## How do I give an end user access?
 
@@ -106,8 +106,6 @@ ALTER ROLE db_datareader ADD MEMBER [user@company.com];
 This allows the user to read all user tables and views in that database.
 
 That's intentionally broad. It's a convenient way to get your first workbook working, but you can [narrow the user's permissions](#narrowing-database-permissions) later.
-
-For example, you can grant `SELECT` on only the tables/views the workbook needs, or put the query behind a stored procedure and grant the user `EXECUTE` permission on that procedure.
 
 #### 5. Send the workbook
 
@@ -175,8 +173,6 @@ This allows the user to read all user tables and views in that database.
 
 That's intentionally broad. It's a convenient way to get your first workbook working, but you can [narrow the user's permissions](#narrowing-database-permissions) later.
 
-For example, you can grant `SELECT` on only the tables/views the workbook needs, or put the query behind a stored procedure and grant the user `EXECUTE` permission on that procedure.
-
 #### 5. Send the workbook
 
 Send the generated `.xlsx` file to the end user. They do **not** need Flank installed.
@@ -237,8 +233,6 @@ ALTER ROLE db_datareader ADD MEMBER report_user;
 This allows the user to read all user tables and views in that database.
 
 That's intentionally broad. It's a convenient way to get your first workbook working, but you can [narrow the user's permissions](#narrowing-database-permissions) later.
-
-For example, you can grant `SELECT` on only the tables/views the workbook needs, or put the query behind a stored procedure and grant the user `EXECUTE` permission on that procedure.
 
 #### 5. Send the workbook
 
