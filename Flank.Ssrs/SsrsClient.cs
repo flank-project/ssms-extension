@@ -470,6 +470,7 @@ namespace Flank.Ssrs
                 reportParameterXml.Append($@"
     <ReportParameter Name=""{XmlEscape(reportParameterName)}"">
       <DataType>{rdlType}</DataType>
+      <Nullable>true</Nullable>
       <Prompt>{XmlEscape(reportParameterName)}</Prompt>
     </ReportParameter>");
 
