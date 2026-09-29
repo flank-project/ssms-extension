@@ -3,8 +3,8 @@ using System;
 using System.Data.SqlClient;
 using System.Net;
 using System.Collections.Generic;
-using System.Data;
 using System.Text;
+using System.Linq;
 
 namespace Flank.Ssrs
 {
@@ -26,6 +26,14 @@ namespace Flank.Ssrs
             public string SqlType { get; set; }
             public bool? IsNullable { get; set; }
             public int Ordinal { get; set; }
+        }
+        private ReportService2010.ReportingService2010 CreateSsrsConnection()
+        {
+            return new ReportService2010.ReportingService2010
+            {
+                Url = "http://localhost/ReportServer/ReportService2010.asmx",
+                Credentials = System.Net.CredentialCache.DefaultCredentials
+            };
         }
         public void TestConnection()
         {
@@ -752,6 +760,30 @@ namespace Flank.Ssrs
                 sb.Insert(0, '_');
 
             return sb.ToString();
+        }
+
+        public List<string> GetFolders()
+        {
+            var rs = CreateSsrsConnection();
+
+            var items = rs.ListChildren("/", true);
+
+            return items
+                .Where(x => x.TypeName == "Folder")
+                .Select(x => x.Path)
+                .ToList();
+        }
+
+        public List<string> GetSharedDataSources()
+        {
+            var rs = CreateSsrsConnection();
+
+            var items = rs.ListChildren("/", true);
+
+            return items
+                .Where(x => x.TypeName == "DataSource")
+                .Select(x => x.Path)
+                .ToList();
         }
     }
 }
