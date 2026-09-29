@@ -1,10 +1,10 @@
 ﻿using Flank.Ssrs.ReportService2010;
 using System;
-using System.Data.SqlClient;
-using System.Net;
 using System.Collections.Generic;
-using System.Text;
+using System.Data.SqlClient;
 using System.Linq;
+using System.Net;
+using System.Text;
 
 namespace Flank.Ssrs
 {
@@ -29,15 +29,6 @@ namespace Flank.Ssrs
             _reportPortalUrl = reportPortalUrl.TrimEnd('/');
         }
 
-        private ReportService2010.ReportingService2010 CreateSsrsConnection()
-        {
-            return new ReportService2010.ReportingService2010
-            {
-                Url = _reportServerUrl + "/ReportService2010.asmx",
-                Credentials = CredentialCache.DefaultCredentials
-            };
-        }
-
         private class SprocParameter
         {
             public string Name { get; set; }
@@ -48,41 +39,18 @@ namespace Flank.Ssrs
             public bool IsOutput { get; set; }
         }
 
-        private class SprocColumn
+        private class ReportColumn
         {
             public string Name { get; set; }
-            public string SqlType { get; set; }
-            public bool? IsNullable { get; set; }
-            public int Ordinal { get; set; }
         }
 
-        private string GetReportUrl(
-            string reportFolder,
-            string reportName)
+        private class TableRdl
         {
-            string reportPath =
-                reportFolder.TrimEnd('/') + "/" + reportName;
-
-            string encodedPath = string.Join(
-                "",
-                reportPath
-                    .Split('/')
-                    .Where(x => !string.IsNullOrEmpty(x))
-                    .Select(x => "/" + Uri.EscapeDataString(x)));
-
-            return _reportPortalUrl + "/report" + encodedPath;
-        }
-
-        private static string GetSoapErrorMessage(
-            System.Web.Services.Protocols.SoapException ex)
-        {
-            if (ex.Detail != null &&
-                !string.IsNullOrWhiteSpace(ex.Detail.InnerText))
-            {
-                return ex.Detail.InnerText;
-            }
-
-            return ex.Message;
+            public string Fields { get; set; }
+            public string Columns { get; set; }
+            public string HeaderCells { get; set; }
+            public string DetailCells { get; set; }
+            public string ColumnMembers { get; set; }
         }
 
         public string CreateReport(
@@ -92,8 +60,83 @@ namespace Flank.Ssrs
             string reportFolder,
             string reportName)
         {
-            // 1. Discover output columns.
-            var columns = new List<string>();
+            var columns = DiscoverQueryColumns(
+                sql,
+                connection);
+
+            string queryXml = $@"
+        <CommandText>{XmlEscape(sql)}</CommandText>";
+
+            string rdl = BuildReportRdl(
+                columns,
+                sharedDataSourcePath,
+                queryXml,
+                null);
+
+            DeployReport(
+                rdl,
+                reportFolder,
+                reportName);
+
+            return GetReportUrl(
+                reportFolder,
+                reportName);
+        }
+
+        public string CreateReportFromStoredProcedure(
+            string procedureName,
+            SqlConnection connection,
+            string sharedDataSourcePath,
+            string reportFolder,
+            string reportName)
+        {
+            int objectId = GetStoredProcedureObjectId(
+                procedureName,
+                connection);
+
+            var parameters = DiscoverStoredProcedureParameters(
+                objectId,
+                connection);
+
+            var columns = DiscoverStoredProcedureColumns(
+                objectId,
+                procedureName,
+                connection);
+
+            string reportParametersXml;
+            string queryParametersXml;
+
+            BuildStoredProcedureParameters(
+                parameters,
+                out reportParametersXml,
+                out queryParametersXml);
+
+            string queryXml = $@"
+        <CommandType>StoredProcedure</CommandType>
+        <CommandText>{XmlEscape(procedureName)}</CommandText>
+{queryParametersXml}";
+
+            string rdl = BuildReportRdl(
+                columns,
+                sharedDataSourcePath,
+                queryXml,
+                reportParametersXml);
+
+            DeployReport(
+                rdl,
+                reportFolder,
+                reportName);
+
+            return GetReportUrl(
+                reportFolder,
+                reportName);
+        }
+
+        private List<ReportColumn> DiscoverQueryColumns(
+            string sql,
+            SqlConnection connection)
+        {
+            var columns = new List<ReportColumn>();
 
             using (var command = connection.CreateCommand())
             {
@@ -106,7 +149,10 @@ namespace Flank.Ssrs
 
                     foreach (System.Data.DataRow row in schema.Rows)
                     {
-                        columns.Add((string)row["ColumnName"]);
+                        columns.Add(new ReportColumn
+                        {
+                            Name = (string)row["ColumnName"]
+                        });
                     }
                 }
             }
@@ -117,220 +163,17 @@ namespace Flank.Ssrs
                     "The query does not return any columns.");
             }
 
-            // 2. Build dynamic RDL pieces.
-            var fieldXml = new StringBuilder();
-            var columnXml = new StringBuilder();
-            var headerCellXml = new StringBuilder();
-            var detailCellXml = new StringBuilder();
-            var columnMemberXml = new StringBuilder();
-
-            foreach (var column in columns)
-            {
-                string name = XmlEscape(column);
-
-                fieldXml.Append($@"
-        <Field Name=""{name}"">
-          <DataField>{name}</DataField>
-        </Field>");
-
-                columnXml.Append(@"
-                <TablixColumn>
-                  <Width>1.5in</Width>
-                </TablixColumn>");
-
-                headerCellXml.Append($@"
-                <TablixCell>
-                  <CellContents>
-                    <Textbox Name=""Header_{name}"">
-                      <Paragraphs>
-                        <Paragraph>
-                          <TextRuns>
-                            <TextRun>
-                              <Value>{name}</Value>
-                              <Style>
-                                <FontWeight>Bold</FontWeight>
-                              </Style>
-                            </TextRun>
-                          </TextRuns>
-                        </Paragraph>
-                      </Paragraphs>
-                    </Textbox>
-                  </CellContents>
-                </TablixCell>");
-
-                detailCellXml.Append($@"
-                <TablixCell>
-                  <CellContents>
-                    <Textbox Name=""Value_{name}"">
-                      <Paragraphs>
-                        <Paragraph>
-                          <TextRuns>
-                            <TextRun>
-                              <Value>=Fields!{name}.Value</Value>
-                            </TextRun>
-                          </TextRuns>
-                        </Paragraph>
-                      </Paragraphs>
-                    </Textbox>
-                  </CellContents>
-                </TablixCell>");
-
-                columnMemberXml.Append("<TablixMember />");
-            }
-
-            // 3. Generate RDL.
-            string rdl = $@"<?xml version=""1.0"" encoding=""utf-8""?>
-<Report xmlns=""http://schemas.microsoft.com/sqlserver/reporting/2016/01/reportdefinition"">
-
-  <DataSources>
-    <DataSource Name=""SharedDataSource"">
-      <DataSourceReference>{XmlEscape(sharedDataSourcePath)}</DataSourceReference>
-    </DataSource>
-  </DataSources>
-
-  <DataSets>
-    <DataSet Name=""MainDataSet"">
-      <Query>
-        <DataSourceName>SharedDataSource</DataSourceName>
-        <CommandText>{XmlEscape(sql)}</CommandText>
-      </Query>
-
-      <Fields>
-        {fieldXml}
-      </Fields>
-    </DataSet>
-  </DataSets>
-
-  <ReportSections>
-    <ReportSection>
-      <Body>
-        <ReportItems>
-
-          <Tablix Name=""MainTable"">
-            <TablixBody>
-
-              <TablixColumns>
-                {columnXml}
-              </TablixColumns>
-
-              <TablixRows>
-
-                <TablixRow>
-                  <Height>0.3in</Height>
-                  <TablixCells>
-                    {headerCellXml}
-                  </TablixCells>
-                </TablixRow>
-
-                <TablixRow>
-                  <Height>0.3in</Height>
-                  <TablixCells>
-                    {detailCellXml}
-                  </TablixCells>
-                </TablixRow>
-
-              </TablixRows>
-            </TablixBody>
-
-            <TablixColumnHierarchy>
-              <TablixMembers>
-                {columnMemberXml}
-              </TablixMembers>
-            </TablixColumnHierarchy>
-
-            <TablixRowHierarchy>
-              <TablixMembers>
-                <TablixMember />
-                <TablixMember>
-                  <Group Name=""Details"" />
-                </TablixMember>
-              </TablixMembers>
-            </TablixRowHierarchy>
-
-            <DataSetName>MainDataSet</DataSetName>
-          </Tablix>
-
-        </ReportItems>
-
-        <Height>2in</Height>
-      </Body>
-
-      <Width>{Math.Max(8.5, columns.Count * 1.5)}in</Width>
-
-      <Page>
-        <PageHeight>11in</PageHeight>
-        <PageWidth>11in</PageWidth>
-        <LeftMargin>0.5in</LeftMargin>
-        <RightMargin>0.5in</RightMargin>
-        <TopMargin>0.5in</TopMargin>
-        <BottomMargin>0.5in</BottomMargin>
-      </Page>
-
-    </ReportSection>
-  </ReportSections>
-
-</Report>";
-
-            // 4. Deploy.
-            var rs = CreateSsrsConnection();
-            byte[] definition = Encoding.UTF8.GetBytes(rdl);
-            Warning[] warnings;
-
-            try
-            {
-                rs.CreateCatalogItem(
-                    "Report",
-                    reportName,
-                    reportFolder,
-                    true,
-                    definition,
-                    null,
-                    out warnings);
-            }
-            catch (System.Web.Services.Protocols.SoapException ex)
-            {
-                throw new SsrsException(
-                    $"Could not create report '{reportName}' " +
-                    $"in SSRS folder '{reportFolder}'. " +
-                    GetSoapErrorMessage(ex),
-                    ex);
-            }
-            catch (Exception ex)
-            {
-                throw new SsrsException(
-                    $"Could not create report '{reportName}' " +
-                    $"in SSRS folder '{reportFolder}'.",
-                    ex);
-            }
-
-            if (warnings != null)
-            {
-                foreach (var warning in warnings)
-                {
-                    Console.WriteLine("WARNING: " + warning.Message);
-                }
-            }
-
-            return GetReportUrl(reportFolder, reportName);
+            return columns;
         }
 
-        public string CreateReportFromStoredProcedure(
+        private int GetStoredProcedureObjectId(
             string procedureName,
-            SqlConnection connection,
-            string sharedDataSourcePath,
-            string reportFolder,
-            string reportName)
+            SqlConnection connection)
         {
-            // ------------------------------------------------------------
-            // 1. Resolve stored procedure
-            // ------------------------------------------------------------
-
-            int objectId;
-
             using (var command = connection.CreateCommand())
             {
                 command.CommandText = @"
-            SELECT OBJECT_ID(@ProcedureName, 'P')";
+SELECT OBJECT_ID(@ProcedureName, 'P')";
 
                 command.Parameters.AddWithValue(
                     "@ProcedureName",
@@ -338,36 +181,38 @@ namespace Flank.Ssrs
 
                 var result = command.ExecuteScalar();
 
-                if (result == null || result == DBNull.Value)
+                if (result == null ||
+                    result == DBNull.Value)
                 {
                     throw new InvalidOperationException(
                         $"Stored procedure '{procedureName}' not found.");
                 }
 
-                objectId = (int)result;
+                return (int)result;
             }
+        }
 
-            // ------------------------------------------------------------
-            // 2. Discover stored procedure parameters
-            // ------------------------------------------------------------
-
+        private List<SprocParameter> DiscoverStoredProcedureParameters(
+            int objectId,
+            SqlConnection connection)
+        {
             var parameters = new List<SprocParameter>();
 
             using (var command = connection.CreateCommand())
             {
                 command.CommandText = @"
-            SELECT
-                p.name,
-                t.name AS type_name,
-                p.max_length,
-                p.precision,
-                p.scale,
-                p.is_output
-            FROM sys.parameters p
-            JOIN sys.types t
-                ON p.user_type_id = t.user_type_id
-            WHERE p.object_id = @ObjectId
-            ORDER BY p.parameter_id;";
+SELECT
+    p.name,
+    t.name AS type_name,
+    p.max_length,
+    p.precision,
+    p.scale,
+    p.is_output
+FROM sys.parameters p
+JOIN sys.types t
+    ON p.user_type_id = t.user_type_id
+WHERE p.object_id = @ObjectId
+ORDER BY p.parameter_id;";
 
                 command.Parameters.AddWithValue(
                     "@ObjectId",
@@ -390,26 +235,30 @@ namespace Flank.Ssrs
                 }
             }
 
-            // ------------------------------------------------------------
-            // 3. Discover first result-set columns
-            // ------------------------------------------------------------
+            return parameters;
+        }
 
-            var columns = new List<SprocColumn>();
+        private List<ReportColumn> DiscoverStoredProcedureColumns(
+            int objectId,
+            string procedureName,
+            SqlConnection connection)
+        {
+            var columns = new List<ReportColumn>();
 
             using (var command = connection.CreateCommand())
             {
                 command.CommandText = @"
-            SELECT
-                name,
-                system_type_name,
-                is_nullable,
-                column_ordinal
-            FROM sys.dm_exec_describe_first_result_set_for_object(
-                @ObjectId,
-                NULL
-            )
-            WHERE is_hidden = 0
-            ORDER BY column_ordinal;";
+SELECT
+    name,
+    system_type_name,
+    is_nullable,
+    column_ordinal
+FROM sys.dm_exec_describe_first_result_set_for_object(
+    @ObjectId,
+    NULL
+)
+WHERE is_hidden = 0
+ORDER BY column_ordinal;";
 
                 command.Parameters.AddWithValue(
                     "@ObjectId",
@@ -419,21 +268,11 @@ namespace Flank.Ssrs
                 {
                     while (reader.Read())
                     {
-                        columns.Add(new SprocColumn
+                        columns.Add(new ReportColumn
                         {
                             Name = reader.IsDBNull(0)
                                 ? null
-                                : reader.GetString(0),
-
-                            SqlType = reader.IsDBNull(1)
-                                ? null
-                                : reader.GetString(1),
-
-                            IsNullable = reader.IsDBNull(2)
-                                ? (bool?)null
-                                : reader.GetBoolean(2),
-
-                            Ordinal = reader.GetInt32(3)
+                                : reader.GetString(0)
                         });
                     }
                 }
@@ -446,153 +285,88 @@ namespace Flank.Ssrs
                     "does not return a result set.");
             }
 
-            // ------------------------------------------------------------
-            // 4. Generate RDL parameter XML
-            // ------------------------------------------------------------
+            return columns;
+        }
 
-            var reportParameterXml = new StringBuilder();
-            var dataSetParameterXml = new StringBuilder();
+        private static void BuildStoredProcedureParameters(
+            List<SprocParameter> parameters,
+            out string reportParametersXml,
+            out string queryParametersXml)
+        {
+            var reportParameters =
+                new StringBuilder();
+
+            var queryParameters =
+                new StringBuilder();
 
             foreach (var parameter in parameters)
             {
-                // Ignore SQL output parameters for report input UI for now.
                 if (parameter.IsOutput)
                     continue;
 
-                string sqlParameterName = parameter.Name;
+                string sqlParameterName =
+                    parameter.Name;
 
                 string reportParameterName =
                     sqlParameterName.TrimStart('@');
 
                 string rdlType =
-                    GetRdlParameterType(parameter.SqlType);
+                    GetRdlParameterType(
+                        parameter.SqlType);
 
-                reportParameterXml.Append($@"
+                reportParameters.Append($@"
     <ReportParameter Name=""{XmlEscape(reportParameterName)}"">
       <DataType>{rdlType}</DataType>
       <Nullable>true</Nullable>
       <Prompt>{XmlEscape(reportParameterName)}</Prompt>
     </ReportParameter>");
 
-                dataSetParameterXml.Append($@"
+                queryParameters.Append($@"
         <QueryParameter Name=""{XmlEscape(sqlParameterName)}"">
           <Value>=Parameters!{XmlEscape(reportParameterName)}.Value</Value>
         </QueryParameter>");
             }
 
-            // ------------------------------------------------------------
-            // 5. Generate dataset fields + tablix
-            // ------------------------------------------------------------
-
-            var fieldXml = new StringBuilder();
-            var tablixColumnXml = new StringBuilder();
-            var headerCellXml = new StringBuilder();
-            var detailCellXml = new StringBuilder();
-            var columnMemberXml = new StringBuilder();
-
-            int columnNumber = 0;
-
-            foreach (var column in columns)
+            if (reportParameters.Length > 0)
             {
-                columnNumber++;
-
-                string sourceName = column.Name;
-
-                if (string.IsNullOrWhiteSpace(sourceName))
-                    sourceName = "Column" + columnNumber;
-
-                string fieldName =
-                    MakeSafeRdlName(sourceName, columnNumber);
-
-                fieldXml.Append($@"
-        <Field Name=""{XmlEscape(fieldName)}"">
-          <DataField>{XmlEscape(sourceName)}</DataField>
-        </Field>");
-
-                tablixColumnXml.Append(@"
-                <TablixColumn>
-                  <Width>1.5in</Width>
-                </TablixColumn>");
-
-                headerCellXml.Append($@"
-                <TablixCell>
-                  <CellContents>
-                    <Textbox Name=""Header_{XmlEscape(fieldName)}"">
-                      <CanGrow>true</CanGrow>
-                      <KeepTogether>true</KeepTogether>
-                      <Paragraphs>
-                        <Paragraph>
-                          <TextRuns>
-                            <TextRun>
-                              <Value>{XmlEscape(sourceName)}</Value>
-                              <Style>
-                                <FontWeight>Bold</FontWeight>
-                              </Style>
-                            </TextRun>
-                          </TextRuns>
-                          <Style />
-                        </Paragraph>
-                      </Paragraphs>
-                      <Style />
-                    </Textbox>
-                  </CellContents>
-                </TablixCell>");
-
-                detailCellXml.Append($@"
-                <TablixCell>
-                  <CellContents>
-                    <Textbox Name=""Value_{XmlEscape(fieldName)}"">
-                      <CanGrow>true</CanGrow>
-                      <KeepTogether>true</KeepTogether>
-                      <Paragraphs>
-                        <Paragraph>
-                          <TextRuns>
-                            <TextRun>
-                              <Value>=Fields!{XmlEscape(fieldName)}.Value</Value>
-                              <Style />
-                            </TextRun>
-                          </TextRuns>
-                          <Style />
-                        </Paragraph>
-                      </Paragraphs>
-                      <Style />
-                    </Textbox>
-                  </CellContents>
-                </TablixCell>");
-
-                columnMemberXml.Append(@"
-                <TablixMember />");
-            }
-
-            // ------------------------------------------------------------
-            // 6. Generate complete RDL
-            // ------------------------------------------------------------
-
-            string reportParametersSection = "";
-
-            if (reportParameterXml.Length > 0)
-            {
-                reportParametersSection = $@"
+                reportParametersXml = $@"
   <ReportParameters>
-{reportParameterXml}
+{reportParameters}
   </ReportParameters>";
             }
-
-            string queryParametersSection = "";
-
-            if (dataSetParameterXml.Length > 0)
+            else
             {
-                queryParametersSection = $@"
-      <QueryParameters>
-{dataSetParameterXml}
-      </QueryParameters>";
+                reportParametersXml = "";
             }
 
-            double reportWidth = Math.Max(
-                8.5,
-                columns.Count * 1.5);
+            if (queryParameters.Length > 0)
+            {
+                queryParametersXml = $@"
+      <QueryParameters>
+{queryParameters}
+      </QueryParameters>";
+            }
+            else
+            {
+                queryParametersXml = "";
+            }
+        }
 
-            string rdl = $@"<?xml version=""1.0"" encoding=""utf-8""?>
+        private static string BuildReportRdl(
+            List<ReportColumn> columns,
+            string sharedDataSourcePath,
+            string queryXml,
+            string reportParametersXml)
+        {
+            TableRdl table =
+                BuildTableRdl(columns);
+
+            double reportWidth =
+                Math.Max(
+                    8.5,
+                    columns.Count * 1.5);
+
+            return $@"<?xml version=""1.0"" encoding=""utf-8""?>
 <Report
     xmlns=""http://schemas.microsoft.com/sqlserver/reporting/2016/01/reportdefinition""
     xmlns:rd=""http://schemas.microsoft.com/SQLServer/reporting/reportdesigner"">
@@ -607,18 +381,16 @@ namespace Flank.Ssrs
     <DataSet Name=""MainDataSet"">
       <Query>
         <DataSourceName>SharedDataSource</DataSourceName>
-        <CommandType>StoredProcedure</CommandType>
-        <CommandText>{XmlEscape(procedureName)}</CommandText>
-{queryParametersSection}
+{queryXml}
       </Query>
 
       <Fields>
-{fieldXml}
+{table.Fields}
       </Fields>
     </DataSet>
   </DataSets>
 
-{reportParametersSection}
+{reportParametersXml}
 
   <ReportSections>
     <ReportSection>
@@ -631,7 +403,7 @@ namespace Flank.Ssrs
             <TablixBody>
 
               <TablixColumns>
-{tablixColumnXml}
+{table.Columns}
               </TablixColumns>
 
               <TablixRows>
@@ -639,14 +411,14 @@ namespace Flank.Ssrs
                 <TablixRow>
                   <Height>0.3in</Height>
                   <TablixCells>
-{headerCellXml}
+{table.HeaderCells}
                   </TablixCells>
                 </TablixRow>
 
                 <TablixRow>
                   <Height>0.3in</Height>
                   <TablixCells>
-{detailCellXml}
+{table.DetailCells}
                   </TablixCells>
                 </TablixRow>
 
@@ -656,7 +428,7 @@ namespace Flank.Ssrs
 
             <TablixColumnHierarchy>
               <TablixMembers>
-{columnMemberXml}
+{table.ColumnMembers}
               </TablixMembers>
             </TablixColumnHierarchy>
 
@@ -686,7 +458,7 @@ namespace Flank.Ssrs
       </Body>
 
       <Width>{reportWidth.ToString(
-                  System.Globalization.CultureInfo.InvariantCulture)}in</Width>
+          System.Globalization.CultureInfo.InvariantCulture)}in</Width>
 
       <Page>
         <PageHeight>11in</PageHeight>
@@ -702,13 +474,116 @@ namespace Flank.Ssrs
   </ReportSections>
 
 </Report>";
+        }
 
-            // ------------------------------------------------------------
-            // 7. Deploy report
-            // ------------------------------------------------------------
+        private static TableRdl BuildTableRdl(
+            List<ReportColumn> columns)
+        {
+            var fields = new StringBuilder();
+            var tablixColumns = new StringBuilder();
+            var headerCells = new StringBuilder();
+            var detailCells = new StringBuilder();
+            var columnMembers = new StringBuilder();
 
+            int columnNumber = 0;
+
+            foreach (var column in columns)
+            {
+                columnNumber++;
+
+                string sourceName = column.Name;
+
+                if (string.IsNullOrWhiteSpace(sourceName))
+                {
+                    sourceName =
+                        "Column" + columnNumber;
+                }
+
+                string fieldName =
+                    MakeSafeRdlName(
+                        sourceName,
+                        columnNumber);
+
+                fields.Append($@"
+        <Field Name=""{XmlEscape(fieldName)}"">
+          <DataField>{XmlEscape(sourceName)}</DataField>
+        </Field>");
+
+                tablixColumns.Append(@"
+                <TablixColumn>
+                  <Width>1.5in</Width>
+                </TablixColumn>");
+
+                headerCells.Append($@"
+                <TablixCell>
+                  <CellContents>
+                    <Textbox Name=""Header_{XmlEscape(fieldName)}"">
+                      <CanGrow>true</CanGrow>
+                      <KeepTogether>true</KeepTogether>
+                      <Paragraphs>
+                        <Paragraph>
+                          <TextRuns>
+                            <TextRun>
+                              <Value>{XmlEscape(sourceName)}</Value>
+                              <Style>
+                                <FontWeight>Bold</FontWeight>
+                              </Style>
+                            </TextRun>
+                          </TextRuns>
+                          <Style />
+                        </Paragraph>
+                      </Paragraphs>
+                      <Style />
+                    </Textbox>
+                  </CellContents>
+                </TablixCell>");
+
+                detailCells.Append($@"
+                <TablixCell>
+                  <CellContents>
+                    <Textbox Name=""Value_{XmlEscape(fieldName)}"">
+                      <CanGrow>true</CanGrow>
+                      <KeepTogether>true</KeepTogether>
+                      <Paragraphs>
+                        <Paragraph>
+                          <TextRuns>
+                            <TextRun>
+                              <Value>=Fields!{XmlEscape(fieldName)}.Value</Value>
+                              <Style />
+                            </TextRun>
+                          </TextRuns>
+                          <Style />
+                        </Paragraph>
+                      </Paragraphs>
+                      <Style />
+                    </Textbox>
+                  </CellContents>
+                </TablixCell>");
+
+                columnMembers.Append(@"
+                <TablixMember />");
+            }
+
+            return new TableRdl
+            {
+                Fields = fields.ToString(),
+                Columns = tablixColumns.ToString(),
+                HeaderCells = headerCells.ToString(),
+                DetailCells = detailCells.ToString(),
+                ColumnMembers = columnMembers.ToString()
+            };
+        }
+
+        private void DeployReport(
+            string rdl,
+            string reportFolder,
+            string reportName)
+        {
             var rs = CreateSsrsConnection();
-            byte[] definition = Encoding.UTF8.GetBytes(rdl);
+
+            byte[] definition =
+                Encoding.UTF8.GetBytes(rdl);
+
             Warning[] warnings;
 
             try
@@ -742,19 +617,72 @@ namespace Flank.Ssrs
             {
                 foreach (var warning in warnings)
                 {
-                    Console.WriteLine("WARNING: " + warning.Message);
+                    Console.WriteLine(
+                        "WARNING: " + warning.Message);
                 }
             }
-
-            return GetReportUrl(reportFolder, reportName);
         }
 
-        private static string XmlEscape(string value)
+        private ReportService2010.ReportingService2010
+            CreateSsrsConnection()
         {
-            return System.Security.SecurityElement.Escape(value);
+            return new ReportService2010.ReportingService2010
+            {
+                Url =
+                    _reportServerUrl +
+                    "/ReportService2010.asmx",
+
+                Credentials =
+                    CredentialCache.DefaultCredentials
+            };
         }
 
-        private static string GetRdlParameterType(string sqlType)
+        private string GetReportUrl(
+            string reportFolder,
+            string reportName)
+        {
+            string reportPath =
+                reportFolder.TrimEnd('/') +
+                "/" +
+                reportName;
+
+            string encodedPath = string.Join(
+                "",
+                reportPath
+                    .Split('/')
+                    .Where(x =>
+                        !string.IsNullOrEmpty(x))
+                    .Select(x =>
+                        "/" + Uri.EscapeDataString(x)));
+
+            return _reportPortalUrl +
+                "/report" +
+                encodedPath;
+        }
+
+        private static string GetSoapErrorMessage(
+            System.Web.Services.Protocols.SoapException ex)
+        {
+            if (ex.Detail != null &&
+                !string.IsNullOrWhiteSpace(
+                    ex.Detail.InnerText))
+            {
+                return ex.Detail.InnerText;
+            }
+
+            return ex.Message;
+        }
+
+        private static string XmlEscape(
+            string value)
+        {
+            return System.Security
+                .SecurityElement
+                .Escape(value);
+        }
+
+        private static string GetRdlParameterType(
+            string sqlType)
         {
             switch (sqlType.ToLowerInvariant())
             {
@@ -764,7 +692,7 @@ namespace Flank.Ssrs
                     return "Integer";
 
                 case "bigint":
-                    // SSRS Integer is Int32, so preserve bigint as text.
+                    // SSRS Integer is Int32.
                     return "String";
 
                 case "decimal":
@@ -797,7 +725,8 @@ namespace Flank.Ssrs
 
                 default:
                     throw new NotSupportedException(
-                        $"SQL parameter type '{sqlType}' is not supported.");
+                        $"SQL parameter type '{sqlType}' " +
+                        "is not supported.");
             }
         }
 
@@ -806,23 +735,36 @@ namespace Flank.Ssrs
             int fallbackNumber)
         {
             if (string.IsNullOrWhiteSpace(name))
-                return "Column" + fallbackNumber;
+            {
+                return "Column" +
+                    fallbackNumber;
+            }
 
             var sb = new StringBuilder();
 
             foreach (char c in name)
             {
-                if (char.IsLetterOrDigit(c) || c == '_')
+                if (char.IsLetterOrDigit(c) ||
+                    c == '_')
+                {
                     sb.Append(c);
+                }
                 else
+                {
                     sb.Append('_');
+                }
             }
 
             if (sb.Length == 0)
-                return "Column" + fallbackNumber;
+            {
+                return "Column" +
+                    fallbackNumber;
+            }
 
             if (char.IsDigit(sb[0]))
+            {
                 sb.Insert(0, '_');
+            }
 
             return sb.ToString();
         }
@@ -831,18 +773,23 @@ namespace Flank.Ssrs
         {
             try
             {
-                var rs = CreateSsrsConnection();
-                var items = rs.ListChildren("/", true);
+                var rs =
+                    CreateSsrsConnection();
+
+                var items =
+                    rs.ListChildren("/", true);
 
                 return items
-                    .Where(x => x.TypeName == "Folder")
+                    .Where(x =>
+                        x.TypeName == "Folder")
                     .Select(x => x.Path)
                     .ToList();
             }
             catch (Exception ex)
             {
                 throw new SsrsException(
-                    "Could not retrieve folders from the SSRS server.",
+                    "Could not retrieve folders " +
+                    "from the SSRS server.",
                     ex);
             }
         }
@@ -851,18 +798,23 @@ namespace Flank.Ssrs
         {
             try
             {
-                var rs = CreateSsrsConnection();
-                var items = rs.ListChildren("/", true);
+                var rs =
+                    CreateSsrsConnection();
+
+                var items =
+                    rs.ListChildren("/", true);
 
                 return items
-                    .Where(x => x.TypeName == "DataSource")
+                    .Where(x =>
+                        x.TypeName == "DataSource")
                     .Select(x => x.Path)
                     .ToList();
             }
             catch (Exception ex)
             {
                 throw new SsrsException(
-                    "Could not retrieve shared data sources from the SSRS server.",
+                    "Could not retrieve shared data sources " +
+                    "from the SSRS server.",
                     ex);
             }
         }
