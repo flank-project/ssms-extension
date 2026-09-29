@@ -3,5 +3,7 @@
   <Project Path="Flank.SsmsExtension/Flank.SsmsExtension.csproj" Id="e036fe1d-a587-4e77-af7d-87d424ff6dbf">
     <Deploy />
   </Project>
+  <Project Path="Flank.Ssrs/Flank.Ssrs.csproj" Id="2f76a1e0-b940-4b87-99a1-b874978bb250" />
   <Project Path="Flank.TestExcelApp/Flank.TestExcelApp.csproj" />
+  <Project Path="Flank.TestSsrsApp/Flank.TestSsrsApp.csproj" Id="beaaa735-1f19-48dc-a229-b7c389f930d3" />
 </Solution>
