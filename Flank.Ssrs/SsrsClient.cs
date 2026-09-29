@@ -10,6 +10,23 @@ namespace Flank.Ssrs
 {
     public class SsrsClient
     {
+        private class SprocParameter
+        {
+            public string Name { get; set; }
+            public string SqlType { get; set; }
+            public short MaxLength { get; set; }
+            public byte Precision { get; set; }
+            public byte Scale { get; set; }
+            public bool IsOutput { get; set; }
+        }
+
+        private class SprocColumn
+        {
+            public string Name { get; set; }
+            public string SqlType { get; set; }
+            public bool? IsNullable { get; set; }
+            public int Ordinal { get; set; }
+        }
         public void TestConnection()
         {
             var rs = new Flank.Ssrs.ReportService2010.ReportingService2010();
@@ -248,6 +265,161 @@ namespace Flank.Ssrs
         private static string XmlEscape(string value)
         {
             return System.Security.SecurityElement.Escape(value);
+        }
+        public void CreateReportFromStoredProcedure(
+    string procedureName,
+    SqlConnection connection,
+    string sharedDataSourcePath,
+    string reportName)
+        {
+            // ------------------------------------------------------------
+            // 1. Resolve the stored procedure
+            // ------------------------------------------------------------
+
+            int objectId;
+
+            using (var command = connection.CreateCommand())
+            {
+                command.CommandText = @"
+            SELECT OBJECT_ID(@ProcedureName, 'P')";
+
+                command.Parameters.AddWithValue(
+                    "@ProcedureName",
+                    procedureName);
+
+                var result = command.ExecuteScalar();
+
+                if (result == null || result == DBNull.Value)
+                    throw new InvalidOperationException(
+                        $"Stored procedure '{procedureName}' not found.");
+
+                objectId = (int)result;
+            }
+
+
+            // ------------------------------------------------------------
+            // 2. Discover input parameters
+            // ------------------------------------------------------------
+
+            var parameters = new List<SprocParameter>();
+
+            using (var command = connection.CreateCommand())
+            {
+                command.CommandText = @"
+            SELECT
+                p.name,
+                t.name AS type_name,
+                p.max_length,
+                p.precision,
+                p.scale,
+                p.is_output
+            FROM sys.parameters p
+            JOIN sys.types t
+                ON p.user_type_id = t.user_type_id
+            WHERE p.object_id = @ObjectId
+            ORDER BY p.parameter_id;";
+
+                command.Parameters.AddWithValue(
+                    "@ObjectId",
+                    objectId);
+
+                using (var reader = command.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        parameters.Add(new SprocParameter
+                        {
+                            Name = reader.GetString(0),
+                            SqlType = reader.GetString(1),
+                            MaxLength = reader.GetInt16(2),
+                            Precision = reader.GetByte(3),
+                            Scale = reader.GetByte(4),
+                            IsOutput = reader.GetBoolean(5)
+                        });
+                    }
+                }
+            }
+
+
+            // ------------------------------------------------------------
+            // 3. Discover first result-set columns
+            // ------------------------------------------------------------
+
+            var columns = new List<SprocColumn>();
+
+            using (var command = connection.CreateCommand())
+            {
+                command.CommandText = @"
+            SELECT
+                name,
+                system_type_name,
+                is_nullable,
+                column_ordinal
+            FROM sys.dm_exec_describe_first_result_set_for_object(
+                @ObjectId,
+                NULL
+            )
+            WHERE is_hidden = 0
+            ORDER BY column_ordinal;";
+
+                command.Parameters.AddWithValue(
+                    "@ObjectId",
+                    objectId);
+
+                using (var reader = command.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        columns.Add(new SprocColumn
+                        {
+                            Name = reader.IsDBNull(0)
+                                ? null
+                                : reader.GetString(0),
+
+                            SqlType = reader.IsDBNull(1)
+                                ? null
+                                : reader.GetString(1),
+
+                            IsNullable = reader.IsDBNull(2)
+                                ? (bool?)null
+                                : reader.GetBoolean(2),
+
+                            Ordinal = reader.GetInt32(3)
+                        });
+                    }
+                }
+            }
+
+
+            // ------------------------------------------------------------
+            // 4. For now, just prove discovery worked
+            // ------------------------------------------------------------
+
+            Console.WriteLine("PARAMETERS:");
+
+            foreach (var parameter in parameters)
+            {
+                Console.WriteLine(
+                    $"{parameter.Name} " +
+                    $"{parameter.SqlType} " +
+                    $"Output={parameter.IsOutput}");
+            }
+
+            Console.WriteLine();
+            Console.WriteLine("RESULT SET:");
+
+            foreach (var column in columns)
+            {
+                Console.WriteLine(
+                    $"{column.Ordinal}: " +
+                    $"{column.Name} " +
+                    $"{column.SqlType} " +
+                    $"Nullable={column.IsNullable}");
+            }
+
+            // Next step:
+            // Generate the RDL from `parameters` + `columns`
+            // and deploy it.
         }
     }
 }
