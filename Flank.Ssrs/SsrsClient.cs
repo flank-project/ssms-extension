@@ -70,6 +70,7 @@ namespace Flank.Ssrs
             string sql,
             System.Data.SqlClient.SqlConnection connection,
             string sharedDataSourcePath,
+            string reportFolder,
             string reportName)
         {
             // 1. Discover the output columns without executing the query normally.
@@ -262,7 +263,7 @@ namespace Flank.Ssrs
             rs.CreateCatalogItem(
                 "Report",
                 reportName,
-                "/",
+                reportFolder,
                 true,
                 definition,
                 null,
@@ -286,6 +287,7 @@ namespace Flank.Ssrs
              string procedureName,
              SqlConnection connection,
              string sharedDataSourcePath,
+             string reportFolder,
              string reportName)
         {
             // ------------------------------------------------------------
@@ -684,7 +686,7 @@ namespace Flank.Ssrs
             rs.CreateCatalogItem(
                 "Report",
                 reportName,
-                "/",
+                reportFolder,
                 true,
                 definition,
                 null,
