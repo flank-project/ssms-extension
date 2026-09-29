@@ -704,7 +704,7 @@ namespace Flank.Ssrs
                     return "Integer";
 
                 case "bigint":
-                    return "Integer";
+                    return "String";
 
                 case "decimal":
                 case "numeric":
