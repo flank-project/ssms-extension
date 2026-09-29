@@ -763,6 +763,7 @@ namespace Flank.Ssrs
                     return "Integer";
 
                 case "bigint":
+                    // SSRS Integer is Int32, so preserve bigint as text.
                     return "String";
 
                 case "decimal":
@@ -782,8 +783,20 @@ namespace Flank.Ssrs
                 case "smalldatetime":
                     return "DateTime";
 
-                default:
+                case "char":
+                case "varchar":
+                case "nchar":
+                case "nvarchar":
+                case "text":
+                case "ntext":
+                case "uniqueidentifier":
+                case "time":
+                case "datetimeoffset":
                     return "String";
+
+                default:
+                    throw new NotSupportedException(
+                        $"SQL parameter type '{sqlType}' is not supported.");
             }
         }
 
