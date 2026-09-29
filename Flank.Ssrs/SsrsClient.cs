@@ -99,5 +99,125 @@ namespace Flank.Ssrs
                     Console.WriteLine(warning.Message);
             }
         }
+        public void CreateBikesReport()
+        {
+            var rs = new Flank.Ssrs.ReportService2010.ReportingService2010
+            {
+                Url = "http://localhost/ReportServer/ReportService2010.asmx",
+                Credentials = System.Net.CredentialCache.DefaultCredentials
+            };
+
+            string rdl = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Report xmlns=""http://schemas.microsoft.com/sqlserver/reporting/2016/01/reportdefinition"">
+
+  <DataSources>
+    <DataSource Name=""HardcodedTest"">
+      <DataSourceReference>/HardcodedTest</DataSourceReference>
+    </DataSource>
+  </DataSources>
+
+  <DataSets>
+    <DataSet Name=""Bikes"">
+      <Query>
+        <DataSourceName>HardcodedTest</DataSourceName>
+        <CommandText>select * from bikes;</CommandText>
+      </Query>
+      <Fields>
+        <Field Name=""bike_id""><DataField>bike_id</DataField></Field>
+        <Field Name=""battery_percentage""><DataField>battery_percentage</DataField></Field>
+        <Field Name=""duration_checked_out""><DataField>duration_checked_out</DataField></Field>
+        <Field Name=""near_home_or_charge""><DataField>near_home_or_charge</DataField></Field>
+        <Field Name=""current_user_id""><DataField>current_user_id</DataField></Field>
+        <Field Name=""needs_pickup""><DataField>needs_pickup</DataField></Field>
+      </Fields>
+    </DataSet>
+  </DataSets>
+
+  <ReportSections>
+    <ReportSection>
+      <Body>
+        <ReportItems>
+
+          <Tablix Name=""BikesTable"">
+            <TablixBody>
+              <TablixColumns>
+                <TablixColumn><Width>1.2in</Width></TablixColumn>
+                <TablixColumn><Width>1.5in</Width></TablixColumn>
+                <TablixColumn><Width>1.5in</Width></TablixColumn>
+                <TablixColumn><Width>1.5in</Width></TablixColumn>
+                <TablixColumn><Width>1.5in</Width></TablixColumn>
+                <TablixColumn><Width>1.2in</Width></TablixColumn>
+              </TablixColumns>
+
+              <TablixRows>
+                <TablixRow>
+                  <Height>0.3in</Height>
+                  <TablixCells>
+                    <TablixCell><CellContents><Textbox Name=""bike_id""><Paragraphs><Paragraph><TextRuns><TextRun><Value>=Fields!bike_id.Value</Value></TextRun></TextRuns></Paragraph></Paragraphs></Textbox></CellContents></TablixCell>
+                    <TablixCell><CellContents><Textbox Name=""battery_percentage""><Paragraphs><Paragraph><TextRuns><TextRun><Value>=Fields!battery_percentage.Value</Value></TextRun></TextRuns></Paragraph></Paragraphs></Textbox></CellContents></TablixCell>
+                    <TablixCell><CellContents><Textbox Name=""duration_checked_out""><Paragraphs><Paragraph><TextRuns><TextRun><Value>=Fields!duration_checked_out.Value</Value></TextRun></TextRuns></Paragraph></Paragraphs></Textbox></CellContents></TablixCell>
+                    <TablixCell><CellContents><Textbox Name=""near_home_or_charge""><Paragraphs><Paragraph><TextRuns><TextRun><Value>=Fields!near_home_or_charge.Value</Value></TextRun></TextRuns></Paragraph></Paragraphs></Textbox></CellContents></TablixCell>
+                    <TablixCell><CellContents><Textbox Name=""current_user_id""><Paragraphs><Paragraph><TextRuns><TextRun><Value>=Fields!current_user_id.Value</Value></TextRun></TextRuns></Paragraph></Paragraphs></Textbox></CellContents></TablixCell>
+                    <TablixCell><CellContents><Textbox Name=""needs_pickup""><Paragraphs><Paragraph><TextRuns><TextRun><Value>=Fields!needs_pickup.Value</Value></TextRun></TextRuns></Paragraph></Paragraphs></Textbox></CellContents></TablixCell>
+                  </TablixCells>
+                </TablixRow>
+              </TablixRows>
+            </TablixBody>
+
+            <TablixColumnHierarchy>
+              <TablixMembers>
+                <TablixMember/><TablixMember/><TablixMember/>
+                <TablixMember/><TablixMember/><TablixMember/>
+              </TablixMembers>
+            </TablixColumnHierarchy>
+
+            <TablixRowHierarchy>
+              <TablixMembers>
+                <TablixMember>
+                  <Group Name=""Details"" />
+                </TablixMember>
+              </TablixMembers>
+            </TablixRowHierarchy>
+
+            <DataSetName>Bikes</DataSetName>
+          </Tablix>
+
+        </ReportItems>
+        <Height>2in</Height>
+      </Body>
+
+      <Width>9in</Width>
+
+      <Page>
+        <PageHeight>11in</PageHeight>
+        <PageWidth>11in</PageWidth>
+        <LeftMargin>0.5in</LeftMargin>
+        <RightMargin>0.5in</RightMargin>
+        <TopMargin>0.5in</TopMargin>
+        <BottomMargin>0.5in</BottomMargin>
+      </Page>
+    </ReportSection>
+  </ReportSections>
+</Report>";
+
+            byte[] definition = System.Text.Encoding.UTF8.GetBytes(rdl);
+
+            Warning[] warnings;
+
+            rs.CreateCatalogItem(
+                "Report",
+                "Bikes",
+                "/",
+                true,
+                definition,
+                null,
+                out warnings);
+
+            Console.WriteLine("Bikes report created.");
+
+            if (warnings != null)
+                foreach (var warning in warnings)
+                    Console.WriteLine("WARNING: " + warning.Message);
+        }
     }
 }

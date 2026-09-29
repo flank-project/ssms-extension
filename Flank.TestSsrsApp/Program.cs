@@ -11,7 +11,7 @@ namespace Flank.TestSsrsApp
         static void Main(string[] args)
         {
             new Flank.Ssrs.SsrsClient()
-                .CreateTestReport();
+                .CreateBikesReport();
 
             Console.ReadLine();
         }
