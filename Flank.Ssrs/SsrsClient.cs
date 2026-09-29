@@ -1,31 +1,38 @@
-﻿using ServiceReference;
+﻿using System;
+using System.Net;
 using System.ServiceModel;
-using System;
+using ServiceReference;
 
-namespace Flank.Ssrs;
-
-public class SsrsClient
+namespace Flank.Ssrs
 {
-    public async System.Threading.Tasks.Task TestConnectionAsync()
+    public class SsrsClient
     {
-        var client = new ReportingService2010SoapClient(
-            ReportingService2010SoapClient.EndpointConfiguration.ReportingService2010Soap);
-
-        client.Endpoint.Address = new EndpointAddress(
-            "http://localhost/ReportServer/ReportService2010.asmx");
-
-        client.ClientCredentials.Windows.ClientCredential =
-            System.Net.CredentialCache.DefaultNetworkCredentials;
-
-        var response = await client.ListChildrenAsync(
-            null,   // TrustedUserHeader
-            "/",    // ItemPath
-            false   // Recursive
-        );
-
-        foreach (var item in response.CatalogItems)
+        public async System.Threading.Tasks.Task TestConnectionAsync()
         {
-            Console.WriteLine($"{item.TypeName}: {item.Name}");
+            var binding = new BasicHttpBinding(BasicHttpSecurityMode.TransportCredentialOnly);
+
+            binding.Security.Transport.ClientCredentialType =
+                HttpClientCredentialType.Ntlm;
+
+            var endpoint = new EndpointAddress(
+                "http://localhost/ReportServer/ReportService2010.asmx");
+
+            var client = new ReportingService2010SoapClient(binding, endpoint);
+
+            new NetworkCredential(
+                "user",
+                "password",
+                Environment.MachineName);
+
+            var response = await client.ListChildrenAsync(
+                null,
+                "/",
+                false);
+
+            foreach (var item in response.CatalogItems)
+            {
+                Console.WriteLine($"{item.TypeName}: {item.Name}");
+            }
         }
     }
 }
