@@ -37,7 +37,7 @@ namespace Flank.Ssrs
         }
         public void TestConnection()
         {
-            var rs = new Flank.Ssrs.ReportService2010.ReportingService2010();
+            var rs = CreateSsrsConnection();
 
             rs.Url =
                 "http://localhost/ReportServer/ReportService2010.asmx";
@@ -240,11 +240,7 @@ namespace Flank.Ssrs
 </Report>";
 
             // 4. Connect to SSRS.
-            var rs = new Flank.Ssrs.ReportService2010.ReportingService2010
-            {
-                Url = "http://localhost/ReportServer/ReportService2010.asmx",
-                Credentials = System.Net.CredentialCache.DefaultCredentials
-            };
+            var rs = CreateSsrsConnection();
 
             // 5. Deploy.
             byte[] definition = Encoding.UTF8.GetBytes(rdl);
@@ -662,15 +658,7 @@ namespace Flank.Ssrs
             // 7. Connect to SSRS
             // ------------------------------------------------------------
 
-            var rs =
-                new Flank.Ssrs.ReportService2010.ReportingService2010
-                {
-                    Url =
-                        "http://localhost/ReportServer/ReportService2010.asmx",
-
-                    Credentials =
-                        System.Net.CredentialCache.DefaultCredentials
-                };
+            var rs = CreateSsrsConnection();
 
 
             // ------------------------------------------------------------
