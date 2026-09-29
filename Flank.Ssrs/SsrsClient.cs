@@ -10,6 +10,26 @@ namespace Flank.Ssrs
 {
     public class SsrsClient
     {
+        private readonly string _reportServerUrl;
+        private readonly string _reportPortalUrl;
+
+        public SsrsClient(
+            string reportServerUrl,
+            string reportPortalUrl)
+        {
+            _reportServerUrl = reportServerUrl.TrimEnd('/');
+            _reportPortalUrl = reportPortalUrl.TrimEnd('/');
+        }
+
+        private ReportService2010.ReportingService2010 CreateSsrsConnection()
+        {
+            return new ReportService2010.ReportingService2010
+            {
+                Url = _reportServerUrl + "/ReportService2010.asmx",
+                Credentials = System.Net.CredentialCache.DefaultCredentials
+            };
+        }
+
         private class SprocParameter
         {
             public string Name { get; set; }
@@ -26,14 +46,6 @@ namespace Flank.Ssrs
             public string SqlType { get; set; }
             public bool? IsNullable { get; set; }
             public int Ordinal { get; set; }
-        }
-        private ReportService2010.ReportingService2010 CreateSsrsConnection()
-        {
-            return new ReportService2010.ReportingService2010
-            {
-                Url = "http://localhost/ReportServer/ReportService2010.asmx",
-                Credentials = System.Net.CredentialCache.DefaultCredentials
-            };
         }
         public void TestConnection()
         {
