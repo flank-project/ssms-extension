@@ -47,6 +47,22 @@ namespace Flank.Ssrs
             public bool? IsNullable { get; set; }
             public int Ordinal { get; set; }
         }
+        private string GetReportUrl(
+        string reportFolder,
+        string reportName)
+        {
+            string reportPath =
+                reportFolder.TrimEnd('/') + "/" + reportName;
+
+            string encodedPath = string.Join(
+                "",
+                reportPath
+                    .Split('/')
+                    .Where(x => !string.IsNullOrEmpty(x))
+                    .Select(x => "/" + Uri.EscapeDataString(x)));
+
+            return _reportPortalUrl + "/report" + encodedPath;
+        }
         public void TestConnection()
         {
             var rs = CreateSsrsConnection();
@@ -66,7 +82,7 @@ namespace Flank.Ssrs
             }
         }
 
-        public void CreateReport(
+        public string CreateReport(
             string sql,
             System.Data.SqlClient.SqlConnection connection,
             string sharedDataSourcePath,
@@ -277,13 +293,14 @@ namespace Flank.Ssrs
                 foreach (var warning in warnings)
                     Console.WriteLine("WARNING: " + warning.Message);
             }
+            return GetReportUrl(reportFolder, reportName);
         }
 
         private static string XmlEscape(string value)
         {
             return System.Security.SecurityElement.Escape(value);
         }
-        public void CreateReportFromStoredProcedure(
+        public string CreateReportFromStoredProcedure(
              string procedureName,
              SqlConnection connection,
              string sharedDataSourcePath,
@@ -703,6 +720,7 @@ namespace Flank.Ssrs
                 foreach (var warning in warnings)
                     Console.WriteLine("WARNING: " + warning.Message);
             }
+            return GetReportUrl(reportFolder, reportName);
         }
         private static string GetRdlParameterType(string sqlType)
         {
