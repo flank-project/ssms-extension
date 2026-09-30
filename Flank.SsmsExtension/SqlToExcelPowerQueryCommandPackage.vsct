@@ -3,139 +3,160 @@
     xmlns="http://schemas.microsoft.com/VisualStudio/2005-10-18/CommandTable"
     xmlns:xs="http://www.w3.org/2001/XMLSchema">
 
-  <Extern href="stdidcmd.h"/>
-  <Extern href="vsshlids.h"/>
+	<Extern href="stdidcmd.h"/>
+	<Extern href="vsshlids.h"/>
 
-  <Commands package="guidSqlToExcelPowerQueryCommandPackage">
+	<Commands package="guidSqlToExcelPowerQueryCommandPackage">
 
-    <!-- Our submenu -->
-    <Menus>
-      <Menu
-          guid="guidSqlToExcelPowerQueryCommandPackageCmdSet"
-          id="MakeSelfServeMenu"
-          priority="0x0100"
-          type="Menu">
+		<!-- Our submenu -->
+		<Menus>
+			<Menu
+				guid="guidSqlToExcelPowerQueryCommandPackageCmdSet"
+				id="MakeSelfServeMenu"
+				priority="0x0100"
+				type="Menu">
 
-        <!-- Put the submenu inside our proven context-menu group -->
-        <Parent
-            guid="guidSqlToExcelPowerQueryCommandPackageCmdSet"
-            id="QueryEditorContextGroup"/>
+				<!-- Put the submenu inside our proven context-menu group -->
+				<Parent
+					guid="guidSqlToExcelPowerQueryCommandPackageCmdSet"
+					id="QueryEditorContextGroup"/>
 
-        <Strings>
-          <ButtonText>Make Self-Serve</ButtonText>
-        </Strings>
-      </Menu>
-    </Menus>
+				<Strings>
+					<ButtonText>Make Self-Serve</ButtonText>
+				</Strings>
+			</Menu>
+		</Menus>
 
-    <Groups>
+		<Groups>
 
-      <!-- PROVEN: our group lives inside SSMS's SQL editor right-click menu -->
-      <Group
-          guid="guidSqlToExcelPowerQueryCommandPackageCmdSet"
-          id="QueryEditorContextGroup"
-          priority="0x0100">
+			<!-- PROVEN: our group lives inside SSMS's SQL editor right-click menu -->
+			<Group
+				guid="guidSqlToExcelPowerQueryCommandPackageCmdSet"
+				id="QueryEditorContextGroup"
+				priority="0x0100">
 
-        <Parent
-            guid="guidSsmsSqlEditorGroup"
-            id="IDM_SQLWB_SQLSCRIPT_CONTEXT"/>
+				<Parent
+					guid="guidSsmsSqlEditorGroup"
+					id="IDM_SQLWB_SQLSCRIPT_CONTEXT"/>
 
-      </Group>
+			</Group>
 
-      <!-- Commands inside the "Make Self-Serve" submenu -->
-      <Group
-          guid="guidSqlToExcelPowerQueryCommandPackageCmdSet"
-          id="MakeSelfServeMenuGroup"
-          priority="0x0100">
+			<!-- Commands inside the "Make Self-Serve" submenu -->
+			<Group
+				guid="guidSqlToExcelPowerQueryCommandPackageCmdSet"
+				id="MakeSelfServeMenuGroup"
+				priority="0x0100">
 
-        <Parent
-            guid="guidSqlToExcelPowerQueryCommandPackageCmdSet"
-            id="MakeSelfServeMenu"/>
+				<Parent
+					guid="guidSqlToExcelPowerQueryCommandPackageCmdSet"
+					id="MakeSelfServeMenu"/>
 
-      </Group>
+			</Group>
 
-    </Groups>
+		</Groups>
 
-    <Buttons>
+		<Buttons>
 
-      <Button
-          guid="guidSqlToExcelPowerQueryCommandPackageCmdSet"
-          id="SqlToExcelPowerQueryCommandId"
-          priority="0x0100"
-          type="Button">
+			<Button
+				guid="guidSqlToExcelPowerQueryCommandPackageCmdSet"
+				id="SqlToExcelPowerQueryCommandId"
+				priority="0x0100"
+				type="Button">
 
-        <Parent
-            guid="guidSqlToExcelPowerQueryCommandPackageCmdSet"
-            id="MakeSelfServeMenuGroup"/>
+				<Parent
+					guid="guidSqlToExcelPowerQueryCommandPackageCmdSet"
+					id="MakeSelfServeMenuGroup"/>
 
-        <Icon guid="guidImages" id="bmpPic1"/>
+				<Icon guid="guidImages" id="bmpPic1"/>
 
-        <Strings>
-          <ButtonText>Excel (Power Query)</ButtonText>
-        </Strings>
+				<Strings>
+					<ButtonText>Excel (Power Query)</ButtonText>
+				</Strings>
 
-      </Button>
+			</Button>
 
-    </Buttons>
+			<Button
+				guid="guidSqlToExcelPowerQueryCommandPackageCmdSet"
+				id="SqlToSsrsCommandId"
+				priority="0x0110"
+				type="Button">
 
-    <Bitmaps>
-      <Bitmap
-          guid="guidImages"
-          href="Resources\SqlToExcelPowerQueryCommand.png"
-          usedList="bmpPic1"/>
-    </Bitmaps>
+				<Parent
+					guid="guidSqlToExcelPowerQueryCommandPackageCmdSet"
+					id="MakeSelfServeMenuGroup"/>
 
-  </Commands>
+				<Icon guid="guidImages" id="bmpPic1"/>
 
-  <Symbols>
+				<Strings>
+					<ButtonText>SSRS Report</ButtonText>
+				</Strings>
 
-    <!-- Flank package -->
-    <GuidSymbol
-        name="guidSqlToExcelPowerQueryCommandPackage"
-        value="{b59dc7e2-bab1-4740-ac03-72500650d999}"/>
+			</Button>
+		</Buttons>
 
-    <!-- Flank commands -->
-    <GuidSymbol
-        name="guidSqlToExcelPowerQueryCommandPackageCmdSet"
-        value="{4aefd085-bfeb-4d3d-8199-201b0c86abc0}">
+		<Bitmaps>
+			<Bitmap
+				guid="guidImages"
+				href="Resources\SqlToExcelPowerQueryCommand.png"
+				usedList="bmpPic1"/>
+		</Bitmaps>
 
-      <IDSymbol
-          name="QueryEditorContextGroup"
-          value="0x1021"/>
+	</Commands>
 
-      <IDSymbol
-          name="MakeSelfServeMenu"
-          value="0x1022"/>
+	<Symbols>
 
-      <IDSymbol
-          name="MakeSelfServeMenuGroup"
-          value="0x1023"/>
+		<!-- Flank package -->
+		<GuidSymbol
+			name="guidSqlToExcelPowerQueryCommandPackage"
+			value="{b59dc7e2-bab1-4740-ac03-72500650d999}"/>
 
-      <IDSymbol
-          name="SqlToExcelPowerQueryCommandId"
-          value="0x0100"/>
+		<!-- Flank commands -->
+		<GuidSymbol
+			name="guidSqlToExcelPowerQueryCommandPackageCmdSet"
+			value="{4aefd085-bfeb-4d3d-8199-201b0c86abc0}">
 
-    </GuidSymbol>
+			<IDSymbol
+				name="QueryEditorContextGroup"
+				value="0x1021"/>
 
-    <!-- SSMS SQL editor context menu -->
-    <GuidSymbol
-        name="guidSsmsSqlEditorGroup"
-        value="{33f13ac3-80bb-4ecb-85bc-225435603a5e}">
+			<IDSymbol
+				name="MakeSelfServeMenu"
+				value="0x1022"/>
 
-      <IDSymbol
-          name="IDM_SQLWB_SQLSCRIPT_CONTEXT"
-          value="0x0050"/>
+			<IDSymbol
+				name="MakeSelfServeMenuGroup"
+				value="0x1023"/>
 
-    </GuidSymbol>
+			<IDSymbol
+				name="SqlToExcelPowerQueryCommandId"
+				value="0x0100"/>
 
-    <!-- Icon strip -->
-    <GuidSymbol
-        name="guidImages"
-        value="{8a6d3409-5912-4705-bde5-2ff745dc9cf3}">
+			<IDSymbol
+				name="SqlToSsrsCommandId"
+				value="0x0110"/>
 
-      <IDSymbol name="bmpPic1" value="1"/>
+		</GuidSymbol>
 
-    </GuidSymbol>
+		<!-- SSMS SQL editor context menu -->
+		<GuidSymbol
+			name="guidSsmsSqlEditorGroup"
+			value="{33f13ac3-80bb-4ecb-85bc-225435603a5e}">
 
-  </Symbols>
+			<IDSymbol
+				name="IDM_SQLWB_SQLSCRIPT_CONTEXT"
+				value="0x0050"/>
+
+		</GuidSymbol>
+
+		<!-- Icon strip -->
+		<GuidSymbol
+			name="guidImages"
+			value="{8a6d3409-5912-4705-bde5-2ff745dc9cf3}">
+
+			<IDSymbol name="bmpPic1" value="1"/>
+
+		</GuidSymbol>
+
+	</Symbols>
 
 </CommandTable>
