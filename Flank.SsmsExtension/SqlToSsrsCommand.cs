@@ -1,11 +1,19 @@
-﻿using Microsoft.VisualStudio.Shell;
+﻿using Flank.Ssrs;
+using Flank.Ssrs;
+using Microsoft.SqlServer.Management.UI.VSIntegration;
+using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
 using System;
+using System.Collections;
 using System.ComponentModel.Design;
+using System.Diagnostics;
 using System.Globalization;
+using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Task = System.Threading.Tasks.Task;
+using System.Linq;
 
 namespace Flank.SsmsExtension
 {
@@ -86,15 +94,401 @@ namespace Flank.SsmsExtension
         /// <param name="e">Event args.</param>
         private void Execute(object sender, EventArgs e)
         {
-            ThreadHelper.ThrowIfNotOnUIThread();
+            ThreadHelper.JoinableTaskFactory.Run(async () =>
+            {
+                await ExecuteAsync();
+            });
+        }
 
-            VsShellUtilities.ShowMessageBox(
-                package,
-                "SSRS command works!",
-                "Flank",
-                OLEMSGICON.OLEMSGICON_INFO,
-                OLEMSGBUTTON.OLEMSGBUTTON_OK,
-                OLEMSGDEFBUTTON.OLEMSGDEFBUTTON_FIRST);
+        private async Task ExecuteAsync()
+        {
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+
+            string sql;
+
+            try
+            {
+                sql = SsmsQueryHelper.GetCurrentSql();
+            }
+            catch (InvalidOperationException ex)
+            {
+                SsmsUiHelper.ShowMessage(
+                    ex.Message,
+                    OLEMSGICON.OLEMSGICON_INFO);
+
+                return;
+            }
+
+            try
+            {
+                // Hardcoded for now — just proving the SSMS -> SSRS path.
+                var client = new SsrsClient(
+                    "http://localhost/ReportServer",
+                    "http://localhost/Reports");
+
+                //DumpLikelyQueryTypes();
+
+                //foreach (System.Windows.Forms.Form form
+                //    in System.Windows.Forms.Application.OpenForms)
+                //{
+                //    FindSqlEditorControl(form);
+                //}
+
+                //DumpTypeMembers(
+                //    "Microsoft.SqlServer.Management.UI.VSIntegration.Editors.ScriptEditorControl");
+
+                //DumpTypeMembers(
+                //    "Microsoft.SqlServer.Management.UI.VSIntegration.Editors.ScriptFactory");
+
+                //            DumpTypeMethods(
+                //"Microsoft.SqlServer.Management.UI.VSIntegration.Editors.SqlScriptEditorControl");
+
+                //            DumpTypeMethods(
+                //                "Microsoft.SqlServer.Management.UI.VSIntegration.Editors.ScriptEditorControl");
+
+                //            DumpTypeMethods(
+                //                "Microsoft.SqlServer.Management.UI.VSIntegration.Editors.ScriptFactory");
+
+                var editorType = AppDomain.CurrentDomain
+                    .GetAssemblies()
+                    .SelectMany(a =>
+                    {
+                        try { return a.GetTypes(); }
+                        catch { return Type.EmptyTypes; }
+                    })
+                    .FirstOrDefault(t =>
+                        t.FullName ==
+                        "Microsoft.SqlServer.Management.UI.VSIntegration.Editors.ScriptEditorControl");
+
+                Debug.WriteLine($"Type: {editorType?.FullName ?? "null"}");
+
+                var method = editorType.GetMethod(
+                    "GetActiveScriptEditorControl",
+                    BindingFlags.Static |
+                    BindingFlags.Public |
+                    BindingFlags.NonPublic);
+
+                var editor = method?.Invoke(null, null);
+
+                Debug.WriteLine(
+                    $"Editor: {editor?.GetType().FullName ?? "null"}");
+
+                var connectionField = editor.GetType().GetField(
+                    "m_connection",
+                    BindingFlags.Instance |
+                    BindingFlags.NonPublic);
+
+                var connection =
+                    connectionField?.GetValue(editor) as System.Data.IDbConnection;
+
+                Debug.WriteLine(
+                    $"Connection type: {connection?.GetType().FullName ?? "null"}");
+
+                Debug.WriteLine(
+                    $"Connection state: {connection?.State}");
+                //DumpTypeMembers("Microsoft.SqlServer.Management.UI.VSIntegration.Editors.SqlScriptEditorControl");
+
+                //var scriptFactory = ServiceCache.ScriptFactory;
+
+                //DumpInterestingMembers(
+                //    scriptFactory,
+                //    "ScriptFactory");
+
+                string reportUrl = await Task.Run(() =>
+                {
+                    return client.CreateReport(
+                        sql,
+                        null,
+                        "/HardcodedTest",
+                        "/TestFolder",
+                        "SSMS Query Test");
+                });
+
+                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+
+                System.Diagnostics.Process.Start(reportUrl);
+            }
+            catch (Exception ex)
+            {
+                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+
+                SsmsUiHelper.ShowMessage(
+                    "Flank couldn't create the SSRS report.\n\n" +
+                    ex.Message,
+                    OLEMSGICON.OLEMSGICON_CRITICAL,
+                    "Flank Error");
+            }
+        }
+
+        private static void DumpInterestingMembers(
+    object obj,
+    string path = "root",
+    int depth = 0,
+    int maxDepth = 4)
+        {
+            if (obj == null || depth > maxDepth)
+                return;
+
+            var type = obj.GetType();
+
+            Debug.WriteLine(
+                $"{new string(' ', depth * 2)}{path} [{type.FullName}]");
+
+            var flags =
+                BindingFlags.Instance |
+                BindingFlags.Public |
+                BindingFlags.NonPublic;
+
+            foreach (var field in type.GetFields(flags))
+            {
+                try
+                {
+                    var value = field.GetValue(obj);
+
+                    if (IsInteresting(field.Name, field.FieldType))
+                    {
+                        Debug.WriteLine(
+                            $"{new string(' ', (depth + 1) * 2)}" +
+                            $"{field.Name} = {value?.GetType().FullName ?? "null"}");
+                    }
+
+                    if (ShouldExplore(field.Name, field.FieldType, value))
+                    {
+                        DumpInterestingMembers(
+                            value,
+                            path + "." + field.Name,
+                            depth + 1,
+                            maxDepth);
+                    }
+                }
+                catch
+                {
+                    // Ignore members that can't safely be inspected.
+                }
+            }
+
+            foreach (var property in type.GetProperties(flags))
+            {
+                if (property.GetIndexParameters().Length > 0)
+                    continue;
+
+                try
+                {
+                    var value = property.GetValue(obj, null);
+
+                    if (IsInteresting(property.Name, property.PropertyType))
+                    {
+                        Debug.WriteLine(
+                            $"{new string(' ', (depth + 1) * 2)}" +
+                            $"{property.Name} = {value?.GetType().FullName ?? "null"}");
+                    }
+
+                    if (ShouldExplore(property.Name, property.PropertyType, value))
+                    {
+                        DumpInterestingMembers(
+                            value,
+                            path + "." + property.Name,
+                            depth + 1,
+                            maxDepth);
+                    }
+                }
+                catch
+                {
+                    // Some SSMS properties throw when inspected.
+                }
+            }
+        }
+
+        private static bool IsInteresting(string name, Type type)
+        {
+            var text = (name + " " + type.FullName).ToLowerInvariant();
+
+            return
+                text.Contains("connection") ||
+                text.Contains("query") ||
+                text.Contains("execution") ||
+                text.Contains("sqlconnection") ||
+                text.Contains("serverconnection");
+        }
+
+        private static bool ShouldExplore(
+            string name,
+            Type type,
+            object value)
+        {
+            if (value == null)
+                return false;
+
+            if (!IsInteresting(name, type))
+                return false;
+
+            if (type.IsPrimitive ||
+                type == typeof(string) ||
+                type.IsEnum)
+                return false;
+
+            return true;
+        }
+
+        private static void DumpLikelyQueryTypes()
+        {
+            var terms = new[]
+            {
+        "QueryManager",
+        "ExecutionManager",
+        "SqlScriptEditor",
+        "ScriptEditorControl",
+        "QueryExecution"
+    };
+
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                Type[] types;
+
+                try
+                {
+                    types = assembly.GetTypes();
+                }
+                catch (ReflectionTypeLoadException ex)
+                {
+                    types = ex.Types.Where(t => t != null).ToArray();
+                }
+                catch
+                {
+                    continue;
+                }
+
+                foreach (var type in types)
+                {
+                    if (terms.Any(term =>
+                        type.FullName.IndexOf(
+                            term,
+                            StringComparison.OrdinalIgnoreCase) >= 0))
+                    {
+                        Debug.WriteLine(
+                            $"{assembly.GetName().Name}: {type.FullName}");
+                    }
+                }
+            }
+        }
+
+        private static void DumpTypeMembers(string fullTypeName)
+        {
+            var type = AppDomain.CurrentDomain.GetAssemblies()
+                .SelectMany(a =>
+                {
+                    try { return a.GetTypes(); }
+                    catch (ReflectionTypeLoadException ex)
+                    {
+                        return ex.Types.Where(t => t != null);
+                    }
+                    catch
+                    {
+                        return Enumerable.Empty<Type>();
+                    }
+                })
+                .FirstOrDefault(t => t.FullName == fullTypeName);
+
+            if (type == null)
+            {
+                Debug.WriteLine("TYPE NOT FOUND");
+                return;
+            }
+
+            Debug.WriteLine($"TYPE: {type.FullName}");
+
+            var flags =
+                BindingFlags.Instance |
+                BindingFlags.Static |
+                BindingFlags.Public |
+                BindingFlags.NonPublic;
+
+            foreach (var field in type.GetFields(flags))
+                Debug.WriteLine(
+                    $"FIELD: {field.Name} : {field.FieldType.FullName}");
+
+            foreach (var property in type.GetProperties(flags))
+                Debug.WriteLine(
+                    $"PROPERTY: {property.Name} : {property.PropertyType.FullName}");
+        }
+        private static void FindSqlEditorControl(
+    System.Windows.Forms.Control control,
+    int depth = 0)
+        {
+            if (control == null)
+                return;
+
+            var type = control.GetType();
+
+            if (type.FullName ==
+                "Microsoft.SqlServer.Management.UI.VSIntegration.Editors.SqlScriptEditorControl")
+            {
+                Debug.WriteLine("FOUND SQL EDITOR CONTROL!");
+                Debug.WriteLine($"Type: {type.FullName}");
+
+                var connectionField = type.GetField(
+                    "m_connection",
+                    BindingFlags.Instance |
+                    BindingFlags.NonPublic);
+
+                var connection = connectionField?.GetValue(control);
+
+                Debug.WriteLine(
+                    $"m_connection runtime type: " +
+                    $"{connection?.GetType().FullName ?? "null"}");
+
+                return;
+            }
+
+            foreach (System.Windows.Forms.Control child in control.Controls)
+            {
+                FindSqlEditorControl(child, depth + 1);
+            }
+        }
+
+        private static void DumpTypeMethods(string fullTypeName)
+        {
+            var type = AppDomain.CurrentDomain.GetAssemblies()
+                .SelectMany(a =>
+                {
+                    try { return a.GetTypes(); }
+                    catch (ReflectionTypeLoadException ex)
+                    {
+                        return ex.Types.Where(t => t != null);
+                    }
+                    catch
+                    {
+                        return Enumerable.Empty<Type>();
+                    }
+                })
+                .FirstOrDefault(t => t.FullName == fullTypeName);
+
+            if (type == null)
+            {
+                Debug.WriteLine("TYPE NOT FOUND");
+                return;
+            }
+
+            Debug.WriteLine($"METHODS: {type.FullName}");
+
+            var flags =
+                BindingFlags.Instance |
+                BindingFlags.Static |
+                BindingFlags.Public |
+                BindingFlags.NonPublic;
+
+            foreach (var method in type.GetMethods(flags)
+                .OrderBy(m => m.Name))
+            {
+                var parameters = string.Join(
+                    ", ",
+                    method.GetParameters()
+                        .Select(p => $"{p.ParameterType.Name} {p.Name}"));
+
+                Debug.WriteLine(
+                    $"{method.ReturnType.FullName} " +
+                    $"{method.Name}({parameters})");
+            }
         }
     }
 }
