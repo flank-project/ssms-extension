@@ -22,6 +22,7 @@ $build = "$repo\Flank.SsmsExtension\bin\Debug\net472"
 Copy-Item "$build\Flank.SsmsExtension.dll" $dest
 Copy-Item "$build\Flank.SsmsExtension.pkgdef" $dest
 Copy-Item "$build\Flank.Excel.dll" $dest
+Copy-Item "$build\Flank.Ssrs.dll" $dest
 
 Write-Host "Registering extension..."
 & $ssms /setup
