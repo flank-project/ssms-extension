@@ -34,9 +34,9 @@ namespace Flank.SsmsExtension
     /// </remarks>
     [PackageRegistration(UseManagedResourcesOnly = true, AllowsBackgroundLoading = true)]
     [ProvideMenuResource("Menus.ctmenu", 1)]
-    [Guid(SqlToExcelPowerQueryCommandPackage.PackageGuidString)]
+    [Guid(SsmsExtensionPackage.PackageGuidString)]
     [SuppressMessage("StyleCop.CSharp.DocumentationRules", "SA1650:ElementDocumentationMustBeSpelledCorrectly", Justification = "pkgdef, VS and vsixmanifest are valid VS terms")]
-    public sealed class SqlToExcelPowerQueryCommandPackage : AsyncPackage
+    public sealed class SsmsExtensionPackage : AsyncPackage
     {
         /// <summary>
         /// Command1Package GUID string.
@@ -44,9 +44,9 @@ namespace Flank.SsmsExtension
         public const string PackageGuidString = "b59dc7e2-bab1-4740-ac03-72500650d999";
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="SqlToExcelPowerQueryCommandPackage"/> class.
+        /// Initializes a new instance of the <see cref="SsmsExtensionPackage"/> class.
         /// </summary>
-        public SqlToExcelPowerQueryCommandPackage()
+        public SsmsExtensionPackage()
         {
             // Inside this method you can place any initialization code that does not require
             // any Visual Studio service because at this point the package object is created but
