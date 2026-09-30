@@ -76,7 +76,7 @@ namespace Flank.SsmsExtension
                 }
                 catch (InvalidOperationException ex)
                 {
-                    ShowMessage(
+                    SsmsUiHelper.ShowMessage(
                         ex.Message,
                         OLEMSGICON.OLEMSGICON_INFO);
                     return;
@@ -146,7 +146,7 @@ namespace Flank.SsmsExtension
 
                 step = "Opening Excel workbook";
 
-                SetStatusBar(
+                SsmsUiHelper.SetStatusBar(
                     "Refreshable Excel created — opening Excel...");
 
                 System.Diagnostics.Process.Start(outputPath);
@@ -162,20 +162,6 @@ namespace Flank.SsmsExtension
                     server,
                     database,
                     outputPath);
-            }
-        }
-
-        private void SetStatusBar(string text)
-        {
-            ThreadHelper.ThrowIfNotOnUIThread();
-
-            var statusBar =
-                Package.GetGlobalService(typeof(SVsStatusbar))
-                as IVsStatusbar;
-
-            if (statusBar != null)
-            {
-                statusBar.SetText(text);
             }
         }
 
@@ -197,26 +183,10 @@ namespace Flank.SsmsExtension
                 $"Output: {outputPath ?? "(not chosen yet)"}\n\n" +
                 "Please screenshot this message when reporting the issue.";
 
-            ShowMessage(
+            SsmsUiHelper.ShowMessage(
                 message,
                 OLEMSGICON.OLEMSGICON_CRITICAL,
                 "Flank Error");
-        }
-
-        private void ShowMessage(
-            string message,
-            OLEMSGICON icon,
-            string title = "Flank")
-        {
-            ThreadHelper.ThrowIfNotOnUIThread();
-
-            VsShellUtilities.ShowMessageBox(
-                package,
-                message,
-                title,
-                icon,
-                OLEMSGBUTTON.OLEMSGBUTTON_OK,
-                OLEMSGDEFBUTTON.OLEMSGDEFBUTTON_FIRST);
         }
     }
 }
