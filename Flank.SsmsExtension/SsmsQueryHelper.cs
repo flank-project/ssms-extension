@@ -1,5 +1,8 @@
 ﻿using Microsoft.VisualStudio.Shell;
 using System;
+using System.Data;
+using System.Linq;
+using System.Reflection;
 
 namespace Flank.SsmsExtension
 {
@@ -52,6 +55,52 @@ namespace Flank.SsmsExtension
                     "The current query is empty.");
 
             return sql;
+        }
+        public static IDbConnection GetCurrentConnection()
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+
+            var editorType = AppDomain.CurrentDomain
+                .GetAssemblies()
+                .SelectMany(a =>
+                {
+                    try { return a.GetTypes(); }
+                    catch { return Type.EmptyTypes; }
+                })
+                .FirstOrDefault(t =>
+                    t.FullName ==
+                    "Microsoft.SqlServer.Management.UI.VSIntegration.Editors.ScriptEditorControl");
+
+            if (editorType == null)
+                throw new InvalidOperationException(
+                    "Could not access the SSMS SQL editor.");
+
+            var method = editorType.GetMethod(
+                "GetActiveScriptEditorControl",
+                BindingFlags.Static |
+                BindingFlags.Public |
+                BindingFlags.NonPublic);
+
+            var editor = method?.Invoke(null, null);
+
+            if (editor == null)
+                throw new InvalidOperationException(
+                    "Open a SQL query window first.");
+
+            var connectionField = editor.GetType().GetField(
+                "m_connection",
+                BindingFlags.Instance |
+                BindingFlags.NonPublic);
+
+            var connection =
+                connectionField?.GetValue(editor) as IDbConnection;
+
+            if (connection == null ||
+                connection.State != ConnectionState.Open)
+                throw new InvalidOperationException(
+                    "The current query window is not connected.");
+
+            return connection;
         }
     }
 }

@@ -1,6 +1,7 @@
 ﻿using Flank.Ssrs.ReportService2010;
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Data.SqlClient;
 using System.Linq;
 using System.Net;
@@ -72,7 +73,7 @@ namespace Flank.Ssrs
         }
         public string CreateReport(
             string sql,
-            SqlConnection connection,
+            IDbConnection connection,
             string sharedDataSourcePath,
             string reportFolder,
             string reportName)
@@ -102,7 +103,7 @@ namespace Flank.Ssrs
 
         public string CreateReportFromStoredProcedure(
             string procedureName,
-            SqlConnection connection,
+            IDbConnection connection,
             string sharedDataSourcePath,
             string reportFolder,
             string reportName)
@@ -151,7 +152,7 @@ namespace Flank.Ssrs
 
         private List<ReportColumn> DiscoverQueryColumns(
             string sql,
-            SqlConnection connection)
+            IDbConnection connection)
         {
             var columns = new List<ReportColumn>();
 
@@ -185,16 +186,18 @@ namespace Flank.Ssrs
 
         private int GetStoredProcedureObjectId(
             string procedureName,
-            SqlConnection connection)
+            IDbConnection connection)
         {
             using (var command = connection.CreateCommand())
             {
                 command.CommandText = @"
 SELECT OBJECT_ID(@ProcedureName, 'P')";
 
-                command.Parameters.AddWithValue(
-                    "@ProcedureName",
-                    procedureName);
+                var parameter = command.CreateParameter();
+                parameter.ParameterName = "@ProcedureName";
+                parameter.Value = procedureName;
+                command.Parameters.Add(parameter);
+
 
                 var result = command.ExecuteScalar();
 
@@ -211,7 +214,7 @@ SELECT OBJECT_ID(@ProcedureName, 'P')";
 
         private List<SprocParameter> DiscoverStoredProcedureParameters(
             int objectId,
-            SqlConnection connection)
+            IDbConnection connection)
         {
             var parameters = new List<SprocParameter>();
 
@@ -231,9 +234,10 @@ JOIN sys.types t
 WHERE p.object_id = @ObjectId
 ORDER BY p.parameter_id;";
 
-                command.Parameters.AddWithValue(
-                    "@ObjectId",
-                    objectId);
+                var parameter = command.CreateParameter();
+                parameter.ParameterName = "@ObjectId";
+                parameter.Value = objectId;
+                command.Parameters.Add(parameter);
 
                 using (var reader = command.ExecuteReader())
                 {
@@ -258,7 +262,7 @@ ORDER BY p.parameter_id;";
         private List<ReportColumn> DiscoverStoredProcedureColumns(
             int objectId,
             string procedureName,
-            SqlConnection connection)
+            IDbConnection connection)
         {
             var columns = new List<ReportColumn>();
 
@@ -277,9 +281,10 @@ FROM sys.dm_exec_describe_first_result_set_for_object(
 WHERE is_hidden = 0
 ORDER BY column_ordinal;";
 
-                command.Parameters.AddWithValue(
-                    "@ObjectId",
-                    objectId);
+                var parameter = command.CreateParameter();
+                parameter.ParameterName = "@ObjectId";
+                parameter.Value = objectId;
+                command.Parameters.Add(parameter);
 
                 using (var reader = command.ExecuteReader())
                 {

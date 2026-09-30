@@ -178,14 +178,14 @@ namespace Flank.SsmsExtension
                     BindingFlags.Instance |
                     BindingFlags.NonPublic);
 
-                var connection =
+                var connectionTest =
                     connectionField?.GetValue(editor) as System.Data.IDbConnection;
 
                 Debug.WriteLine(
-                    $"Connection type: {connection?.GetType().FullName ?? "null"}");
+                    $"Connection type: {connectionTest?.GetType().FullName ?? "null"}");
 
                 Debug.WriteLine(
-                    $"Connection state: {connection?.State}");
+                    $"Connection state: {connectionTest?.State}");
                 //DumpTypeMembers("Microsoft.SqlServer.Management.UI.VSIntegration.Editors.SqlScriptEditorControl");
 
                 //var scriptFactory = ServiceCache.ScriptFactory;
@@ -193,12 +193,14 @@ namespace Flank.SsmsExtension
                 //DumpInterestingMembers(
                 //    scriptFactory,
                 //    "ScriptFactory");
+                var connection = SsmsQueryHelper.GetCurrentConnection();
+
 
                 string reportUrl = await Task.Run(() =>
                 {
                     return client.CreateReport(
                         sql,
-                        null,
+                        connection,
                         "/HardcodedTest",
                         "/TestFolder",
                         "SSMS Query Test");
