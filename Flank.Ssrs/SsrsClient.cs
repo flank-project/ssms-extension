@@ -56,6 +56,20 @@ namespace Flank.Ssrs
             public string ColumnMembers { get; set; }
         }
 
+        public void TestConnection()
+        {
+            try
+            {
+                var ssrs = CreateSsrsConnection();
+                ssrs.ListChildren("/", false);
+            }
+            catch (Exception ex)
+            {
+                throw new SsrsException(
+                    $"Could not connect to SSRS at '{_reportServerUrl}'.",
+                    ex);
+            }
+        }
         public string CreateReport(
             string sql,
             SqlConnection connection,
