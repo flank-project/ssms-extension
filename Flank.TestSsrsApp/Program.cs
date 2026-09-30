@@ -1,10 +1,6 @@
 ﻿using Flank.Ssrs;
 using System;
-using System.Collections.Generic;
 using System.Data.SqlClient;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Flank.TestSsrsApp
 {
@@ -12,45 +8,158 @@ namespace Flank.TestSsrsApp
     {
         static void Main(string[] args)
         {
-            var connection = new SqlConnection(
-                "Server=;" +
-                "Database=;" +
-                "User ID=;" +
-                "Password=;"
-            );
-
-            connection.Open();
-
-            var client = new Flank.Ssrs.SsrsClient(
-                "http://localhost/ReportServer",
-                "http://localhost/Reports");
-
-            Console.WriteLine("FOLDERS:");
-
-            foreach (var folder in client.GetFolders())
+            try
             {
-                Console.WriteLine(folder);
+                var options = ParseArgs(args);
+
+                var client = new SsrsClient(
+                    GetRequired(options, "report-server"),
+                    GetRequired(options, "report-portal"));
+
+                string action = GetRequired(options, "action");
+
+                if (action == "folders")
+                {
+                    foreach (var folder in client.GetFolders())
+                    {
+                        Console.WriteLine(folder);
+                    }
+
+                    return;
+                }
+
+                if (action == "data-sources")
+                {
+                    foreach (var dataSource in client.GetSharedDataSources())
+                    {
+                        Console.WriteLine(dataSource);
+                    }
+
+                    return;
+                }
+
+                if (action == "create")
+                {
+                    CreateReport(client, options);
+                    return;
+                }
+
+                throw new ArgumentException(
+                    $"Unknown action '{action}'.");
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine("ERROR:");
+                Console.Error.WriteLine(ex.Message);
+                Environment.ExitCode = 1;
+            }
+        }
+
+        private static void CreateReport(
+            SsrsClient client,
+            System.Collections.Generic.Dictionary<string, string> options)
+        {
+            string connectionString =
+                GetRequired(options, "connection-string");
+
+            string type =
+                GetRequired(options, "type");
+
+            string command =
+                GetRequired(options, "command");
+
+            string dataSource =
+                GetRequired(options, "data-source");
+
+            string folder =
+                GetRequired(options, "folder");
+
+            string reportName =
+                GetRequired(options, "report-name");
+
+            using (var connection =
+                new SqlConnection(connectionString))
+            {
+                connection.Open();
+
+                string reportUrl;
+
+                if (type == "sql")
+                {
+                    reportUrl = client.CreateReport(
+                        command,
+                        connection,
+                        dataSource,
+                        folder,
+                        reportName);
+                }
+                else if (type == "sproc")
+                {
+                    reportUrl =
+                        client.CreateReportFromStoredProcedure(
+                            command,
+                            connection,
+                            dataSource,
+                            folder,
+                            reportName);
+                }
+                else
+                {
+                    throw new ArgumentException(
+                        "--type must be 'sql' or 'sproc'.");
+                }
+
+                Console.WriteLine("Report created:");
+                Console.WriteLine(reportUrl);
+            }
+        }
+
+        private static System.Collections.Generic.Dictionary<string, string>
+            ParseArgs(string[] args)
+        {
+            var result =
+                new System.Collections.Generic.Dictionary<string, string>(
+                    StringComparer.OrdinalIgnoreCase);
+
+            for (int i = 0; i < args.Length; i++)
+            {
+                string arg = args[i];
+
+                if (!arg.StartsWith("--"))
+                {
+                    throw new ArgumentException(
+                        $"Unexpected argument '{arg}'.");
+                }
+
+                string key = arg.Substring(2);
+
+                if (i + 1 >= args.Length ||
+                    args[i + 1].StartsWith("--"))
+                {
+                    throw new ArgumentException(
+                        $"Missing value for '--{key}'.");
+                }
+
+                result[key] = args[++i];
             }
 
-            Console.WriteLine();
+            return result;
+        }
 
-            Console.WriteLine("DATA SOURCES:");
+        private static string GetRequired(
+            System.Collections.Generic.Dictionary<string, string> options,
+            string name)
+        {
+            string value;
 
-            foreach (var dataSource in client.GetSharedDataSources())
+            if (!options.TryGetValue(name, out value) ||
+                string.IsNullOrWhiteSpace(value))
             {
-                Console.WriteLine(dataSource);
+                throw new ArgumentException(
+                    $"Missing required argument '--{name}'.");
             }
 
-            string reportUrl = client.CreateReportFromStoredProcedure(
-                "dbo.becky_driver_example3",
-                connection,
-                "/HardcodedTest",
-                "/TestFolder",
-                "becky_driver_example3 2");
-
-            Console.WriteLine(reportUrl);
-
-            Console.ReadLine();
+            return value;
         }
     }
 }
