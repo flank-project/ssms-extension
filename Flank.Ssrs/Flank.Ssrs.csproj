@@ -4,6 +4,8 @@
 	  <TargetFramework>net472</TargetFramework>
 	  <LangVersion>latest</LangVersion>
 	  <Nullable>enable</Nullable>
+	  <SignAssembly>True</SignAssembly>
+	  <AssemblyOriginatorKeyFile>Flank.snk</AssemblyOriginatorKeyFile>
   </PropertyGroup>
 	<ItemGroup>
 		<Reference Include="System.Web.Services" />
