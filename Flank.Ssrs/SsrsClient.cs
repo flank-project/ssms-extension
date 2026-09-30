@@ -20,13 +20,16 @@ namespace Flank.Ssrs
     {
         private readonly string _reportServerUrl;
         private readonly string _reportPortalUrl;
+        private readonly ICredentials _credentials;
 
         public SsrsClient(
             string reportServerUrl,
-            string reportPortalUrl)
+            string reportPortalUrl,
+            ICredentials credentials = null)
         {
             _reportServerUrl = reportServerUrl.TrimEnd('/');
             _reportPortalUrl = reportPortalUrl.TrimEnd('/');
+            _credentials = credentials;
         }
 
         private class SprocParameter
@@ -623,17 +626,12 @@ ORDER BY column_ordinal;";
             }
         }
 
-        private ReportService2010.ReportingService2010
-            CreateSsrsConnection()
+        private ReportService2010.ReportingService2010 CreateSsrsConnection()
         {
             return new ReportService2010.ReportingService2010
             {
-                Url =
-                    _reportServerUrl +
-                    "/ReportService2010.asmx",
-
-                Credentials =
-                    CredentialCache.DefaultCredentials
+                Url = _reportServerUrl + "/ReportService2010.asmx",
+                Credentials = _credentials ?? CredentialCache.DefaultCredentials
             };
         }
 

@@ -1,6 +1,7 @@
 ﻿using Flank.Ssrs;
 using System;
 using System.Data.SqlClient;
+using System.Net;
 
 namespace Flank.TestSsrsApp
 {
@@ -12,9 +13,29 @@ namespace Flank.TestSsrsApp
             {
                 var options = ParseArgs(args);
 
+                var reportServer =
+                    GetRequired(options, "report-server");
+
+                var reportPortal =
+                    GetRequired(options, "report-portal");
+
+                ICredentials credentials = null;
+
+                string ssrsUser;
+                string ssrsPassword;
+
+                if (options.TryGetValue("ssrs-user", out ssrsUser) &&
+                    options.TryGetValue("ssrs-password", out ssrsPassword))
+                {
+                    credentials = new NetworkCredential(
+                        ssrsUser,
+                        ssrsPassword);
+                }
+
                 var client = new SsrsClient(
-                    GetRequired(options, "report-server"),
-                    GetRequired(options, "report-portal"));
+                    reportServer,
+                    reportPortal,
+                    credentials);
 
                 string action = GetRequired(options, "action");
 
