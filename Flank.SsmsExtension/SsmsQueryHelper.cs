@@ -13,29 +13,45 @@ namespace Flank.SsmsExtension
                 as EnvDTE.DTE;
 
             if (dte == null)
-                throw new Exception("Could not access the SSMS editor.");
+                throw new InvalidOperationException(
+                    "Could not access the SSMS editor.");
 
             var doc = dte.ActiveDocument;
 
             if (doc == null)
-                throw new Exception("Open a SQL query window first.");
+                throw new InvalidOperationException(
+                    "Open a SQL query window first.");
 
             var selection = doc.Selection as EnvDTE.TextSelection;
 
             if (selection == null)
-                throw new Exception("Could not read the current SQL editor.");
+                throw new InvalidOperationException(
+                    "Could not read the current SQL editor.");
+
+            string sql;
 
             if (!string.IsNullOrWhiteSpace(selection.Text))
-                return selection.Text;
+            {
+                sql = selection.Text;
+            }
+            else
+            {
+                var textDoc = doc.Object("TextDocument")
+                    as EnvDTE.TextDocument;
 
-            var textDoc = doc.Object("TextDocument")
-                as EnvDTE.TextDocument;
+                if (textDoc == null)
+                    throw new InvalidOperationException(
+                        "Could not read the current SQL document.");
 
-            if (textDoc == null)
-                throw new Exception("Could not read the current SQL document.");
+                var start = textDoc.StartPoint.CreateEditPoint();
+                sql = start.GetText(textDoc.EndPoint);
+            }
 
-            var start = textDoc.StartPoint.CreateEditPoint();
-            return start.GetText(textDoc.EndPoint);
+            if (string.IsNullOrWhiteSpace(sql))
+                throw new InvalidOperationException(
+                    "The current query is empty.");
+
+            return sql;
         }
     }
 }

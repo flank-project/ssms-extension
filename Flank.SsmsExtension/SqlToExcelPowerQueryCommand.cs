@@ -69,55 +69,16 @@ namespace Flank.SsmsExtension
 
             try
             {
-                var dte = Package.GetGlobalService(typeof(EnvDTE.DTE))
-                    as EnvDTE.DTE;
-
-                if (dte == null)
-                    throw new Exception(
-                        "Could not access the SSMS editor.");
-
-                var doc = dte.ActiveDocument;
-
-                if (doc == null)
-                {
-                    ShowMessage(
-                        "Open a SQL query window first.",
-                        OLEMSGICON.OLEMSGICON_INFO);
-
-                    return;
-                }
-
-                var selection = doc.Selection as EnvDTE.TextSelection;
-
-                if (selection == null)
-                    throw new Exception(
-                        "Could not read the current SQL editor.");
-
                 string sql;
-
-                if (!string.IsNullOrWhiteSpace(selection.Text))
+                try
                 {
-                    sql = selection.Text;
+                    sql = SsmsQueryHelper.GetCurrentSql();
                 }
-                else
-                {
-                    var textDoc = doc.Object("TextDocument")
-                        as EnvDTE.TextDocument;
-
-                    if (textDoc == null)
-                        throw new Exception(
-                            "Could not read the current SQL document.");
-
-                    var start = textDoc.StartPoint.CreateEditPoint();
-                    sql = start.GetText(textDoc.EndPoint);
-                }
-
-                if (string.IsNullOrWhiteSpace(sql))
+                catch (InvalidOperationException ex)
                 {
                     ShowMessage(
-                        "The current query is empty.",
+                        ex.Message,
                         OLEMSGICON.OLEMSGICON_INFO);
-
                     return;
                 }
 
