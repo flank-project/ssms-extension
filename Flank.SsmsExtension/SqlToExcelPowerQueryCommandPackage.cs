@@ -69,6 +69,7 @@ namespace Flank.SsmsExtension
             // Do any initialization that requires the UI thread after switching to the UI thread.
             await this.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
             await SqlToExcelPowerQueryCommand.InitializeAsync(this);
+            await SqlToSsrsCommand.InitializeAsync(this);
         }
 
         #endregion
