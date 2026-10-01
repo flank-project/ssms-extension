@@ -2,9 +2,10 @@
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
 using System;
+using System.Collections.Generic;
 using System.ComponentModel.Design;
-using Task = System.Threading.Tasks.Task;
 using System.Windows.Forms;
+using Task = System.Threading.Tasks.Task;
 
 namespace Flank.SsmsExtension
 {
@@ -124,10 +125,40 @@ namespace Flank.SsmsExtension
                 connectionOptions.ReportServerUrl,
                 connectionOptions.ReportPortalUrl);
 
-            client.TestConnection();
+            SsrsProgressDialog progressDialog = null;
 
-            var folders = client.GetFolders();
-            var dataSources = client.GetSharedDataSources();
+            progressDialog = new SsrsProgressDialog();
+            progressDialog.SetStatus("Loading SSRS folders and data sources...");
+            progressDialog.Show();
+            progressDialog.Refresh();
+
+            IReadOnlyList<string> folders;
+            IReadOnlyList<string> dataSources;
+
+            try
+            {
+                var result = await Task.Run(() =>
+                {
+                    client.TestConnection();
+
+                    return new
+                    {
+                        Folders = client.GetFolders(),
+                        DataSources = client.GetSharedDataSources()
+                    };
+                });
+
+                folders = result.Folders;
+                dataSources = result.DataSources;
+            }
+            finally
+            {
+                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+
+                progressDialog.Close();
+                progressDialog.Dispose();
+                progressDialog = null;
+            }
 
             SsrsReportOptions reportOptions;
 
@@ -141,8 +172,6 @@ namespace Flank.SsmsExtension
 
                 reportOptions = dialog.Options;
             }
-
-            SsrsProgressDialog progressDialog = null;
 
             try
             {
