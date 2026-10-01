@@ -4,6 +4,7 @@ using Microsoft.VisualStudio.Shell.Interop;
 using System;
 using System.ComponentModel.Design;
 using Task = System.Threading.Tasks.Task;
+using System.Windows.Forms;
 
 namespace Flank.SsmsExtension
 {
@@ -109,24 +110,42 @@ namespace Flank.SsmsExtension
                 return;
             }
 
-            SsrsReportOptions options;
+            SsrsConnectionOptions connectionOptions;
 
-            using (var dialog = new SsrsTextDialog(sql))
+            using (var dialog = new SsrsConnectionDialog())
             {
-                if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
+                if (dialog.ShowDialog() != DialogResult.OK)
                     return;
 
-                options = dialog.Options;
+                connectionOptions = dialog.Options;
+            }
+
+            var client = new SsrsClient(
+                connectionOptions.ReportServerUrl,
+                connectionOptions.ReportPortalUrl);
+
+            client.TestConnection();
+
+            var folders = client.GetFolders();
+            var dataSources = client.GetSharedDataSources();
+
+            SsrsReportOptions reportOptions;
+
+            using (var dialog = new SsrsTextDialog(
+                sql,
+                folders,
+                dataSources))
+            {
+                if (dialog.ShowDialog() != DialogResult.OK)
+                    return;
+
+                reportOptions = dialog.Options;
             }
 
             SsrsProgressDialog progressDialog = null;
 
             try
             {
-                var client = new SsrsClient(
-                    options.ReportServerUrl,
-                    options.ReportPortalUrl);
-
                 progressDialog = new SsrsProgressDialog();
                 progressDialog.Show();
                 progressDialog.Refresh();
@@ -136,7 +155,7 @@ namespace Flank.SsmsExtension
 
                 var columns =
                     SqlMetadataDiscovery.DiscoverQueryColumns(
-                        options.Sql,
+                        reportOptions.Sql,
                         connection);
 
                 // SSMS's connection is no longer needed.
@@ -146,11 +165,11 @@ namespace Flank.SsmsExtension
                 string reportUrl = await Task.Run(() =>
                 {
                     return client.CreateReportFromText(
-                        options.Sql,
+                        reportOptions.Sql,
                         columns,
-                        options.DataSource,
-                        options.Folder,
-                        options.ReportName);
+                        reportOptions.DataSource,
+                        reportOptions.Folder,
+                        reportOptions.ReportName);
                 });
 
                 await ThreadHelper.JoinableTaskFactory
@@ -162,7 +181,7 @@ namespace Flank.SsmsExtension
 
                 using (var successDialog =
                     new SsrsSuccessDialog(
-                        options.ReportName,
+                        reportOptions.ReportName,
                         reportUrl))
                 {
                     successDialog.ShowDialog();

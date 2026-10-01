@@ -1,13 +1,13 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Drawing;
+using System.Linq;
 using System.Windows.Forms;
 
 namespace Flank.SsmsExtension
 {
     internal sealed class SsrsReportOptions
     {
-        public string ReportServerUrl { get; set; }
-        public string ReportPortalUrl { get; set; }
         public string Folder { get; set; }
         public string DataSource { get; set; }
         public string ReportName { get; set; }
@@ -16,48 +16,46 @@ namespace Flank.SsmsExtension
 
     internal sealed class SsrsTextDialog : Form
     {
-        private readonly TextBox reportServerTextBox;
-        private readonly TextBox reportPortalTextBox;
-        private readonly TextBox folderTextBox;
-        private readonly TextBox dataSourceTextBox;
+        private readonly ComboBox folderComboBox;
+        private readonly ComboBox dataSourceComboBox;
         private readonly TextBox reportNameTextBox;
-
-        public SsrsReportOptions Options { get; private set; }
         private readonly TextBox sqlTextBox;
 
-        public SsrsTextDialog(string sql)
+        public SsrsReportOptions Options { get; private set; }
+
+        public SsrsTextDialog(
+            string sql,
+            IReadOnlyList<string> folders,
+            IReadOnlyList<string> dataSources)
         {
             Text = "Create SSRS Report";
             FormBorderStyle = FormBorderStyle.FixedDialog;
             StartPosition = FormStartPosition.CenterScreen;
             MaximizeBox = false;
             MinimizeBox = false;
-            ClientSize = new Size(540, 460);
+            ClientSize = new Size(540, 380);
 
-            reportServerTextBox = AddField(
-                "Report Server URL:",
-                "http://localhost/ReportServer",
+            folderComboBox = AddComboBox(
+                "Folder:",
+                folders,
                 20);
 
-            reportPortalTextBox = AddField(
-                "Report Portal URL:",
-                "http://localhost/Reports",
-                60);
-
-            folderTextBox = AddField(
-                "Folder:",
-                "/TestFolder",
-                100);
-
-            dataSourceTextBox = AddField(
+            dataSourceComboBox = AddComboBox(
                 "Shared Data Source:",
-                "/HardcodedTest",
-                140);
+                dataSources,
+                60);
 
             reportNameTextBox = AddField(
                 "Report Name:",
                 "SSMS Query Test",
-                180);
+                100);
+
+            Controls.Add(new Label
+            {
+                Text = "SQL:",
+                Location = new Point(20, 145),
+                Width = 130
+            });
 
             sqlTextBox = new TextBox
             {
@@ -68,16 +66,9 @@ namespace Flank.SsmsExtension
                 AcceptsReturn = true,
                 AcceptsTab = true,
                 Font = new Font("Consolas", 9),
-                Location = new Point(20, 225),
-                Size = new Size(500, 180)
+                Location = new Point(20, 165),
+                Size = new Size(500, 160)
             };
-
-            Controls.Add(new Label
-            {
-                Text = "SQL:",
-                Location = new Point(20, 205),
-                Width = 130
-            });
 
             Controls.Add(sqlTextBox);
 
@@ -85,14 +76,14 @@ namespace Flank.SsmsExtension
             {
                 Text = "Cancel",
                 DialogResult = DialogResult.Cancel,
-                Location = new Point(350, 420),
+                Location = new Point(350, 340),
                 Width = 80
             };
 
             var createButton = new Button
             {
                 Text = "Create",
-                Location = new Point(440, 420),
+                Location = new Point(440, 340),
                 Width = 80
             };
 
@@ -103,6 +94,36 @@ namespace Flank.SsmsExtension
 
             AcceptButton = createButton;
             CancelButton = cancelButton;
+        }
+
+        private ComboBox AddComboBox(
+            string label,
+            IReadOnlyList<string> items,
+            int y)
+        {
+            var labelControl = new Label
+            {
+                Text = label,
+                Location = new Point(20, y + 4),
+                Width = 130
+            };
+
+            var comboBox = new ComboBox
+            {
+                Location = new Point(155, y),
+                Width = 365,
+                DropDownStyle = ComboBoxStyle.DropDownList
+            };
+
+            comboBox.Items.AddRange(items.ToArray());
+
+            if (comboBox.Items.Count > 0)
+                comboBox.SelectedIndex = 0;
+
+            Controls.Add(labelControl);
+            Controls.Add(comboBox);
+
+            return comboBox;
         }
 
         private TextBox AddField(
@@ -132,10 +153,8 @@ namespace Flank.SsmsExtension
 
         private void CreateButton_Click(object sender, EventArgs e)
         {
-            if (string.IsNullOrWhiteSpace(reportServerTextBox.Text) ||
-                string.IsNullOrWhiteSpace(reportPortalTextBox.Text) ||
-                string.IsNullOrWhiteSpace(folderTextBox.Text) ||
-                string.IsNullOrWhiteSpace(dataSourceTextBox.Text) ||
+            if (folderComboBox.SelectedItem == null ||
+                dataSourceComboBox.SelectedItem == null ||
                 string.IsNullOrWhiteSpace(reportNameTextBox.Text) ||
                 string.IsNullOrWhiteSpace(sqlTextBox.Text))
             {
@@ -150,10 +169,8 @@ namespace Flank.SsmsExtension
 
             Options = new SsrsReportOptions
             {
-                ReportServerUrl = reportServerTextBox.Text.Trim(),
-                ReportPortalUrl = reportPortalTextBox.Text.Trim(),
-                Folder = folderTextBox.Text.Trim(),
-                DataSource = dataSourceTextBox.Text.Trim(),
+                Folder = folderComboBox.SelectedItem.ToString(),
+                DataSource = dataSourceComboBox.SelectedItem.ToString(),
                 ReportName = reportNameTextBox.Text.Trim(),
                 Sql = sqlTextBox.Text
             };
