@@ -109,12 +109,22 @@ namespace Flank.SsmsExtension
                 return;
             }
 
+            SsrsReportOptions options;
+
+            using (var dialog = new SsrsTextDialog())
+            {
+                if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
+                    return;
+
+                options = dialog.Options;
+            }
+
             try
             {
                 // Hardcoded for now — just proving the SSMS -> SSRS path.
                 var client = new SsrsClient(
-                    "http://localhost/ReportServer",
-                    "http://localhost/Reports");
+                    options.ReportServerUrl,
+                    options.ReportPortalUrl);
 
                 var connection = SsmsQueryHelper.GetCurrentConnection();
 
@@ -123,9 +133,9 @@ namespace Flank.SsmsExtension
                     return client.CreateReport(
                         sql,
                         connection,
-                        "/HardcodedTest",
-                        "/TestFolder",
-                        "SSMS Query Test");
+                        options.DataSource,
+                        options.Folder,
+                        options.ReportName);
                 });
 
                 await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
