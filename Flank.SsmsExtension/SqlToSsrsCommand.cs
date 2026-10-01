@@ -1,19 +1,9 @@
 ﻿using Flank.Ssrs;
-using Flank.Ssrs;
-using Microsoft.SqlServer.Management.UI.VSIntegration;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
 using System;
-using System.Collections;
 using System.ComponentModel.Design;
-using System.Diagnostics;
-using System.Globalization;
-using System.Linq;
-using System.Reflection;
-using System.Threading;
-using System.Threading.Tasks;
 using Task = System.Threading.Tasks.Task;
-using System.Linq;
 
 namespace Flank.SsmsExtension
 {
