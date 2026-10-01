@@ -119,18 +119,29 @@ namespace Flank.SsmsExtension
                 options = dialog.Options;
             }
 
+            SsrsProgressDialog progressDialog = null;
+
             try
             {
-                // Hardcoded for now — just proving the SSMS -> SSRS path.
                 var client = new SsrsClient(
                     options.ReportServerUrl,
                     options.ReportPortalUrl);
 
-                var connection = SsmsQueryHelper.GetCurrentConnection();
+                progressDialog = new SsrsProgressDialog();
+                progressDialog.Show();
+                progressDialog.Refresh();
 
-                var columns = SqlMetadataDiscovery.DiscoverQueryColumns(
-                    options.Sql,
-                    connection);
+                var connection =
+                    SsmsQueryHelper.GetCurrentConnection();
+
+                var columns =
+                    SqlMetadataDiscovery.DiscoverQueryColumns(
+                        options.Sql,
+                        connection);
+
+                // SSMS's connection is no longer needed.
+                progressDialog.SetStatus(
+                    "Creating report in SSRS...");
 
                 string reportUrl = await Task.Run(() =>
                 {
@@ -142,13 +153,32 @@ namespace Flank.SsmsExtension
                         options.ReportName);
                 });
 
-                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+                await ThreadHelper.JoinableTaskFactory
+                    .SwitchToMainThreadAsync();
 
-                System.Diagnostics.Process.Start(reportUrl);
+                progressDialog.Close();
+                progressDialog.Dispose();
+                progressDialog = null;
+
+                using (var successDialog =
+                    new SsrsSuccessDialog(
+                        options.ReportName,
+                        reportUrl))
+                {
+                    successDialog.ShowDialog();
+                }
             }
             catch (Exception ex)
             {
-                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+                await ThreadHelper.JoinableTaskFactory
+                    .SwitchToMainThreadAsync();
+
+                if (progressDialog != null)
+                {
+                    progressDialog.Close();
+                    progressDialog.Dispose();
+                    progressDialog = null;
+                }
 
                 SsmsUiHelper.ShowMessage(
                     "Flank couldn't create the SSRS report.\n\n" +
