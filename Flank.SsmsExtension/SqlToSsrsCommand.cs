@@ -33,13 +33,22 @@ namespace Flank.SsmsExtension
         /// </summary>
         /// <param name="package">Owner package, not null.</param>
         /// <param name="commandService">Command service to add command to, not null.</param>
-        private SqlToSsrsCommand(AsyncPackage package, OleMenuCommandService commandService)
+        private SqlToSsrsCommand(
+            AsyncPackage package,
+            OleMenuCommandService commandService)
         {
-            this.package = package ?? throw new ArgumentNullException(nameof(package));
-            commandService = commandService ?? throw new ArgumentNullException(nameof(commandService));
+            this.package =
+                package ?? throw new ArgumentNullException(nameof(package));
 
-            var menuCommandID = new CommandID(CommandSet, CommandId);
-            var menuItem = new MenuCommand(this.Execute, menuCommandID);
+            commandService =
+                commandService ?? throw new ArgumentNullException(nameof(commandService));
+
+            var menuCommandID =
+                new CommandID(CommandSet, CommandId);
+
+            var menuItem =
+                new MenuCommand(this.Execute, menuCommandID);
+
             commandService.AddCommand(menuItem);
         }
 
@@ -69,21 +78,20 @@ namespace Flank.SsmsExtension
         /// <param name="package">Owner package, not null.</param>
         public static async Task InitializeAsync(AsyncPackage package)
         {
-            // Switch to the main thread - the call to AddCommand in SqlToSsrsCommand's constructor requires
-            // the UI thread.
-            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(package.DisposalToken);
+            await ThreadHelper.JoinableTaskFactory
+                .SwitchToMainThreadAsync(package.DisposalToken);
 
-            OleMenuCommandService commandService = await package.GetServiceAsync(typeof(IMenuCommandService)) as OleMenuCommandService;
-            Instance = new SqlToSsrsCommand(package, commandService);
+            OleMenuCommandService commandService =
+                await package.GetServiceAsync(typeof(IMenuCommandService))
+                    as OleMenuCommandService;
+
+            Instance =
+                new SqlToSsrsCommand(package, commandService);
         }
 
         /// <summary>
         /// This function is the callback used to execute the command when the menu item is clicked.
-        /// See the constructor to see how the menu item is associated with this function using
-        /// OleMenuCommandService service and MenuCommand class.
         /// </summary>
-        /// <param name="sender">Event sender.</param>
-        /// <param name="e">Event args.</param>
         private void Execute(object sender, EventArgs e)
         {
             ThreadHelper.JoinableTaskFactory.RunAsync(async () =>
@@ -94,7 +102,8 @@ namespace Flank.SsmsExtension
 
         private async Task ExecuteAsync()
         {
-            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+            await ThreadHelper.JoinableTaskFactory
+                .SwitchToMainThreadAsync();
 
             string sql;
 
@@ -121,61 +130,79 @@ namespace Flank.SsmsExtension
                 connectionOptions = dialog.Options;
             }
 
-            var client = new SsrsClient(
-                connectionOptions.ReportServerUrl,
-                connectionOptions.ReportPortalUrl);
-
             SsrsProgressDialog progressDialog = null;
 
-            progressDialog = new SsrsProgressDialog();
-            progressDialog.SetStatus("Loading SSRS folders and data sources...");
-            progressDialog.Show();
-            progressDialog.Refresh();
-
-            IReadOnlyList<string> folders;
-            IReadOnlyList<string> dataSources;
-
             try
             {
-                var result = await Task.Run(() =>
-                {
-                    client.TestConnection();
+                //
+                // Step 1: Connect to SSRS and discover folders/data sources
+                //
 
-                    return new
-                    {
-                        Folders = client.GetFolders(),
-                        DataSources = client.GetSharedDataSources()
-                    };
-                });
+                var client = new SsrsClient(
+                    connectionOptions.ReportServerUrl,
+                    connectionOptions.ReportPortalUrl);
 
-                folders = result.Folders;
-                dataSources = result.DataSources;
-            }
-            finally
-            {
-                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
-
-                progressDialog.Close();
-                progressDialog.Dispose();
-                progressDialog = null;
-            }
-
-            SsrsReportOptions reportOptions;
-
-            using (var dialog = new SsrsTextDialog(
-                sql,
-                folders,
-                dataSources))
-            {
-                if (dialog.ShowDialog() != DialogResult.OK)
-                    return;
-
-                reportOptions = dialog.Options;
-            }
-
-            try
-            {
                 progressDialog = new SsrsProgressDialog();
+                progressDialog.SetStatus(
+                    "Loading SSRS folders and data sources...");
+                progressDialog.Show();
+                progressDialog.Refresh();
+
+                IReadOnlyList<string> folders;
+                IReadOnlyList<string> dataSources;
+
+                try
+                {
+                    var result = await Task.Run(() =>
+                    {
+                        client.TestConnection();
+
+                        return new
+                        {
+                            Folders = client.GetFolders(),
+                            DataSources = client.GetSharedDataSources()
+                        };
+                    });
+
+                    folders = result.Folders;
+                    dataSources = result.DataSources;
+                }
+                finally
+                {
+                    await ThreadHelper.JoinableTaskFactory
+                        .SwitchToMainThreadAsync();
+
+                    if (progressDialog != null)
+                    {
+                        progressDialog.Close();
+                        progressDialog.Dispose();
+                        progressDialog = null;
+                    }
+                }
+
+                //
+                // Step 2: Get report options
+                //
+
+                SsrsReportOptions reportOptions;
+
+                using (var dialog = new SsrsTextDialog(
+                    sql,
+                    folders,
+                    dataSources))
+                {
+                    if (dialog.ShowDialog() != DialogResult.OK)
+                        return;
+
+                    reportOptions = dialog.Options;
+                }
+
+                //
+                // Step 3: Discover SQL schema
+                //
+
+                progressDialog = new SsrsProgressDialog();
+                progressDialog.SetStatus("Analyzing query...");
                 progressDialog.Show();
                 progressDialog.Refresh();
 
@@ -188,6 +215,11 @@ namespace Flank.SsmsExtension
                         connection);
 
                 // SSMS's connection is no longer needed.
+
+                //
+                // Step 4: Create report
+                //
+
                 progressDialog.SetStatus(
                     "Creating report in SSRS...");
 
@@ -207,6 +239,10 @@ namespace Flank.SsmsExtension
                 progressDialog.Close();
                 progressDialog.Dispose();
                 progressDialog = null;
+
+                //
+                // Step 5: Success
+                //
 
                 using (var successDialog =
                     new SsrsSuccessDialog(
