@@ -130,7 +130,7 @@ namespace Flank.SsmsExtension
 
                 string reportUrl = await Task.Run(() =>
                 {
-                    return client.CreateReport(
+                    return client.CreateReportFromText(
                         options.Sql,
                         connection,
                         options.DataSource,

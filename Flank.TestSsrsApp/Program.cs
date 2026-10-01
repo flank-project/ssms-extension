@@ -107,7 +107,7 @@ namespace Flank.TestSsrsApp
 
                 if (type == "sql")
                 {
-                    reportUrl = client.CreateReport(
+                    reportUrl = client.CreateReportFromText(
                         command,
                         connection,
                         dataSource,

@@ -71,7 +71,7 @@ namespace Flank.Ssrs
                     ex);
             }
         }
-        public string CreateReport(
+        public string CreateReportFromText(
             string sql,
             IDbConnection connection,
             string sharedDataSourcePath,
