@@ -128,7 +128,7 @@ namespace Flank.SsmsExtension
 
                 var connection = SsmsQueryHelper.GetCurrentConnection();
 
-                var columns = SsrsClient.DiscoverQueryColumns(
+                var columns = SqlMetadataDiscovery.DiscoverQueryColumns(
                     options.Sql,
                     connection);
 

@@ -107,7 +107,7 @@ namespace Flank.TestSsrsApp
 
                 if (type == "sql")
                 {
-                    var columns = SsrsClient.DiscoverQueryColumns(
+                    var columns = SqlMetadataDiscovery.DiscoverQueryColumns(
                         command,
                         connection);
                     reportUrl = client.CreateReportFromText(
@@ -119,13 +119,13 @@ namespace Flank.TestSsrsApp
                 }
                 else if (type == "sproc")
                 {
-                    var objectId = SsrsClient.GetStoredProcedureObjectId(
+                    var objectId = SqlMetadataDiscovery.GetStoredProcedureObjectId(
                         command,
                         connection);
-                    var parameters = SsrsClient.DiscoverStoredProcedureParameters(
+                    var parameters = SqlMetadataDiscovery.DiscoverStoredProcedureParameters(
                         objectId,
                         connection);
-                    var columns = SsrsClient.DiscoverStoredProcedureColumns(
+                    var columns = SqlMetadataDiscovery.DiscoverStoredProcedureColumns(
                         objectId,
                         command,
                         connection);
