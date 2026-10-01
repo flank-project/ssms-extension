@@ -111,7 +111,7 @@ namespace Flank.SsmsExtension
 
             SsrsReportOptions options;
 
-            using (var dialog = new SsrsTextDialog())
+            using (var dialog = new SsrsTextDialog(sql))
             {
                 if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
                     return;
@@ -131,7 +131,7 @@ namespace Flank.SsmsExtension
                 string reportUrl = await Task.Run(() =>
                 {
                     return client.CreateReport(
-                        sql,
+                        options.Sql,
                         connection,
                         options.DataSource,
                         options.Folder,
