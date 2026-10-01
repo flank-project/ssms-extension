@@ -128,11 +128,15 @@ namespace Flank.SsmsExtension
 
                 var connection = SsmsQueryHelper.GetCurrentConnection();
 
+                var columns = SsrsClient.DiscoverQueryColumns(
+                    options.Sql,
+                    connection);
+
                 string reportUrl = await Task.Run(() =>
                 {
                     return client.CreateReportFromText(
                         options.Sql,
-                        connection,
+                        columns,
                         options.DataSource,
                         options.Folder,
                         options.ReportName);

@@ -107,19 +107,33 @@ namespace Flank.TestSsrsApp
 
                 if (type == "sql")
                 {
+                    var columns = SsrsClient.DiscoverQueryColumns(
+                        command,
+                        connection);
                     reportUrl = client.CreateReportFromText(
                         command,
-                        connection,
+                        columns,
                         dataSource,
                         folder,
                         reportName);
                 }
                 else if (type == "sproc")
                 {
+                    var objectId = SsrsClient.GetStoredProcedureObjectId(
+                        command,
+                        connection);
+                    var parameters = SsrsClient.DiscoverStoredProcedureParameters(
+                        objectId,
+                        connection);
+                    var columns = SsrsClient.DiscoverStoredProcedureColumns(
+                        objectId,
+                        command,
+                        connection);
                     reportUrl =
                         client.CreateReportFromStoredProcedure(
                             command,
-                            connection,
+                            parameters,
+                            columns,
                             dataSource,
                             folder,
                             reportName);

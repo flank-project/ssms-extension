@@ -33,7 +33,7 @@ namespace Flank.Ssrs
             _credentials = credentials;
         }
 
-        private class SprocParameter
+        public sealed class SprocParameter
         {
             public string Name { get; set; }
             public string SqlType { get; set; }
@@ -43,7 +43,7 @@ namespace Flank.Ssrs
             public bool IsOutput { get; set; }
         }
 
-        private class ReportColumn
+        public sealed class ReportColumn
         {
             public string Name { get; set; }
         }
@@ -71,17 +71,14 @@ namespace Flank.Ssrs
                     ex);
             }
         }
+
         public string CreateReportFromText(
             string sql,
-            IDbConnection connection,
+            IReadOnlyList<ReportColumn> columns,
             string sharedDataSourcePath,
             string reportFolder,
             string reportName)
         {
-            var columns = DiscoverQueryColumns(
-                sql,
-                connection);
-
             string queryXml = $@"
         <CommandText>{XmlEscape(sql)}</CommandText>";
 
@@ -103,24 +100,12 @@ namespace Flank.Ssrs
 
         public string CreateReportFromStoredProcedure(
             string procedureName,
-            IDbConnection connection,
+            IReadOnlyList<SprocParameter> parameters,
+            IReadOnlyList<ReportColumn> columns,
             string sharedDataSourcePath,
             string reportFolder,
             string reportName)
         {
-            int objectId = GetStoredProcedureObjectId(
-                procedureName,
-                connection);
-
-            var parameters = DiscoverStoredProcedureParameters(
-                objectId,
-                connection);
-
-            var columns = DiscoverStoredProcedureColumns(
-                objectId,
-                procedureName,
-                connection);
-
             string reportParametersXml;
             string queryParametersXml;
 
@@ -150,7 +135,7 @@ namespace Flank.Ssrs
                 reportName);
         }
 
-        private List<ReportColumn> DiscoverQueryColumns(
+        public static IReadOnlyList<ReportColumn> DiscoverQueryColumns(
             string sql,
             IDbConnection connection)
         {
@@ -184,7 +169,7 @@ namespace Flank.Ssrs
             return columns;
         }
 
-        private int GetStoredProcedureObjectId(
+        public static int GetStoredProcedureObjectId(
             string procedureName,
             IDbConnection connection)
         {
@@ -212,7 +197,7 @@ SELECT OBJECT_ID(@ProcedureName, 'P')";
             }
         }
 
-        private List<SprocParameter> DiscoverStoredProcedureParameters(
+        public static IReadOnlyList<SprocParameter> DiscoverStoredProcedureParameters(
             int objectId,
             IDbConnection connection)
         {
@@ -259,7 +244,7 @@ ORDER BY p.parameter_id;";
             return parameters;
         }
 
-        private List<ReportColumn> DiscoverStoredProcedureColumns(
+        public static IReadOnlyList<ReportColumn> DiscoverStoredProcedureColumns(
             int objectId,
             string procedureName,
             IDbConnection connection)
@@ -311,7 +296,7 @@ ORDER BY column_ordinal;";
         }
 
         private static void BuildStoredProcedureParameters(
-            List<SprocParameter> parameters,
+            IReadOnlyList<SprocParameter> parameters,
             out string reportParametersXml,
             out string queryParametersXml)
         {
@@ -375,7 +360,7 @@ ORDER BY column_ordinal;";
         }
 
         private static string BuildReportRdl(
-            List<ReportColumn> columns,
+            IReadOnlyList<ReportColumn> columns,
             string sharedDataSourcePath,
             string queryXml,
             string reportParametersXml)
@@ -499,7 +484,7 @@ ORDER BY column_ordinal;";
         }
 
         private static TableRdl BuildTableRdl(
-            List<ReportColumn> columns)
+            IReadOnlyList<ReportColumn> columns)
         {
             var fields = new StringBuilder();
             var tablixColumns = new StringBuilder();
