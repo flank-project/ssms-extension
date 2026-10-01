@@ -85,7 +85,7 @@
 					guid="guidSqlToExcelPowerQueryCommandPackageCmdSet"
 					id="MakeSelfServeMenuGroup"/>
 
-				<Icon guid="guidImages" id="bmpPic1"/>
+				<Icon guid="guidImages" id="bmpSsrs"/>
 
 				<Strings>
 					<ButtonText>SSRS Report</ButtonText>
@@ -98,7 +98,7 @@
 			<Bitmap
 				guid="guidImages"
 				href="Resources\SqlToExcelPowerQueryCommand.png"
-				usedList="bmpPic1"/>
+				usedList="bmpPic1,bmpSsrs"/>
 		</Bitmaps>
 
 	</Commands>
@@ -154,6 +154,8 @@
 			value="{8a6d3409-5912-4705-bde5-2ff745dc9cf3}">
 
 			<IDSymbol name="bmpPic1" value="1"/>
+
+			<IDSymbol name="bmpSsrs" value="2" />
 
 		</GuidSymbol>
 
