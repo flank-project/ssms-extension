@@ -3,9 +3,6 @@ using System;
 using System.Data;
 using System.Linq;
 using System.Reflection;
-using System.Text;
-
-using System.IO;
 
 namespace Flank.SsmsExtension
 {
@@ -63,195 +60,53 @@ namespace Flank.SsmsExtension
         {
             ThreadHelper.ThrowIfNotOnUIThread();
 
-            var logPath = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
-                "flank-connection-debug.txt");
+            var sqlEditorsAssembly = AppDomain.CurrentDomain
+                .GetAssemblies()
+                .FirstOrDefault(a =>
+                    a.GetName().Name == "SqlEditors");
 
-            var log = new StringBuilder();
+            var editorType = sqlEditorsAssembly?.GetType(
+                "Microsoft.SqlServer.Management.UI.VSIntegration.Editors.ScriptEditorControl",
+                throwOnError: false);
 
-            try
-            {
-                log.AppendLine("=== Flank GetCurrentConnection ===");
-                log.AppendLine("Time: " + DateTime.Now);
-                log.AppendLine();
+            if (editorType == null)
+                throw new InvalidOperationException(
+                    "Could not access the SSMS SQL editor.");
 
-                var assemblies = AppDomain.CurrentDomain.GetAssemblies();
+            var method = editorType.GetMethod(
+                "GetActiveScriptEditorControl",
+                BindingFlags.Static |
+                BindingFlags.Public |
+                BindingFlags.NonPublic);
 
-                log.AppendLine("Loaded assemblies containing 'Sql':");
+            if (method == null)
+                throw new InvalidOperationException(
+                    "Could not access the active SSMS SQL editor.");
 
-                foreach (var assembly in assemblies
-                    .Where(a =>
-                        (a.GetName().Name ?? "")
-                        .IndexOf("Sql", StringComparison.OrdinalIgnoreCase) >= 0)
-                    .OrderBy(a => a.GetName().Name))
-                {
-                    log.AppendLine(
-                        $"  {assembly.GetName().Name} | {assembly.FullName}");
-                }
+            var editor = method.Invoke(null, null);
 
-                log.AppendLine();
-                log.AppendLine("STEP 1: Find ScriptEditorControl");
+            if (editor == null)
+                throw new InvalidOperationException(
+                    "Open a SQL query window first.");
 
-                var sqlEditorsAssembly = AppDomain.CurrentDomain
-                    .GetAssemblies()
-                    .FirstOrDefault(a =>
-                        a.GetName().Name == "SqlEditors");
+            var connectionField = editor.GetType().GetField(
+                "m_connection",
+                BindingFlags.Instance |
+                BindingFlags.NonPublic);
 
-                var editorType = sqlEditorsAssembly?.GetType(
-                    "Microsoft.SqlServer.Management.UI.VSIntegration.Editors.ScriptEditorControl",
-                    throwOnError: false);
+            if (connectionField == null)
+                throw new InvalidOperationException(
+                    "Could not access the query connection.");
 
-                if (editorType == null)
-                {
-                    log.AppendLine("FAILED: ScriptEditorControl not found.");
-                    File.WriteAllText(logPath, log.ToString());
+            var connection =
+                connectionField.GetValue(editor) as IDbConnection;
 
-                    throw new InvalidOperationException(
-                        "Could not access the SSMS SQL editor.");
-                }
+            if (connection == null ||
+                connection.State != ConnectionState.Open)
+                throw new InvalidOperationException(
+                    "The current query window is not connected.");
 
-                log.AppendLine(
-                    "SUCCESS: " + editorType.AssemblyQualifiedName);
-
-                log.AppendLine();
-                log.AppendLine("STEP 2: Find GetActiveScriptEditorControl");
-
-                var method = editorType.GetMethod(
-                    "GetActiveScriptEditorControl",
-                    BindingFlags.Static |
-                    BindingFlags.Public |
-                    BindingFlags.NonPublic);
-
-                if (method == null)
-                {
-                    log.AppendLine(
-                        "FAILED: GetActiveScriptEditorControl not found.");
-
-                    File.WriteAllText(logPath, log.ToString());
-
-                    throw new InvalidOperationException(
-                        "Could not access the active SSMS SQL editor.");
-                }
-
-                log.AppendLine("SUCCESS: " + method);
-
-                log.AppendLine();
-                log.AppendLine("STEP 3: Get active editor");
-
-                var editor = method.Invoke(null, null);
-
-                if (editor == null)
-                {
-                    log.AppendLine("FAILED: Active editor is null.");
-                    File.WriteAllText(logPath, log.ToString());
-
-                    throw new InvalidOperationException(
-                        "Open a SQL query window first.");
-                }
-
-                log.AppendLine(
-                    "SUCCESS: " + editor.GetType().AssemblyQualifiedName);
-
-                log.AppendLine();
-                log.AppendLine("STEP 4: Find m_connection");
-
-                var connectionField = editor.GetType().GetField(
-                    "m_connection",
-                    BindingFlags.Instance |
-                    BindingFlags.NonPublic);
-
-                if (connectionField == null)
-                {
-                    log.AppendLine("FAILED: m_connection field not found.");
-
-                    log.AppendLine();
-                    log.AppendLine("Available fields:");
-
-                    foreach (var field in editor.GetType().GetFields(
-                        BindingFlags.Instance |
-                        BindingFlags.Public |
-                        BindingFlags.NonPublic))
-                    {
-                        log.AppendLine(
-                            $"  {field.FieldType.FullName} {field.Name}");
-                    }
-
-                    File.WriteAllText(logPath, log.ToString());
-
-                    throw new InvalidOperationException(
-                        "Could not access the query connection.");
-                }
-
-                log.AppendLine(
-                    "SUCCESS: " +
-                    connectionField.FieldType.FullName +
-                    " " +
-                    connectionField.Name);
-
-                log.AppendLine();
-                log.AppendLine("STEP 5: Read m_connection");
-
-                var rawConnection = connectionField.GetValue(editor);
-
-                if (rawConnection == null)
-                {
-                    log.AppendLine("FAILED: m_connection is null.");
-                    File.WriteAllText(logPath, log.ToString());
-
-                    throw new InvalidOperationException(
-                        "The current query window is not connected.");
-                }
-
-                log.AppendLine(
-                    "Runtime type: " +
-                    rawConnection.GetType().AssemblyQualifiedName);
-
-                var connection = rawConnection as IDbConnection;
-
-                if (connection == null)
-                {
-                    log.AppendLine(
-                        "FAILED: Connection does not implement IDbConnection.");
-
-                    File.WriteAllText(logPath, log.ToString());
-
-                    throw new InvalidOperationException(
-                        "Could not access the query connection.");
-                }
-
-                log.AppendLine("IDbConnection cast: SUCCESS");
-                log.AppendLine("Connection state: " + connection.State);
-
-                if (connection.State != ConnectionState.Open)
-                {
-                    log.AppendLine("FAILED: Connection is not open.");
-                    File.WriteAllText(logPath, log.ToString());
-
-                    throw new InvalidOperationException(
-                        "The current query window is not connected.");
-                }
-
-                log.AppendLine();
-                log.AppendLine("SUCCESS");
-
-                File.WriteAllText(logPath, log.ToString());
-
-                return connection;
-            }
-            catch
-            {
-                // Preserve whatever diagnostics we have even for an
-                // unexpected reflection exception.
-                try
-                {
-                    File.WriteAllText(logPath, log.ToString());
-                }
-                catch
-                {
-                }
-
-                throw;
-            }
+            return connection;
         }
     }
 }
