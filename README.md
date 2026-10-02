@@ -11,7 +11,7 @@ Right-click a query and choose:
 
 ---
 
-**Jump to:** [Install](#install) · [SSRS Reports](#ssrs-reports) · [Excel (Power Query)](#excel--power-query-) · [Uninstall](#uninstall)
+**Jump to:** [Install](#install) · [SSRS Reports](#ssrs-reports) · [Excel (Power Query)](#excel-power-query) · [Uninstall](#uninstall)
 
 ---
 
