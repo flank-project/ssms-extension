@@ -5,13 +5,13 @@ Flank is an SSMS extension that turns SQL queries into self-serve reports.
 Right-click a query and choose:
 
 - **SSRS Report** — deploy the query as a report to an existing SSRS server.
-- **Refreshable Excel** — create an .xlsx workbook that users can refresh themselves.
+- **Excel (Power Query)** — create an .xlsx workbook that users can refresh themselves.
 
 <img width="1600" height="682" alt="Flank SSMS Screenshot - Top of Menu Thin" src="https://github.com/user-attachments/assets/8bc7f562-acf3-4a22-b4b6-1f8f2feb6be6" />
 
 ---
 
-**Jump to:** [Install](#install) · [SSRS Reports](#ssrs-reports) · [Refreshable Excel](#refreshable-excel) · [Uninstall](#uninstall)
+**Jump to:** [Install](#install) · [SSRS Reports](#ssrs-reports) · [Excel (Power Query)](#excel--power-query-) · [Uninstall](#uninstall)
 
 ---
 
@@ -26,7 +26,7 @@ Right-click inside a SQL query and you should see **Make Self-Serve → Refresha
 ## SSRS Reports
 
   
-## Refreshable Excel
+## Excel (Power Query)
 
 ### Current support
 
