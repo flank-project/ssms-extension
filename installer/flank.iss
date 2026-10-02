@@ -1,5 +1,5 @@
 #define MyAppName "Flank"
-#define MyAppVersion "0.1.2"
+#define MyAppVersion "0.2.0"
 #define MyAppPublisher "Flank Technologies, Inc."
 
 #define SsmsRoot "{autopf}\Microsoft SQL Server Management Studio 22\Release"
@@ -35,6 +35,7 @@ RestartApplications=no
 Source: "..\Flank.SsmsExtension\bin\Release\net472\Flank.SsmsExtension.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\Flank.SsmsExtension\bin\Release\net472\Flank.SsmsExtension.pkgdef"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\Flank.SsmsExtension\bin\Release\net472\Flank.Excel.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\Flank.SsmsExtension\bin\Release\net472\Flank.Ssrs.dll"; DestDir: "{app}"; Flags: ignoreversion
 
 
 [Run]
