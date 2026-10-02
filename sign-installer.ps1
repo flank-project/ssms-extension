@@ -6,7 +6,7 @@ $signtool = "C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\signtoo
 $dlib = "C:\artifact-signing\Microsoft.ArtifactSigning.Client\bin\x64\Azure.CodeSigning.Dlib.dll"
 
 $metadata = "$repo\installer\artifact-signing.json"
-$installer = "$repo\installer\output\Flank-SSMS-Setup-0.2.0.exe"
+$installer = "$repo\installer\output\Flank-SSMS-Setup-0.2.1.exe"
 
 Write-Host "Signing Flank installer..."
 

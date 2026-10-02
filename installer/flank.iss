@@ -1,5 +1,5 @@
 #define MyAppName "Flank"
-#define MyAppVersion "0.2.0"
+#define MyAppVersion "0.2.1"
 #define MyAppPublisher "Flank Technologies, Inc."
 
 #define SsmsRoot "{autopf}\Microsoft SQL Server Management Studio 22\Release"
