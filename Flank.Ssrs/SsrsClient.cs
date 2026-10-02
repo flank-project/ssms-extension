@@ -603,11 +603,17 @@ namespace Flank.Ssrs
                 var items =
                     rs.ListChildren("/", true);
 
-                return items
+                var folders = items
                     .Where(x =>
                         x.TypeName == "Folder")
                     .Select(x => x.Path)
                     .ToList();
+
+                if (!folders.Contains("/"))
+                {
+                    folders.Insert(0, "/");
+                }
+                return folders;
             }
             catch (Exception ex)
             {
