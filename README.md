@@ -7,7 +7,7 @@ Right-click a query and choose:
 - **SSRS Report** — deploy the query as a report to an existing SSRS server.
 - **Excel (Power Query)** — create an .xlsx workbook that users can refresh themselves.
 
-<img width="1600" height="682" alt="Flank SSMS Screenshot - Top of Menu Thin" src="https://github.com/user-attachments/assets/8bc7f562-acf3-4a22-b4b6-1f8f2feb6be6" />
+<img width="1600" height="682" alt="Flank SSRS SSMS README" src="https://github.com/user-attachments/assets/1f21ef93-ad61-408b-bfa9-9300cef3bd66" />
 
 ---
 
