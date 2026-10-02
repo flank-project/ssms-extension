@@ -92,15 +92,14 @@ namespace Flank.SsmsExtension
                 log.AppendLine();
                 log.AppendLine("STEP 1: Find ScriptEditorControl");
 
-                var editorType = assemblies
-                    .SelectMany(a =>
-                    {
-                        try { return a.GetTypes(); }
-                        catch { return Type.EmptyTypes; }
-                    })
-                    .FirstOrDefault(t =>
-                        t.FullName ==
-                        "Microsoft.SqlServer.Management.UI.VSIntegration.Editors.ScriptEditorControl");
+                var sqlEditorsAssembly = AppDomain.CurrentDomain
+                    .GetAssemblies()
+                    .FirstOrDefault(a =>
+                        a.GetName().Name == "SqlEditors");
+
+                var editorType = sqlEditorsAssembly?.GetType(
+                    "Microsoft.SqlServer.Management.UI.VSIntegration.Editors.ScriptEditorControl",
+                    throwOnError: false);
 
                 if (editorType == null)
                 {
