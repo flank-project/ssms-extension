@@ -19,7 +19,7 @@ Right-click a query and choose:
 
 Flank currently supports **SSMS 22 on Windows**. For more detailed compatibility information, see [SSRS Reports](#ssrs-reports) and [Excel (Power Query)](#excel-power-query).
 
-Download [Flank-SSMS-Setup-0.2.1.exe](https://github.com/flank-project/ssms-extension/releases/download/v0.2.1/Flank-SSMS-Setup-0.2.1.exe).
+Download [Flank-SSMS-Setup-0.2.4.exe](https://github.com/flank-project/ssms-extension/releases/download/v0.2.4/Flank-SSMS-Setup-0.2.4.exe).
 
 Close SSMS, run the installer, then reopen SSMS.
 
