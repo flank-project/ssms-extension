@@ -27,11 +27,28 @@ Right-click inside a SQL query and you should see **Make Self-Serve**, with opti
 
 ## SSRS Reports
 
-### Current Support
+Flank can turn a SQL query into a basic SSRS report and deploy it directly to your existing SSRS server.
+
+Right-click a query and choose **Make Self-Serve → SSRS Report**. Enter your SSRS URLs, choose a folder and shared data source, name the report, and click **Create Report**.
+
+### Current support
+
+Flank currently supports:
+
+- Existing SSRS servers
+- Existing shared data sources
+- Selected SQL, or the entire query if nothing is selected
+- Basic tabular reports using the columns returned by the query
+
+Not supported yet:
+
+- Stored procedure parameters / user inputs
+- Report formatting and customization
+- Creating or configuring SSRS data sources
   
 ## Excel (Power Query)
 
-### Current Support
+### Current support
 
 Flank currently supports:
 
