@@ -17,18 +17,21 @@ Right-click a query and choose:
 
 ## Install
 
+Flank currently supports **SSMS 22 on Windows**. For more detailed compatibility information, see [SSRS Reports](#ssrs-reports) and [Excel (Power Query)](#excel-power-query).
+
 Download [Flank-SSMS-Setup-0.1.2.exe](https://github.com/flank-project/ssms-extension/releases/download/v0.1.2/Flank-SSMS-Setup-0.1.2.exe).
 
 Close SSMS, run the installer, then reopen SSMS.
 
-Right-click inside a SQL query and you should see **Make Self-Serve → Refreshable Excel**.
+Right-click inside a SQL query and you should see **Make Self-Serve**, with options for **SSRS Report** and **Excel (Power Query)**.
 
 ## SSRS Reports
 
+### Current Support
   
 ## Excel (Power Query)
 
-### Current support
+### Current Support
 
 Flank currently supports:
 
