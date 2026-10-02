@@ -106,10 +106,12 @@ namespace Flank.SsmsExtension
                 .SwitchToMainThreadAsync();
 
             string sql;
+            System.Data.IDbConnection connection;
 
             try
             {
                 sql = SsmsQueryHelper.GetCurrentSql();
+                connection = SsmsQueryHelper.GetCurrentConnection();
             }
             catch (InvalidOperationException ex)
             {
@@ -205,9 +207,6 @@ namespace Flank.SsmsExtension
                 progressDialog.SetStatus("Analyzing query...");
                 progressDialog.Show();
                 progressDialog.Refresh();
-
-                var connection =
-                    SsmsQueryHelper.GetCurrentConnection();
 
                 var columns =
                     SqlMetadataDiscovery.DiscoverQueryColumns(
