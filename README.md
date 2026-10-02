@@ -4,47 +4,68 @@ Flank is an **SSMS extension** that turns a SQL query into a **refreshable Excel
 
 Right-click a query, choose `Make Self-Serve` → `Refreshable Excel`, and Flank creates an `.xlsx` file that you can send to an end user. Then, they can refresh the data themselves in Excel.
 
-<img width="1600" height="900" alt="Flank SSMS Screenshot - Top of Menu2x" src="https://github.com/user-attachments/assets/af5316db-e739-45ee-a842-372c804066ed" />
+<img width="1600" height="682" alt="Flank SSMS Screenshot - Top of Menu Thin" src="https://github.com/user-attachments/assets/8bc7f562-acf3-4a22-b4b6-1f8f2feb6be6" />
 
-## Current support
+---
 
-Flank current supports:
+**Jump to:** [Install](#install) · [Current support](#current-support) · [Set up end-user access](#how-do-i-give-an-end-user-access) · [Uninstall](#uninstall)
 
-- **SSMS 22** on Windows
-  - Selected SQL, or the entire query if nothing is selected
-- **Desktop Excel** with Power Query
-  - Power Query's "native SQL query"
-  - Includes normal `SELECT` queries, CTEs, temp tables, variables, and stored procedures that return a result set
-  - End user can "Refresh All" using their own database credentials
-
-Not supported yet:
-
-- Query parameters / user inputs
-- Multiple result sets
-- Power Query queries built from tables/views using Power Query transformations (query folding)
-- Excel for the web
-- End users who cannot connect directly to the database
-- Older versions of SSMS / Excel
+---
 
 ## Install
 
-Download [Flank-SSMS-Setup-0.1.0.exe](https://github.com/flank-project/ssms-extension/releases/download/v0.1.0/Flank-SSMS-Setup-0.1.0.exe).
+Download [Flank-SSMS-Setup-0.1.2.exe](https://github.com/flank-project/ssms-extension/releases/download/v0.1.2/Flank-SSMS-Setup-0.1.2.exe).
 
 Close SSMS, run the installer, then reopen SSMS.
 
 Right-click inside a SQL query and you should see **Make Self-Serve → Refreshable Excel**.
 
+## Current support
+
+Flank currently supports:
+
+- **SSMS 22** on Windows
+  - Selected SQL, or the entire query if nothing is selected
+- **Desktop Excel** with Power Query
+  - End users can "Refresh All" using their own database credentials
+- **Native SQL queries**
+  - Uses Power Query's "native SQL query" support
+  - Includes `SELECT` queries, CTEs, temp tables, variables, and stored procedures that return a result set
+
+Not supported yet:
+
+- SQL
+  - Query parameters / user inputs
+  - Multiple result sets
+- Excel
+  - Excel for the web
+- SSMS
+  - Versions earlier than SSMS 22
+
 ## How do I give an end user access?
 
 The workbook connects directly to your database through Power Query, so the person refreshing it needs their own credentials. Flank does not put your credentials in the workbook.
 
-If this is the first time you're giving an end user database access, there are a few common options.
+Choose your setup:
+
+- **Azure SQL + Microsoft Entra** → [setup instructions](#azure-sql--microsoft-entra)
+- **SQL Server + Windows / Active Directory** → [setup instructions](#sql-server--windows--active-directory)
+- **SQL Server authentication (username + password)** → [setup instructions](#sql-server-authentication)
+- **End users can't connect directly to the database** → [read this](#what-if-end-users-arent-allowed-to-connect-to-the-database)
+
+### Not sure which authentication method to use?
+
+- **Azure SQL:** Prefer Microsoft Entra if your end users already have Entra accounts.
+- **SQL Server:** Prefer Windows / Active Directory authentication if your end users already have domain accounts.
+- **SQL Server authentication:** Use this when the other options aren't available. It works, but requires giving the end user a separate database username and password.
+
+In general, using an identity the user already has is easier to manage than creating another set of credentials.
 
 ### Azure SQL + Microsoft Entra
 
-If you're using Azure SQL and the end user already has an account in your Microsoft Entra tenant, they can use that same account to authenticate from Excel.
+If you're using Azure SQL and the end user already has an account in your Microsoft Entra tenant, they can use that identity to refresh the workbook.
 
-#### 1. Check that Microsoft Entra authentication is enabled for your SQL server
+#### 1. Check that your Azure SQL server has a Microsoft Entra admin
 
 In the Azure Portal:
 
@@ -52,71 +73,184 @@ In the Azure Portal:
 2. Under **Settings**, open **Microsoft Entra ID**.
 3. Look for a **Microsoft Entra admin**.
 
-If an admin is already listed, you're ready for the next step.
+If an admin is already listed, continue to the next step.
 
-If not, click **Set admin**, select an Entra user or group, and click **Save**. This enables Microsoft Entra authentication for the logical server and establishes the Entra identity that can initially create other Entra users in SQL Server.
+If not, click **Set admin**, select an Entra user or group, and click **Save**.
 
-> This is a server-level setting, so you only need to configure it once for the Azure SQL logical server — not once per workbook or end user.
+This is a server-level setting, so you only need to configure it once for the Azure SQL logical server.
 
-#### 2. Connect to the database using Microsoft Entra authentication
+#### 2. Connect to the database as the Microsoft Entra admin
 
-In SSMS, connect to the Azure SQL database using a Microsoft Entra authentication method rather than SQL Server authentication.
+In SSMS, connect to the database using **Microsoft Entra MFA** authentication and the Entra admin account from the previous step.
 
-The account you connect with needs permission to create users in the database. If you're setting this up for the first time, connecting as the Microsoft Entra admin you configured above is the simplest option.
+#### 3. Create a database user for the end user
 
-#### 3. Add the end user to the database
-
-For an individual user:
+Run:
 
 ```sql
 CREATE USER [user@company.com] FROM EXTERNAL PROVIDER;
 ```
 
-Or, if multiple people will refresh these workbooks, you can create an Entra group and add that group instead:
+`user@company.com` should be the user's **User Principal Name (UPN)** in Microsoft Entra. This often looks like their email address, but the two can be different.
+
+You can find the user's UPN in the Azure Portal under **Microsoft Entra ID → Users → [user] → User principal name**.
+
+#### 4. Give the user access to the data
+
+For the simplest setup, add the user to the built-in `db_datareader` role:
 
 ```sql
-CREATE USER [Reporting Users] FROM EXTERNAL PROVIDER;
+ALTER ROLE db_datareader ADD MEMBER [user@company.com];
 ```
 
-Then grant that user or group the permissions needed to run the query.
+This allows the user to read all user tables and views in that database.
 
-On their first refresh, Excel will prompt the end user to sign in with their Microsoft account. Excel then connects to Azure SQL as that user.
+That's intentionally broad. It's a convenient way to get your first workbook working, but you can [narrow the user's permissions](#narrowing-database-permissions) later.
+
+#### 5. Send the workbook
+
+Send the generated `.xlsx` file to the end user. They do **not** need Flank installed.
+
+When they click **Data → Refresh All** for the first time, Excel will ask them to authenticate to the database. Choose the Microsoft/Entra authentication option and sign in using the same Entra account you added above.
+
+After authentication, Excel will run the workbook's query as that user and load the results.
+
 ### SQL Server + Windows / Active Directory
 
-If you're using SQL Server with Windows Authentication and your end users already have Windows/Active Directory accounts that SQL Server can recognize, you can use those identities instead.
+If you're using SQL Server with Windows Authentication and the end user already has a Windows/Active Directory account that SQL Server can recognize, they can use that identity to refresh the workbook.
 
-Grant the individual Windows account or, more commonly, an AD group access to SQL Server and the database.
+This assumes the end user's computer can reach the SQL Server — for example, because they're on the corporate network or connected through a VPN.
 
-For example:
+#### 1. Check the end user's Windows identity
 
-```sql
-CREATE LOGIN [DOMAIN\Reporting Users] FROM WINDOWS;
-CREATE USER [DOMAIN\Reporting Users] FOR LOGIN [DOMAIN\Reporting Users];
+The user will normally have an Active Directory identity that looks something like:
+
+```text
+COMPANY\jsmith
 ```
 
-The end user can then select Windows authentication in Excel and connect using their existing Windows identity.
+This is the identity SQL Server will use when the user connects with Windows Authentication.
+
+If you're not sure of the username, the end user can open Command Prompt and run:
+
+```cmd
+whoami
+```
+
+#### 2. Create a SQL Server login for the end user
+
+In SSMS, connect to the SQL Server as an administrator and run:
+
+```sql
+CREATE LOGIN [COMPANY\jsmith] FROM WINDOWS;
+```
+
+This allows that Windows identity to authenticate to SQL Server.
+
+#### 3. Create a user in the database
+
+Switch to the database containing the data:
+
+```sql
+USE MyDatabase;
+GO
+
+CREATE USER [COMPANY\jsmith]
+FOR LOGIN [COMPANY\jsmith];
+```
+
+The login gives the user access to the SQL Server. The database user gives that login an identity inside this particular database.
+
+#### 4. Give the user access to the data
+
+For the simplest setup, add the user to the built-in `db_datareader` role:
+
+```sql
+ALTER ROLE db_datareader ADD MEMBER [COMPANY\jsmith];
+```
+
+This allows the user to read all user tables and views in that database.
+
+That's intentionally broad. It's a convenient way to get your first workbook working, but you can [narrow the user's permissions](#narrowing-database-permissions) later.
+
+#### 5. Send the workbook
+
+Send the generated `.xlsx` file to the end user. They do **not** need Flank installed.
+
+When they click **Data → Refresh All** for the first time, Excel will ask them to authenticate to the database. Choose **Windows** authentication.
+
+Excel will connect to SQL Server using their Windows identity, run the workbook's query as that user, and load the results.
 
 ### SQL Server authentication
 
-If neither of the above is available and you use SQL Server authentication (username + password), you can create a SQL login for the end user:
+If you don't have Microsoft Entra or Windows/Active Directory authentication available and your SQL Server accepts SQL Server authentication (username + password), you can create a SQL login for the end user.
+
+This assumes the end user's computer can reach the SQL Server — for example, because they're on the corporate network, connected through a VPN, or the server is otherwise reachable from their machine.
+
+#### 1. Check that SQL Server authentication is enabled
+
+In SSMS:
+
+1. Right-click the SQL Server in **Object Explorer** and select **Properties**.
+2. Open **Security**.
+3. Under **Server authentication**, check that **SQL Server and Windows Authentication mode** is selected.
+
+If you change this setting, SQL Server needs to be restarted before the change takes effect.
+
+#### 2. Create a SQL Server login for the end user
+
+Connect to SQL Server as an administrator and run:
 
 ```sql
 CREATE LOGIN report_user
-WITH PASSWORD = '...';
+WITH PASSWORD = 'use-a-strong-password-here';
+```
+
+This creates a username and password that the end user can use to authenticate to SQL Server.
+
+#### 3. Create a user in the database
+
+Switch to the database containing the data:
+
+```sql
+USE MyDatabase;
+GO
 
 CREATE USER report_user
 FOR LOGIN report_user;
 ```
 
-Excel will prompt the user for that username and password when they first refresh the workbook.
+The login gives the user access to the SQL Server. The database user gives that login an identity inside this particular database.
 
-The tradeoff is that you're now managing another set of credentials. Users have another password to store, rotate, and potentially share, and identity/auditing is generally cleaner when you can use their existing Entra or Windows identity instead.
+#### 4. Give the user access to the data
 
-The credentials are handled by Excel and are not embedded in the workbook by Flank.
+For the simplest setup, add the user to the built-in `db_datareader` role:
 
-### What permissions does the user need?
+```sql
+ALTER ROLE db_datareader ADD MEMBER report_user;
+```
 
-The end user needs permission to execute whatever SQL is embedded in the workbook.
+This allows the user to read all user tables and views in that database.
+
+That's intentionally broad. It's a convenient way to get your first workbook working, but you can [narrow the user's permissions](#narrowing-database-permissions) later.
+
+#### 5. Send the workbook
+
+Send the generated `.xlsx` file to the end user. They do **not** need Flank installed.
+
+When they click **Data → Refresh All** for the first time, Excel will ask them to authenticate to the database. Choose **Database** authentication and enter the SQL Server username and password you created above.
+
+Excel will connect to SQL Server using those credentials, run the workbook's query as that user, and load the results.
+
+### What if end users aren't allowed to connect to the database?
+
+Flank's refreshable Excel output isn't currently a fit for that environment.
+
+Excel connects directly from the end user's machine to SQL Server. There is no Flank server or service account sitting between Excel and the database.
+
+### Narrowing database permissions
+
+`db_datareader` gives the user read access to all user tables and views in the database. You don't have to give Flank users that much access.
 
 For example, if the workbook contains:
 
@@ -152,12 +286,6 @@ EXEC dbo.GetVehicleTrips;
 ```
 
 This lets the user refresh the workbook without giving them direct `SELECT` permission on the underlying tables.
-
-### What if end users aren't allowed to connect to the database?
-
-Flank's refreshable Excel output isn't currently a fit for that environment.
-
-Excel connects directly from the end user's machine to SQL Server. There is no Flank server or service account sitting between Excel and the database.
 
 ## Uninstall
 
