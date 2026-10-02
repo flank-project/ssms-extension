@@ -53,7 +53,7 @@ Flank will ask for two URLs:
 - **Report Server URL** — the SSRS web service URL, typically `http://your-server/ReportServer`
 - **Report Portal URL** — the SSRS web portal URL, typically `http://your-server/Reports`
 
-If you normally view reports in a browser, the URL you use is the **Reports URL**. The Report Server URL is usually the same server with `/ReportServer` instead of `/Reports`.
+If you normally view reports in a browser, the URL you use is the **Report Portal URL**. The **Report Server URL** is usually the same server with `/ReportServer` instead of `/Reports`.
 
 Then choose a folder and shared data source, name the report, and click **Create Report**.
 
