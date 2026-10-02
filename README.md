@@ -59,12 +59,12 @@ Then choose a folder and shared data source, name the report, and click **Create
 
 ## Excel (Power Query)
 
+Flank can turn a SQL query into an .xlsx workbook that end users can refresh themselves using Power Query.
+
 ### Current support
 
 Flank currently supports:
 
-- **SSMS 22** on Windows
-  - Selected SQL, or the entire query if nothing is selected
 - **Desktop Excel** with Power Query
   - End users can "Refresh All" using their own database credentials
 - **Native SQL queries**
@@ -78,8 +78,6 @@ Not supported yet:
   - Multiple result sets
 - Excel
   - Excel for the web
-- SSMS
-  - Versions earlier than SSMS 22
  
 ### How do I give an end user access?
 
