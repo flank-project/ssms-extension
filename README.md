@@ -1,14 +1,17 @@
 # Flank
 
-Flank is an **SSMS extension** that turns a SQL query into a **refreshable Excel workbook.**
+Flank is an SSMS extension that turns SQL queries into self-serve reports.
 
-Right-click a query, choose `Make Self-Serve` → `Refreshable Excel`, and Flank creates an `.xlsx` file that you can send to an end user. Then, they can refresh the data themselves in Excel.
+Right-click a query and choose:
+
+- **SSRS Report** — deploy the query as a report to an existing SSRS server.
+- **Refreshable Excel** — create an .xlsx workbook that users can refresh themselves.
 
 <img width="1600" height="682" alt="Flank SSMS Screenshot - Top of Menu Thin" src="https://github.com/user-attachments/assets/8bc7f562-acf3-4a22-b4b6-1f8f2feb6be6" />
 
 ---
 
-**Jump to:** [Install](#install) · [Current support](#current-support) · [Set up end-user access](#how-do-i-give-an-end-user-access) · [Uninstall](#uninstall)
+**Jump to:** [Install](#install) · [SSRS Reports](#ssrs-reports) · [Refreshable Excel](#refreshable-excel) · [Uninstall](#uninstall)
 
 ---
 
@@ -20,7 +23,12 @@ Close SSMS, run the installer, then reopen SSMS.
 
 Right-click inside a SQL query and you should see **Make Self-Serve → Refreshable Excel**.
 
-## Current support
+## SSRS Reports
+
+  
+## Refreshable Excel
+
+### Current support
 
 Flank currently supports:
 
@@ -41,8 +49,8 @@ Not supported yet:
   - Excel for the web
 - SSMS
   - Versions earlier than SSMS 22
-
-## How do I give an end user access?
+ 
+### How do I give an end user access?
 
 The workbook connects directly to your database through Power Query, so the person refreshing it needs their own credentials. Flank does not put your credentials in the workbook.
 
