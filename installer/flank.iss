@@ -1,5 +1,5 @@
 #define MyAppName "Flank"
-#define MyAppVersion "0.2.4"
+#define MyAppVersion "0.2.5"
 #define MyAppPublisher "Flank Technologies, Inc."
 
 [Setup]
@@ -104,7 +104,7 @@ begin
 
   Command :=
     '-latest ' +
-    '-products Microsoft.SQLServer.ManagementStudio ' +
+    '-products Microsoft.VisualStudio.Product.SSMS ' +
     '-property installationPath ' +
     '>"' + TempFile + '"';
 
