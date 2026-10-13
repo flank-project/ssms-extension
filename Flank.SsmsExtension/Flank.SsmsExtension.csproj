@@ -28,6 +28,12 @@
 <Reference Include="Microsoft.SqlServer.RegSvrEnum">
   <HintPath>C:\SSMS-Weird\Common7\IDE\Microsoft.SqlServer.RegSvrEnum.dll</HintPath>
 </Reference>
+<Reference Include="Microsoft.SqlServer.ConnectionInfo">
+  <HintPath>C:\SSMS-Weird\Common7\IDE\Microsoft.SqlServer.ConnectionInfo.dll</HintPath>
+</Reference>
+<Reference Include="Microsoft.SqlServer.Management.Sdk.SqlStudio">
+  <HintPath>C:\SSMS-Weird\Common7\IDE\Microsoft.SqlServer.Management.Sdk.SqlStudio.dll</HintPath>
+</Reference>
 <Reference Include="SqlPackageBase">
   <HintPath>C:\SSMS-Weird\Common7\IDE\SqlPackageBase.dll</HintPath>
 </Reference>

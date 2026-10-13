@@ -21,7 +21,13 @@ SSMS window exists, and exits non-zero if build, setup or launch fails.
 
 Request computer-use access to "SQL Server Management Studio 22", then
 screenshot. The SSMS the script launches can be driven directly on this
-machine (the whole desktop session runs elevated).
+machine (the whole desktop session runs elevated). Don't call
+`open_application` for SSMS while it's running: it starts a second instance.
+
+Mouse clicks on SSMS are sometimes ignored (seen on the Connect button and
+on context-menu items). Prefer the keyboard: click a dialog's title bar,
+then Return for its default button; select a tree node with a click, then
+shift+F10 for its context menu, arrow keys, and Return.
 
 - **Recovered Files dialog**: appears if SSMS was force-closed with a query
   open. Click **Do Not Recover** only if the files listed are your own test
@@ -41,6 +47,9 @@ machine (the whole desktop session runs elevated).
 - Right-click in the query editor: **Make Self-Serve** is present, with
   **Excel (Power Query)** and **SSRS Report** in its submenu.
 - Press Escape to close the menus.
+- In Object Explorer, expand Databases > (database) > Programmability >
+  Stored Procedures and open a procedure's context menu: **Make Self-Serve**
+  is present (the folder's own menu should not have it).
 
 Don't click Excel (Power Query) or SSRS Report unless the user asked to test
 them: they launch Excel or contact a report server.
