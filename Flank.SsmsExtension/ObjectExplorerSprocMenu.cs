@@ -1,23 +1,27 @@
+using Flank.Ssrs;
 using Microsoft.SqlServer.Management;
-using Microsoft.SqlServer.Management.UI.VSIntegration;
+using Microsoft.SqlServer.Management.Common;
 using Microsoft.SqlServer.Management.UI.VSIntegration.ObjectExplorer;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.Design;
+using System.Data;
+using System.Linq;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
+using System.Windows.Forms;
 using Task = System.Threading.Tasks.Task;
 
 namespace Flank.SsmsExtension
 {
     /// <summary>
-    /// Adds Flank's item to the Object Explorer right-click menu for stored procedures.
+    /// Adds Make Self-Serve to the Object Explorer right-click menu for stored procedures.
     /// </summary>
     /// <remarks>
     /// Object Explorer menus aren't VS command-table menus, so .vsct can't target them.
     /// Each node type's menu is a <see cref="HierarchyObject"/>, reachable from a node
-    /// via its <see cref="IMenuHandler"/> service. We add our item the first time a
+    /// via its <see cref="IMenuHandler"/> service. We add our submenu the first time a
     /// stored procedure is selected (right-clicking a node selects it first).
     /// </remarks>
     internal sealed class ObjectExplorerSprocMenu
@@ -62,15 +66,12 @@ namespace Flank.SsmsExtension
 
             try
             {
-                objectExplorer.GetSelectedNodes(out int count, out INodeInformation[] nodes);
+                var node = GetSelectedStoredProcedure();
 
-                if (count != 1 || nodes[0].UrnPath != StoredProcedureUrnPath)
-                    return;
-
-                if (nodes[0].GetService(typeof(IMenuHandler)) is HierarchyObject menu &&
+                if (node?.GetService(typeof(IMenuHandler)) is HierarchyObject menu &&
                     extendedMenus.Add(menu))
                 {
-                    menu.AddChild(string.Empty, new SprocMenuItem());
+                    menu.AddChild(string.Empty, new SelfServeSubmenu(this));
                 }
             }
             catch (Exception ex)
@@ -80,53 +81,174 @@ namespace Flank.SsmsExtension
             }
         }
 
-        private sealed class SprocMenuItem : ToolsMenuItemBase
+        private INodeInformation GetSelectedStoredProcedure()
         {
-            public SprocMenuItem()
-            {
-                Text = "Make Self-Serve";
-            }
+            objectExplorer.GetSelectedNodes(out int count, out INodeInformation[] nodes);
 
-            public override object Clone()
-            {
-                return new SprocMenuItem();
-            }
+            return count == 1 && nodes[0].UrnPath == StoredProcedureUrnPath
+                ? nodes[0]
+                : null;
+        }
 
-            // SSMS swallows exceptions thrown from here, so report them ourselves.
-            protected override void Invoke()
+        private void RunForSelection(Func<INodeInformation, StoredProcedureInfo, Task> action)
+        {
+            ThreadHelper.JoinableTaskFactory.RunAsync(async () =>
             {
-                try
-                {
-                    InvokeCore();
-                }
-                catch (Exception ex)
-                {
-                    SsmsUiHelper.ShowMessage(
-                        $"Make Self-Serve failed.\n\n{ex}",
-                        OLEMSGICON.OLEMSGICON_CRITICAL);
-                }
-            }
+                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
-            private void InvokeCore()
-            {
-                ThreadHelper.ThrowIfNotOnUIThread();
-
-                var sproc = StoredProcedureInfo.FromNode(Parent);
+                var node = GetSelectedStoredProcedure();
+                var sproc = StoredProcedureInfo.FromNode(node);
 
                 if (sproc == null)
                 {
                     SsmsUiHelper.ShowMessage(
-                        "Could not read the selected stored procedure.",
-                        OLEMSGICON.OLEMSGICON_WARNING);
+                        "Select a stored procedure in Object Explorer first.",
+                        OLEMSGICON.OLEMSGICON_INFO);
                     return;
                 }
 
-                SsmsUiHelper.ShowMessage(
-                    $"Server: {sproc.Server}\n" +
-                    $"Database: {sproc.Database}\n" +
-                    $"Procedure: [{sproc.Schema}].[{sproc.Name}]",
-                    OLEMSGICON.OLEMSGICON_INFO);
+                await action(node, sproc);
+            });
+        }
+
+        private static async Task CreateExcelAsync(INodeInformation node, StoredProcedureInfo sproc)
+        {
+            string step = "Reading stored procedure";
+
+            try
+            {
+                using (var connection = OpenConnection(node, sproc.Database))
+                {
+                    int objectId = SqlMetadataDiscovery.GetStoredProcedureObjectId(
+                        sproc.QualifiedName, connection);
+
+                    var parameters = SqlMetadataDiscovery.DiscoverStoredProcedureParameters(
+                        objectId, connection);
+
+                    if (parameters.Count > 0)
+                    {
+                        SsmsUiHelper.ShowMessage(
+                            $"{sproc.QualifiedName} has parameters " +
+                            $"({string.Join(", ", parameters.Select(p => p.Name))}).\n\n" +
+                            "Excel workbooks only support stored procedures without " +
+                            "parameters for now. SSRS Report supports parameters.",
+                            OLEMSGICON.OLEMSGICON_INFO);
+                        return;
+                    }
+
+                    // Fails with a clear message if there's no result set to load.
+                    SqlMetadataDiscovery.DiscoverStoredProcedureColumns(
+                        objectId, sproc.QualifiedName, connection);
+                }
             }
+            catch (Exception ex)
+            {
+                ExcelWorkflow.ShowFailure(step, ex, sproc.Server, sproc.Database, null);
+                return;
+            }
+
+            await ExcelWorkflow.RunAsync(
+                $"EXEC {sproc.QualifiedName}",
+                sproc.Server,
+                sproc.Database,
+                sproc.Name + ".xlsx");
+        }
+
+        private static Task CreateSsrsReportAsync(INodeInformation node, StoredProcedureInfo sproc)
+        {
+            return SsrsWorkflow.RunAsync(
+                $"EXEC {sproc.QualifiedName}",
+                sqlReadOnly: true,
+                defaultReportName: sproc.Name,
+                analyzingStatus: "Analyzing stored procedure...",
+                prepare: reportOptions =>
+                {
+                    using (var connection = OpenConnection(node, sproc.Database))
+                    {
+                        int objectId = SqlMetadataDiscovery.GetStoredProcedureObjectId(
+                            sproc.QualifiedName, connection);
+
+                        var parameters = SqlMetadataDiscovery.DiscoverStoredProcedureParameters(
+                            objectId, connection);
+
+                        var columns = SqlMetadataDiscovery.DiscoverStoredProcedureColumns(
+                            objectId, sproc.QualifiedName, connection);
+
+                        return client => client.CreateReportFromStoredProcedure(
+                            sproc.QualifiedName,
+                            parameters,
+                            columns,
+                            reportOptions.DataSource,
+                            reportOptions.Folder,
+                            reportOptions.ReportName);
+                    }
+                });
+        }
+
+        /// <summary>Opens a connection to the node's server, in the procedure's database.</summary>
+        private static IDbConnection OpenConnection(INodeInformation node, string database)
+        {
+            if (!(node.Connection is SqlConnectionInfo info))
+                throw new InvalidOperationException("Could not read the Object Explorer connection.");
+
+            var copy = info.Copy();
+            copy.DatabaseName = database;
+
+            var connection = copy.CreateConnectionObject();
+            connection.Open();
+            return connection;
+        }
+
+        /// <summary>
+        /// The Make Self-Serve submenu. Object Explorer asks menu children that are
+        /// themselves menu handlers for their WinForms items and adds them as-is.
+        /// Must not implement IMenuItem, or it's added as a plain item instead.
+        /// </summary>
+        private sealed class SelfServeSubmenu : IMenuHandler, IWinformsMenuHandler, ICloneable
+        {
+            private readonly ObjectExplorerSprocMenu owner;
+
+            public SelfServeSubmenu(ObjectExplorerSprocMenu owner)
+            {
+                this.owner = owner;
+            }
+
+            public INodeInformation Parent { get; set; }
+
+            public CommandID ContextMenuID => null;
+
+            public event EventHandler OnRefresh
+            {
+                add { }
+                remove { }
+            }
+
+            public ToolStripItem[] GetMenuItems()
+            {
+                var submenu = new ToolStripMenuItem("Make Self-Serve");
+
+                submenu.DropDownItems.Add(
+                    "Excel (Power Query)",
+                    null,
+                    (s, e) => owner.RunForSelection(CreateExcelAsync));
+
+                submenu.DropDownItems.Add(
+                    "SSRS Report",
+                    null,
+                    (s, e) => owner.RunForSelection(CreateSsrsReportAsync));
+
+                return new ToolStripItem[] { submenu };
+            }
+
+            public object Clone() => new SelfServeSubmenu(owner);
+
+            public void FillMenuCommands(IMenuCommandService menuCommands) { }
+
+            public void UpdateMenuCommandsStatus(MenuCommand menuCommand) { }
+
+            public void DoDefaultAction() { }
+
+            public void InvokeProperties() { }
         }
     }
 
@@ -136,6 +258,9 @@ namespace Flank.SsmsExtension
         public string Database { get; private set; } = "";
         public string Schema { get; private set; } = "";
         public string Name { get; private set; } = "";
+
+        /// <summary>[schema].[name], quoted for T-SQL.</summary>
+        public string QualifiedName => $"{QuoteName(Schema)}.{QuoteName(Name)}";
 
         /// <summary>
         /// Reads a stored procedure node's URN, e.g.
@@ -166,6 +291,8 @@ namespace Flank.SsmsExtension
                 Name = name,
             };
         }
+
+        private static string QuoteName(string name) => "[" + name.Replace("]", "]]") + "]";
 
         // URN values are single-quoted, with embedded quotes doubled.
         private static string? UrnAttribute(string urn, string element, string attribute)

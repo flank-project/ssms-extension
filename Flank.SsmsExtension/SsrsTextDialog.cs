@@ -26,7 +26,9 @@ namespace Flank.SsmsExtension
         public SsrsTextDialog(
             string sql,
             IReadOnlyList<string> folders,
-            IReadOnlyList<string> dataSources)
+            IReadOnlyList<string> dataSources,
+            string defaultReportName = "SSMS Query Test",
+            bool sqlReadOnly = false)
         {
             Text = "Create SSRS Report";
             FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -47,7 +49,7 @@ namespace Flank.SsmsExtension
 
             reportNameTextBox = AddField(
                 "Report Name:",
-                "SSMS Query Test",
+                defaultReportName,
                 100);
 
             Controls.Add(new Label
@@ -65,6 +67,7 @@ namespace Flank.SsmsExtension
                 WordWrap = false,
                 AcceptsReturn = true,
                 AcceptsTab = true,
+                ReadOnly = sqlReadOnly,
                 Font = new Font("Consolas", 9),
                 Location = new Point(20, 165),
                 Size = new Size(500, 160)
