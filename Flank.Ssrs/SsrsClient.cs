@@ -62,14 +62,10 @@ namespace Flank.Ssrs
             string reportFolder,
             string reportName)
         {
-            string queryXml = $@"
-        <CommandText>{XmlEscape(sql)}</CommandText>";
-
-            string rdl = BuildReportRdl(
+            string rdl = BuildTextReportRdl(
+                sql,
                 columns,
-                sharedDataSourcePath,
-                queryXml,
-                null);
+                sharedDataSourcePath);
 
             DeployReport(
                 rdl,
@@ -89,6 +85,43 @@ namespace Flank.Ssrs
             string reportFolder,
             string reportName)
         {
+            string rdl = BuildStoredProcedureReportRdl(
+                procedureName,
+                parameters,
+                columns,
+                sharedDataSourcePath);
+
+            DeployReport(
+                rdl,
+                reportFolder,
+                reportName);
+
+            return GetReportUrl(
+                reportFolder,
+                reportName);
+        }
+        // RDL building is separate from deployment so it can be tested without a server.
+        internal static string BuildTextReportRdl(
+            string sql,
+            IReadOnlyList<ReportColumn> columns,
+            string sharedDataSourcePath)
+        {
+            string queryXml = $@"
+        <CommandText>{XmlEscape(sql)}</CommandText>";
+
+            return BuildReportRdl(
+                columns,
+                sharedDataSourcePath,
+                queryXml,
+                null);
+        }
+
+        internal static string BuildStoredProcedureReportRdl(
+            string procedureName,
+            IReadOnlyList<SprocParameter> parameters,
+            IReadOnlyList<ReportColumn> columns,
+            string sharedDataSourcePath)
+        {
             string reportParametersXml;
             string queryParametersXml;
 
@@ -102,21 +135,13 @@ namespace Flank.Ssrs
         <CommandText>{XmlEscape(procedureName)}</CommandText>
 {queryParametersXml}";
 
-            string rdl = BuildReportRdl(
+            return BuildReportRdl(
                 columns,
                 sharedDataSourcePath,
                 queryXml,
                 reportParametersXml);
-
-            DeployReport(
-                rdl,
-                reportFolder,
-                reportName);
-
-            return GetReportUrl(
-                reportFolder,
-                reportName);
         }
+
         private static void BuildStoredProcedureParameters(
             IReadOnlyList<SprocParameter> parameters,
             out string reportParametersXml,
@@ -316,6 +341,11 @@ namespace Flank.Ssrs
 
             int columnNumber = 0;
 
+            // SSRS requires unique field and textbox names, but different
+            // columns can map to the same safe name ("a b" and "a_b").
+            var usedFieldNames =
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
             foreach (var column in columns)
             {
                 columnNumber++;
@@ -332,6 +362,13 @@ namespace Flank.Ssrs
                     MakeSafeRdlName(
                         sourceName,
                         columnNumber);
+
+                string baseFieldName = fieldName;
+
+                for (int suffix = 2; !usedFieldNames.Add(fieldName); suffix++)
+                {
+                    fieldName = baseFieldName + "_" + suffix;
+                }
 
                 fields.Append($@"
         <Field Name=""{XmlEscape(fieldName)}"">
@@ -505,7 +542,7 @@ namespace Flank.Ssrs
                 .Escape(value);
         }
 
-        private static string GetRdlParameterType(
+        internal static string GetRdlParameterType(
             string sqlType)
         {
             switch (sqlType.ToLowerInvariant())
@@ -554,7 +591,7 @@ namespace Flank.Ssrs
             }
         }
 
-        private static string MakeSafeRdlName(
+        internal static string MakeSafeRdlName(
             string name,
             int fallbackNumber)
         {
