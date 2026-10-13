@@ -10,6 +10,10 @@
 	<ItemGroup>
 		<Reference Include="System.Web.Services" />
 	</ItemGroup>
+	<ItemGroup>
+		<!-- Flank.Tests is signed with Flank.snk too. -->
+		<InternalsVisibleTo Include="Flank.Tests, PublicKey=0024000004800000940000000602000000240000525341310004000001000100a52d2280326d4f74f0e73866c0f4e562e6ccb6deaddf6e8f1bb6686a4e30b33bec199614a441b1fc7d36c12532cfeee0ef8d4e9ad9bb63057be4a19d9d14d321aeda2b50500a5b188e2bfe5d16cbf37d8304db8a3a930c0da4ddfbc785141dca08768e35d4ff183691af79b63323f3f4463385e9bf3ea57d31c5fb54dafabcb7" />
+	</ItemGroup>
   <ItemGroup>
     <PackageReference Include="System.ServiceModel.Duplex" Version="4.10.*" />
     <PackageReference Include="System.ServiceModel.Http" Version="4.10.*" />
