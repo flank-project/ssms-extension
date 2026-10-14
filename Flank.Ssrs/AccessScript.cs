@@ -84,14 +84,9 @@ namespace Flank.Ssrs
             string userLiteral = QuoteString(request.Name);
             var statements = new List<string>();
 
-            if (request.Scope == AccessScope.Procedure && request.ProcedureBody != null)
-            {
-                // Must be the only statement in its batch.
-                statements.Add(
-                    $"CREATE PROCEDURE {request.Procedure}\nAS\nBEGIN\n    SET NOCOUNT ON;\n\n" +
-                    request.ProcedureBody.Trim().TrimEnd(';') + ";\nEND;");
-            }
-
+            // The user first: those statements can be re-run, so if a later one
+            // fails (e.g. the procedure name is taken) the script can simply be
+            // run again after fixing it.
             switch (request.ExistingUser ? (AccessSignIn?)null : request.SignIn)
             {
                 case AccessSignIn.SqlLogin:
@@ -130,6 +125,14 @@ namespace Flank.Ssrs
                         $"IF DATABASE_PRINCIPAL_ID({userLiteral}) IS NULL\n" +
                         $"    CREATE USER {user} FOR LOGIN {user};");
                     break;
+            }
+
+            if (request.Scope == AccessScope.Procedure && request.ProcedureBody != null)
+            {
+                // Must be the only statement in its batch.
+                statements.Add(
+                    $"CREATE PROCEDURE {request.Procedure}\nAS\nBEGIN\n    SET NOCOUNT ON;\n\n" +
+                    request.ProcedureBody.Trim().TrimEnd(';') + ";\nEND;");
             }
 
             switch (request.Scope)

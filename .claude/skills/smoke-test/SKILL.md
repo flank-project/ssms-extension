@@ -257,9 +257,9 @@ window with `SELECT id, name FROM leagues`.
    uses: [dbo].[leagues]". Choose the second (Down). Zoom: the script is
    `CREATE USER [flank_smoke_user] WITH PASSWORD = N'...'` (Azure SQL: no
    LOGIN) and `GRANT SELECT ON OBJECT::[dbo].[leagues]`, each followed by
-   `GO`. **Apply** (BM_CLICK if the click doesn't take). Pass: "Done. Next,
-   run it as flank_smoke_user to check."; Next is enabled only now.
-3. Return (Next): "Run the query as flank_smoke_user". Return runs it.
+   `GO`. There's no Apply or Copy button: Return (**Run SQL**) runs the
+   script; an error shows a message box and stays on this page.
+3. "Run the query as flank_smoke_user". Return runs it.
    Pass: 5 rows. Return (Create workbook), save, close Excel.
 4. Check it:
    ```powershell
@@ -275,13 +275,18 @@ window with `SELECT id, name FROM leagues`.
    procedure" and set the name to `[dbo].[flank_smoke_report]`. Pass: no
    CREATE USER, just `CREATE PROCEDURE [dbo].[flank_smoke_report]` (the
    query inside `BEGIN SET NOCOUNT ON; ... END`) and `GRANT EXECUTE` on it.
-   Apply, Return, Return (Run as flank_smoke_user, 5 rows), create, save.
+   Return (Run SQL), Return (Run as flank_smoke_user, 5 rows), create, save.
+   Back then Run SQL again doesn't re-run the script (no "already exists").
 6. Check it: `verify-excel.ps1` as above, plus `verify-access.ps1 ...
    -Allowed "EXEC dbo.flank_smoke_report"`. The workbook's query is
    `EXEC [dbo].[flank_smoke_report]`, not the original SQL.
-7. A procedure from Object Explorer (`dbo.sgm_ListTeamsByLeague`): page 2
+7. Entra (Azure SQL): choosing "Someone with a Microsoft Entra account"
+   makes page 3 say "Run ... as you (<your login>)", with a note that Flank
+   can't run as an Entra user. Cancel before Run SQL unless you have an Entra
+   test account.
+8. A procedure from Object Explorer (`dbo.sgm_ListTeamsByLeague`): page 2
    shows only `GRANT EXECUTE ON OBJECT::[dbo].[sgm_ListTeamsByLeague]`.
-8. Clean up in your own query tab:
+9. Clean up in your own query tab:
    ```sql
    DROP PROCEDURE IF EXISTS dbo.flank_smoke_report;
    DROP USER IF EXISTS [flank_smoke_user];

@@ -110,8 +110,8 @@ This is part of **Make Self-Serve → Excel (Power Query)**, before anything run
    - a stored procedure: `EXECUTE` on it
    - a query: either turn it into a stored procedure and grant `EXECUTE` (the workbook then calls the procedure), or grant `SELECT` on the tables and views it reads. Flank finds those by parsing the query; table names built at run time (dynamic SQL) aren't found
 
-   Flank shows the exact T-SQL, which you can copy or **Apply**, and tells you what to send the person and which sign-in option to pick when Excel asks.
-3. **Run as them.** Flank runs the query or procedure as that user (`EXECUTE AS USER`), so you see what they'll see before sending anything. That needs `IMPERSONATE` permission on them (db_owner has it; granting access alone doesn't give it). If you can't impersonate them, choose **Run as me instead**.
+   Flank shows the exact T-SQL and tells you what to send the person and which sign-in option to pick when Excel asks. **Run SQL** runs it; if it fails, Flank says why and you stay on that step.
+3. **Run as them.** Flank runs the query or procedure as that user (`EXECUTE AS USER`), so you see what they'll see before sending anything. That needs `IMPERSONATE` permission on them (db_owner has it; granting access alone doesn't give it). If you can't impersonate them, choose **Run as you instead**. Microsoft Entra users can't be impersonated this way, so for them the run is always as you, and the button says so.
 
 Prefer an identity people already have: Entra on Azure SQL, Windows / Active Directory on SQL Server. Use SQL usernames when those aren't available.
 

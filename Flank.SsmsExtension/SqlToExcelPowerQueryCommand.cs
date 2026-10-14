@@ -124,26 +124,30 @@ namespace Flank.SsmsExtension
             }
 
             System.Data.IDbConnection queryConnection;
-            bool isAzure;
+            bool isAzure = false;
             IReadOnlyList<string> tables = Array.Empty<string>();
             string tablesProblem = null;
 
             try
             {
                 queryConnection = SsmsQueryHelper.GetCurrentConnection();
-                isAzure = AccessDiscovery.IsAzureSqlDatabase(queryConnection);
 
-                // The tables and views the query names, for granting SELECT.
-                try
+                SsmsQueryHelper.UseBorrowedConnection(queryConnection, connection =>
                 {
-                    tables = QueryObjects.Resolve(queryConnection, QueryObjects.Find(sql));
-                    if (tables.Count == 0)
-                        tablesProblem = "none found in this database";
-                }
-                catch (Exception ex)
-                {
-                    tablesProblem = ex.Message;
-                }
+                    isAzure = AccessDiscovery.IsAzureSqlDatabase(connection);
+
+                    // The tables and views the query names, for granting SELECT.
+                    try
+                    {
+                        tables = QueryObjects.Resolve(connection, QueryObjects.Find(sql));
+                        if (tables.Count == 0)
+                            tablesProblem = "none found in this database";
+                    }
+                    catch (Exception ex)
+                    {
+                        tablesProblem = ex.Message;
+                    }
+                });
             }
             catch (Exception ex)
             {
@@ -171,7 +175,7 @@ namespace Flank.SsmsExtension
                 query: sql,
                 queryTables: tables,
                 queryTablesProblem: tablesProblem,
-                action => action(queryConnection)))
+                action => SsmsQueryHelper.UseBorrowedConnection(queryConnection, action)))
             {
                 if (wizard.ShowDialog() != System.Windows.Forms.DialogResult.OK || wizard.Request == null)
                     return;

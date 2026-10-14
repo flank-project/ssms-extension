@@ -79,6 +79,16 @@ namespace Flank.Ssrs
             }
         }
 
+        /// <summary>The connection's login name, e.g. "sa" or "someone@contoso.com".</summary>
+        public static string CurrentLogin(IDbConnection connection)
+        {
+            using (var command = connection.CreateCommand())
+            {
+                command.CommandText = "SELECT SUSER_SNAME();";
+                return command.ExecuteScalar() as string ?? "";
+            }
+        }
+
         /// <summary>Whether a user with this name exists in the database.</summary>
         public static bool UserExists(IDbConnection connection, string userName)
         {

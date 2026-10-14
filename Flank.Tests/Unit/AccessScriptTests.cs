@@ -91,16 +91,18 @@ public class AccessScriptTests
     }
 
     [Fact]
-    public void Query_can_become_a_procedure_first()
+    public void Query_can_become_a_procedure_after_the_user_is_created()
     {
         var request = Request();
         request.ProcedureBody = "SELECT id FROM dbo.orders;  ";
 
         var script = AccessScript.Build(request);
 
+        // The user first (re-runnable), then the procedure, then the grant.
+        Assert.StartsWith("IF DATABASE_PRINCIPAL_ID", script[0]);
         Assert.Equal(
             "CREATE PROCEDURE [dbo].[get_orders]\nAS\nBEGIN\n    SET NOCOUNT ON;\n\nSELECT id FROM dbo.orders;\nEND;",
-            script[0]);
+            script[script.Count - 2]);
         Assert.Equal("GRANT EXECUTE ON OBJECT::[dbo].[get_orders] TO [report_user];", script.Last());
     }
 

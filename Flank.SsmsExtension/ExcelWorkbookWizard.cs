@@ -13,7 +13,7 @@ namespace Flank.SsmsExtension
     /// Creating a refreshable workbook, from a query or a stored procedure:
     /// 1. who will refresh it (skip, or an existing / new database user),
     /// 2. what they can do (run the procedure; for a query, turn it into a
-    ///    procedure or read its tables), applied with the script shown,
+    ///    procedure or read its tables): the script shown runs on Run SQL,
     /// 3. run it as that user to check and preview, then create the workbook
     ///    with those values and rows.
     /// </summary>
@@ -52,13 +52,14 @@ namespace Flank.SsmsExtension
         private readonly RadioButton readTables;
         private readonly TextBox script;
         private readonly Label instructions;
-        private readonly Label applyStatus;
-        private bool applied;
+        private string? appliedScript;
 
         // Page 3: run.
         private readonly Panel runPage;
         private readonly Label runHeading;
         private readonly CheckBox runAsMe;
+        private readonly Label runNote;
+        private string? me;
         private PreviewPanel? preview;
 
         private readonly Button backButton;
@@ -223,24 +224,6 @@ namespace Flank.SsmsExtension
             };
             what.Controls.Add(instructions);
 
-            var copy = new Button { Text = "Copy script", Location = new Point(0, y + 306), Width = 100, Anchor = AnchorStyles.Bottom | AnchorStyles.Left };
-            copy.Click += (s, e) =>
-            {
-                if (TryBuildAccess(out var request))
-                    Clipboard.SetText(AccessScript.ToText(request));
-                SetApplyStatus("Script copied.", SystemColors.ControlText);
-            };
-            var apply = new Button { Text = "Apply", Location = new Point(110, y + 306), Width = 100, Anchor = AnchorStyles.Bottom | AnchorStyles.Left, Name = "ApplyAccess" };
-            apply.Click += (s, e) => Apply();
-            applyStatus = new Label
-            {
-                Location = new Point(220, y + 310),
-                Size = new Size(PageWidth - 220, 20),
-                AutoEllipsis = true,
-                Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
-            };
-            what.Controls.AddRange(new Control[] { copy, apply, applyStatus });
-
             // ---- Page 3: run as them.
             runPage = NewPage();
             runHeading = AddHeading(runPage, "", 0);
@@ -252,7 +235,15 @@ namespace Flank.SsmsExtension
                 Visible = false,
             };
             runAsMe.CheckedChanged += (s, e) => UpdateRunHeading();
-            runPage.Controls.Add(runAsMe);
+            runNote = new Label
+            {
+                Location = new Point(0, 30),
+                Size = new Size(PageWidth, 22),
+                AutoEllipsis = true,
+                ForeColor = SystemColors.GrayText,
+                Visible = false,
+            };
+            runPage.Controls.AddRange(new Control[] { runAsMe, runNote });
 
             pages = new[] { who, what, runPage };
 
@@ -340,7 +331,8 @@ namespace Flank.SsmsExtension
             }
             else if (page == 1)
             {
-                ShowPage(2);
+                if (ApplyAccess())
+                    ShowPage(2);
             }
             else
             {
@@ -363,12 +355,12 @@ namespace Flank.SsmsExtension
                 SelectedSignIn == AccessSignIn.SqlLogin && newUser.Checked;
 
             backButton.Enabled = page > 0;
-            nextButton.Text = page == 2 ? "Create workbook" : "Next >";
+            nextButton.Text = page == 1 ? "Run SQL" : page == 2 ? "Create workbook" : "Next >";
 
             nextButton.Enabled =
                 page == 0 ? SelectedSignIn == null || !string.IsNullOrWhiteSpace(UserName) &&
                             (existingUser.Checked || SelectedSignIn != AccessSignIn.SqlLogin || password.Text.Length > 0)
-                : page == 1 ? applied
+                : page == 1 ? TryBuildAccess(out _)
                 : preview != null && preview.HasResults;
 
             AcceptButton = page == 2 && preview != null && !preview.HasResults ? preview.RunButton : nextButton;
@@ -394,7 +386,6 @@ namespace Flank.SsmsExtension
             newUser.Text = signIn == AccessSignIn.Entra ? "A new user (email / UPN):"
                          : signIn == AccessSignIn.Windows ? @"A new user (DOMAIN\user):"
                          : "A new user named:";
-            applied = false;
 
             existingUsers.Items.Clear();
 
@@ -454,9 +445,6 @@ namespace Flank.SsmsExtension
 
         private void AccessChanged()
         {
-            applied = false;
-            SetApplyStatus("", SystemColors.ControlText);
-
             if (TryBuildAccess(out var request))
             {
                 script.Text = AccessScript.ToText(request);
@@ -492,35 +480,33 @@ namespace Flank.SsmsExtension
             UpdateButtons();
         }
 
-        private void SetApplyStatus(string text, Color color)
-        {
-            applyStatus.ForeColor = color;
-            applyStatus.Text = text;
-        }
-
-        private void Apply()
+        /// <summary>Runs the script shown; on failure says why and stays on this page.</summary>
+        private bool ApplyAccess()
         {
             if (!TryBuildAccess(out var request))
-                return;
+                return false;
 
-            SetApplyStatus("Applying...", SystemColors.ControlText);
-            applyStatus.Refresh();
-            UseWaitCursor = true;
+            // Back then Run SQL again: the same script already ran (and
+            // CREATE PROCEDURE would fail the second time).
+            string text = AccessScript.ToText(request);
+            if (text == appliedScript)
+                return true;
 
+            Cursor = Cursors.WaitCursor;
             try
             {
                 useConnection(connection => AccessScript.Run(connection, request));
-                applied = true;
-                SetApplyStatus($"Done. Next, run it as {request.Name} to check.", Color.ForestGreen);
+                appliedScript = text;
+                return true;
             }
             catch (Exception ex)
             {
-                SetApplyStatus(ex.Message, Color.Firebrick);
+                MessageBox.Show(this, "The script didn't run:\n\n" + ex.Message, "Flank", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return false;
             }
             finally
             {
-                UseWaitCursor = false;
-                UpdateButtons();
+                Cursor = Cursors.Default;
             }
         }
 
@@ -542,8 +528,26 @@ namespace Flank.SsmsExtension
                 ? procedureParameters.Where(p => p.IsOutput).ToList()
                 : new List<SprocParameter>();
 
+            if (me == null)
+            {
+                try
+                {
+                    useConnection(connection => me = AccessTester.CurrentLogin(connection));
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Flank: could not read the current login: {ex.Message}");
+                }
+            }
+
+            runAsMe.Text = $"Run as you ({Me}) instead";
             runAsMe.Visible = false;
-            runAsMe.Checked = SelectedSignIn == null;
+            runAsMe.Checked = !CanRunAsUser;
+
+            runNote.Text = SelectedSignIn == AccessSignIn.Entra
+                ? $"Flank can't run as a Microsoft Entra user, so this runs as you. {UserName} sees what their grants allow."
+                : "";
+            runNote.Visible = runNote.Text.Length > 0;
 
             preview = new PreviewPanel(inputs, new Size(PageWidth, runPage.Height - 60))
             {
@@ -588,15 +592,23 @@ namespace Flank.SsmsExtension
             UpdateRunHeading();
         }
 
+        /// <summary>
+        /// Whether the run can impersonate the end user. Not for Entra users:
+        /// EXECUTE AS fails for them, so the run is as you.
+        /// </summary>
+        private bool CanRunAsUser => SelectedSignIn != null && SelectedSignIn != AccessSignIn.Entra;
+
+        private string Me => string.IsNullOrEmpty(me) ? "your login" : me!;
+
         private void UpdateRunHeading()
         {
             string what = EffectiveProcedure ?? "the query";
-            bool asMe = runAsMe.Checked || SelectedSignIn == null;
+            string runAs = runAsMe.Checked || !CanRunAsUser ? $"you ({Me})" : UserName ?? "";
 
-            runHeading.Text = asMe ? $"Run {what}" : $"Run {what} as {UserName}";
+            runHeading.Text = $"Run {what} as {runAs}";
 
             if (preview != null)
-                preview.RunButton.Text = asMe ? "Run" : $"Run as {UserName}";
+                preview.RunButton.Text = "Run as " + runAs;
         }
 
         private void Finish()

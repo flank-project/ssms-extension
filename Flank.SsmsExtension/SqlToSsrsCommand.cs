@@ -129,10 +129,9 @@ namespace Flank.SsmsExtension
                 analyzingStatus: "Analyzing query...",
                 prepare: reportOptions =>
                 {
-                    var columns =
-                        SqlMetadataDiscovery.DiscoverQueryColumns(
-                            reportOptions.Sql,
-                            connection);
+                    IReadOnlyList<ReportColumn> columns = null;
+                    SsmsQueryHelper.UseBorrowedConnection(connection, c =>
+                        columns = SqlMetadataDiscovery.DiscoverQueryColumns(reportOptions.Sql, c));
 
                     return client => client.CreateReportFromText(
                         reportOptions.Sql,

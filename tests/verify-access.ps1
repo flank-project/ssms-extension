@@ -1,6 +1,6 @@
 # Signs in as a user created by the Excel wizard's access step and
-# checks what it can and can't do. The password is read from the script that
-# the dialog's "Copy script" put on the clipboard (or -Script), and is never
+# checks what it can and can't do. The password is read from -Script (the
+# wizard's script, or just "WITH PASSWORD = N'...'"), or the clipboard, and is never
 # printed.
 #
 #   .\tests\verify-access.ps1 -User flank_smoke_user `
@@ -21,7 +21,7 @@ $ErrorActionPreference = "Stop"
 
 if (-not $Script) { $Script = Get-Clipboard -Raw }
 if ($Script -notmatch "WITH PASSWORD = N'((?:[^']|'')*)'") {
-    throw "No SQL login password found in the script (copy it with the dialog's Copy script)."
+    throw "No SQL login password found in the script (pass -Script with the wizard's script, or just WITH PASSWORD = N'...')."
 }
 $password = $Matches[1].Replace("''", "'")
 
