@@ -41,6 +41,7 @@ Flank currently supports:
 
 Not supported yet:
 
+- Multiple result sets: an SSRS dataset only reads a procedure's first result set
 - Report formatting and customization
 - Creating or configuring SSRS data sources
 
@@ -82,8 +83,7 @@ Not supported yet:
 
 - SQL
   - Parameters for queries from the query editor (stored procedures only)
-  - `OUTPUT` parameters
-  - Multiple result sets
+  - Multiple result sets: Power Query only reads a procedure's first result set, so that's the one the workbook uses (Flank's preview shows them all)
 - Excel
   - Excel for the web
  
@@ -92,6 +92,8 @@ Not supported yet:
 The first time someone refreshes a workbook with parameters, Excel asks about **privacy levels**, because the query combines values from the workbook with data from the database. Tick **Ignore Privacy Levels checks for this file**, click **Save**, then save the workbook. Excel remembers the choice for that file, for that Windows user, so each person sees it once.
 
 Flank can't make that choice in advance: Excel stores it encrypted per Windows user.
+
+For a stored procedure with `OUTPUT` parameters, Excel also asks once to approve the workbook's **native database query** (the procedure call, with a variable declared for each output). Click **Run**.
 
 ### How do I give an end user access?
 

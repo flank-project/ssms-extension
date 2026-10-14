@@ -56,6 +56,8 @@ Request computer-use access to "SQL Server Management Studio 22" (and
 - **Bringing SSMS to the front** (e.g. after Excel opened): don't call
   `open_application`, it starts a second SSMS. Run
   `(New-Object -ComObject WScript.Shell).AppActivate((Get-Process SSMS).Id)`.
+- **Don't click an already-selected tree node**: a second click starts a
+  rename. If an edit box appears, press Escape at once.
 - **Recovered Files dialog**: appears if SSMS was force-closed with a query
   open. Click **Do Not Recover** only if the files listed are your own test
   queries; otherwise stop and ask the user.
@@ -88,6 +90,12 @@ For the stored procedure scenarios:
 Procedures used (all read-only):
 
 - `dbo.get_leagues`: no parameters; returns `id, name` (5 rows).
+- `dbo.test_multiset_n`: takes `@N` and two OUTPUT parameters; returns three
+  result sets (TOP @N, empty, TOP 2×@N). Only the first is used; the Run
+  dialog says so and shows all three as tabs. Excel workbooks for it get an
+  extra one-time "Native Database Query" approval (click **Run**). SSRS:
+  `verify-ssrs.ps1` gives 2 rows with the default N=2, 3 with
+  `-Parameters "N=3"`.
 - `dbo.sgm_ListTeamsByLeague`: takes `@League_Id`; returns `team_name,
   team_id, league_id`. League 1 and 2 have 2 teams each, league 3 has 1.
   It's further down the list: scroll Object Explorer down to reach it.

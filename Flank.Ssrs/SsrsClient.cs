@@ -138,7 +138,13 @@ namespace Flank.Ssrs
                 out reportParametersXml,
                 out queryParametersXml);
 
-            string queryXml = $@"
+            // SSRS can't supply OUTPUT parameters to a stored procedure call, so
+            // a procedure with any is called from a batch that declares them.
+            string queryXml = parameters.Any(p => p.IsOutput)
+                ? $@"
+        <CommandText>{XmlEscape(ProcedureCall.BuildExec(procedureName, parameters))}</CommandText>
+{queryParametersXml}"
+                : $@"
         <CommandType>StoredProcedure</CommandType>
         <CommandText>{XmlEscape(procedureName)}</CommandText>
 {queryParametersXml}";

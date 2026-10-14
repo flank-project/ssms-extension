@@ -153,19 +153,6 @@ namespace Flank.SsmsExtension
 
                     parameters = SqlMetadataDiscovery.DiscoverStoredProcedureParameters(
                         objectId, connection);
-
-                    var outputs = parameters.Where(p => p.IsOutput).ToList();
-
-                    if (outputs.Count > 0)
-                    {
-                        SsmsUiHelper.ShowMessage(
-                            $"{sproc.QualifiedName} has OUTPUT parameters " +
-                            $"({string.Join(", ", outputs.Select(p => p.Name))}).\n\n" +
-                            "Excel workbooks don't support OUTPUT parameters yet.",
-                            OLEMSGICON.OLEMSGICON_INFO);
-                        return;
-                    }
-
                 }
             }
             catch (Exception ex)
@@ -193,14 +180,15 @@ namespace Flank.SsmsExtension
                 ranAt = dialog.RanAt;
             }
 
-            // Parameters become cells the user fills in (names in column A,
-            // values in column B); the query passes them as @name.
-            var names = parameters.Select(p => p.Name.TrimStart('@')).ToList();
+            // Input parameters become cells the user fills in (names in
+            // column A, values in column B); the query passes them as @name.
+            // OUTPUT parameters are bound to variables declared in the batch.
+            var names = parameters
+                .Where(p => !p.IsOutput)
+                .Select(p => p.Name.TrimStart('@'))
+                .ToList();
 
-            string sql = names.Count == 0
-                ? $"EXEC {sproc.QualifiedName}"
-                : $"EXEC {sproc.QualifiedName} " +
-                  string.Join(", ", names.Select(n => $"@{n} = @{n}"));
+            string sql = ProcedureCall.BuildExec(sproc.QualifiedName, parameters);
 
             var request = new WorkbookRequest(sql, sproc.Server, sproc.Database)
             {
@@ -246,7 +234,7 @@ namespace Flank.SsmsExtension
 
             using (var dialog = new StoredProcedureRunDialog(
                 sproc.QualifiedName,
-                inputs,
+                parameters,
                 () => OpenConnection(node, sproc.Database),
                 "Continue"))
             {

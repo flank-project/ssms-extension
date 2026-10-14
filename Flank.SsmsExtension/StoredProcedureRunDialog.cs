@@ -20,6 +20,7 @@ namespace Flank.SsmsExtension
 
         private readonly string procedureName;
         private readonly IReadOnlyList<SprocParameter> parameters;
+        private readonly IReadOnlyList<SprocParameter> outputParameters;
         private readonly Func<IDbConnection> openConnection;
         private readonly List<TextBox> inputs = new List<TextBox>();
         private readonly TabControl results;
@@ -27,7 +28,7 @@ namespace Flank.SsmsExtension
         private readonly Button runButton;
         private readonly Button createButton;
 
-        /// <param name="parameters">Input parameters only.</param>
+        /// <param name="parameters">All of the procedure's parameters; OUTPUT ones get no input.</param>
         /// <param name="openConnection">Opens a connection to the procedure's database.</param>
         public StoredProcedureRunDialog(
             string procedureName,
@@ -36,7 +37,9 @@ namespace Flank.SsmsExtension
             string createText)
         {
             this.procedureName = procedureName;
-            this.parameters = parameters;
+            this.parameters = parameters.Where(p => !p.IsOutput).ToList();
+            outputParameters = parameters.Where(p => p.IsOutput).ToList();
+            parameters = this.parameters;
             this.openConnection = openConnection;
 
             Text = "Run " + procedureName;
@@ -171,7 +174,7 @@ namespace Flank.SsmsExtension
             AcceptButton = runButton;
         }
 
-        /// <summary>Typed values from the last run, in parameter order (null = default).</summary>
+        /// <summary>Typed values from the last run, in input-parameter order (null = default).</summary>
         public IReadOnlyList<object?> ParameterValues { get; private set; } = Array.Empty<object?>();
 
         /// <summary>Result sets from the last run.</summary>
@@ -213,7 +216,7 @@ namespace Flank.SsmsExtension
                 {
                     using (var connection = openConnection())
                     {
-                        return StoredProcedureRunner.Run(connection, procedureName, named, MaxRows);
+                        return StoredProcedureRunner.Run(connection, procedureName, named, MaxRows, outputParameters);
                     }
                 });
 
@@ -235,6 +238,10 @@ namespace Flank.SsmsExtension
                 status.Text = string.Join("; ", runResults.Select((r, i) =>
                     (runResults.Count > 1 ? $"Result {i + 1}: " : "") +
                     $"{r.Rows.Count:N0} row(s)" + (r.Truncated ? $" (first {MaxRows:N0} kept)" : "")));
+
+                // Power Query and SSRS only ever read a procedure's first result set.
+                if (runResults.Count > 1)
+                    status.Text += ". Only Result 1 is used: Excel and SSRS read just the first result set.";
             }
             catch (Exception ex)
             {

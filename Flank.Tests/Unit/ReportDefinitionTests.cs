@@ -142,6 +142,43 @@ public class ReportDefinitionTests
         Assert.Empty(rdl.Descendants(Rdl + "QueryParameters"));
     }
 
+    [Fact]
+    public void Sproc_report_with_output_parameters_calls_it_from_a_batch()
+    {
+        var rdl = SprocReport(
+            new[] { Param("@N", "int"), Param("@Total", "int", output: true) },
+            "x");
+
+        Assert.Empty(rdl.Descendants(Rdl + "CommandType"));
+        Assert.Equal(
+            "DECLARE @Total int; EXEC dbo.get_things @N = @N, @Total = @Total OUTPUT",
+            (string)rdl.Descendants(Rdl + "CommandText").Single());
+        Assert.Equal(
+            new[] { "@N" },
+            rdl.Descendants(Rdl + "QueryParameter").Select(p => (string)p.Attribute("Name")!));
+    }
+
+    [Fact]
+    public void Exec_without_parameters_is_just_the_call()
+    {
+        Assert.Equal("EXEC [dbo].[p]", ProcedureCall.BuildExec("[dbo].[p]", Array.Empty<SprocParameter>()));
+    }
+
+    [Theory]
+    [InlineData("int", 4, 10, 0, "int")]
+    [InlineData("varchar", 50, 0, 0, "varchar(50)")]
+    [InlineData("varchar", -1, 0, 0, "varchar(max)")]
+    [InlineData("nvarchar", 100, 0, 0, "nvarchar(50)")]
+    [InlineData("nvarchar", -1, 0, 0, "nvarchar(max)")]
+    [InlineData("decimal", 9, 10, 2, "decimal(10, 2)")]
+    [InlineData("datetime2", 8, 27, 7, "datetime2(7)")]
+    public void Declares_output_variables_with_their_full_type(string type, short maxLength, byte precision, byte scale, string expected)
+    {
+        var parameter = new SprocParameter { Name = "@o", SqlType = type, MaxLength = maxLength, Precision = precision, Scale = scale, IsOutput = true };
+
+        Assert.Equal(expected, ProcedureCall.TypeDeclaration(parameter));
+    }
+
     [Theory]
     [InlineData("int", "Integer")]
     [InlineData("SMALLINT", "Integer")]
