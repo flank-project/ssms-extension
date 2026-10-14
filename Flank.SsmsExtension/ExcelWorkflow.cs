@@ -2,6 +2,7 @@ using Flank.Excel;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
 using System;
+using System.Collections.Generic;
 using Task = System.Threading.Tasks.Task;
 
 namespace Flank.SsmsExtension
@@ -16,7 +17,9 @@ namespace Flank.SsmsExtension
             string sql,
             string server,
             string database,
-            string defaultFileName)
+            string defaultFileName,
+            IReadOnlyList<string> parameterNames = null,
+            IReadOnlyList<string> columnNames = null)
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
@@ -51,7 +54,9 @@ namespace Flank.SsmsExtension
                         outputPath,
                         sql,
                         server,
-                        database);
+                        database,
+                        parameterNames ?? Array.Empty<string>(),
+                        columnNames);
                 });
 
                 await ThreadHelper.JoinableTaskFactory

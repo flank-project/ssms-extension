@@ -141,6 +141,8 @@ namespace Flank.SsmsExtension
         private static async Task CreateExcelAsync(INodeInformation node, StoredProcedureInfo sproc)
         {
             string step = "Reading stored procedure";
+            IReadOnlyList<SprocParameter> parameters;
+            IReadOnlyList<ReportColumn> columns;
 
             try
             {
@@ -149,22 +151,23 @@ namespace Flank.SsmsExtension
                     int objectId = SqlMetadataDiscovery.GetStoredProcedureObjectId(
                         sproc.QualifiedName, connection);
 
-                    var parameters = SqlMetadataDiscovery.DiscoverStoredProcedureParameters(
+                    parameters = SqlMetadataDiscovery.DiscoverStoredProcedureParameters(
                         objectId, connection);
 
-                    if (parameters.Count > 0)
+                    var outputs = parameters.Where(p => p.IsOutput).ToList();
+
+                    if (outputs.Count > 0)
                     {
                         SsmsUiHelper.ShowMessage(
-                            $"{sproc.QualifiedName} has parameters " +
-                            $"({string.Join(", ", parameters.Select(p => p.Name))}).\n\n" +
-                            "Excel workbooks only support stored procedures without " +
-                            "parameters for now. SSRS Report supports parameters.",
+                            $"{sproc.QualifiedName} has OUTPUT parameters " +
+                            $"({string.Join(", ", outputs.Select(p => p.Name))}).\n\n" +
+                            "Excel workbooks don't support OUTPUT parameters yet.",
                             OLEMSGICON.OLEMSGICON_INFO);
                         return;
                     }
 
                     // Fails with a clear message if there's no result set to load.
-                    SqlMetadataDiscovery.DiscoverStoredProcedureColumns(
+                    columns = SqlMetadataDiscovery.DiscoverStoredProcedureColumns(
                         objectId, sproc.QualifiedName, connection);
                 }
             }
@@ -174,11 +177,22 @@ namespace Flank.SsmsExtension
                 return;
             }
 
+            // Parameters become cells the user fills in (names in column A,
+            // values in column B); the query passes them as @name.
+            var names = parameters.Select(p => p.Name.TrimStart('@')).ToList();
+
+            string sql = names.Count == 0
+                ? $"EXEC {sproc.QualifiedName}"
+                : $"EXEC {sproc.QualifiedName} " +
+                  string.Join(", ", names.Select(n => $"@{n} = @{n}"));
+
             await ExcelWorkflow.RunAsync(
-                $"EXEC {sproc.QualifiedName}",
+                sql,
                 sproc.Server,
                 sproc.Database,
-                sproc.Name + ".xlsx");
+                sproc.Name + ".xlsx",
+                names,
+                columns.Select(c => c.Name).ToList());
         }
 
         private static Task CreateSsrsReportAsync(INodeInformation node, StoredProcedureInfo sproc)

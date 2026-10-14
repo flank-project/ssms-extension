@@ -29,8 +29,17 @@ Optional overrides: `FLANK_TEST_REPORT_SERVER`, `FLANK_TEST_REPORT_PORTAL`,
 Used by the integration tests and the SSMS smoke tests, so both check the
 same thing:
 
-- `verify-excel.ps1 -Path <xlsx>`: opens the workbook in hidden Excel, runs
-  Refresh All, and fails unless the query loads rows.
+- `verify-excel.ps1 -Path <xlsx> [-Parameters "Name=value;..."]`: opens the
+  workbook in hidden Excel, fills in any parameter cells, runs Refresh All,
+  and fails unless the query loads rows.
+
+  Workbooks with parameters read cells and the database in one query, so
+  Excel asks about privacy levels on the first refresh (once per file, per
+  Windows user). Hidden Excel can't answer, so the checker only works on a
+  parameter workbook after someone has refreshed it in Excel, chosen
+  "Ignore Privacy Levels checks for this file", and saved it. That's why
+  there's no integration test for parameter refreshes; the SSMS smoke test
+  (`sproc-excel`) covers it.
 - `verify-ssrs.ps1 -Report <path or portal link> [-Parameters "Name=value;..."]`:
   renders the report as CSV and fails unless it returns rows.
 

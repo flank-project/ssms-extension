@@ -19,7 +19,7 @@ The argument picks the scenario; default `menus`.
 | `menus` | Query editor and stored procedure menus have Make Self-Serve |
 | `query-excel` | Query window > Excel: SSMS saves a workbook, and it refreshes with rows |
 | `query-ssrs` | Query window > SSRS: SSMS creates a report, and it renders with rows |
-| `sproc-excel` | Stored procedure > Excel: workbook for `EXEC` refreshes with rows; a procedure with parameters is turned away with a message |
+| `sproc-excel` | Stored procedure > Excel: workbook for `EXEC` refreshes with rows; with parameters, the user types values above the table and refreshes |
 | `sproc-ssrs` | Stored procedure > SSRS: SSMS creates a report, and it renders with rows |
 | `all` | All of the above, in that order (before a release). One build and install. |
 
@@ -88,7 +88,9 @@ For the stored procedure scenarios:
 Procedures used (all read-only):
 
 - `dbo.get_leagues`: no parameters; returns `id, name` (5 rows).
-- `dbo.get_losses`: takes `@teamId`; used only to check Excel turns it away.
+- `dbo.sgm_ListTeamsByLeague`: takes `@League_Id`; returns `team_name,
+  team_id, league_id`. League 1 and 2 have 2 teams each, league 3 has 1.
+  It's further down the list: scroll Object Explorer down to reach it.
 
 ## 4. Scenarios
 
@@ -149,10 +151,30 @@ menu should not have it.
    .\tests\verify-excel.ps1 -Path C:\temp\flank-smoke\sproc-excel.xlsx
    ```
    Pass: `OK`, with 5 rows and columns `id, name`.
-6. Bring SSMS back. On `dbo.get_losses`, run **Excel (Power Query)** again.
-   Pass: a Flank message says it has parameters (`@teamId`) and that Excel
-   only supports procedures without parameters for now; no Save dialog.
-   Return to close it.
+6. Parameters. `Set-Clipboard -Value "C:\temp\flank-smoke\sproc-excel-params.xlsx"`,
+   bring SSMS back, and run **Excel (Power Query)** on
+   `dbo.sgm_ListTeamsByLeague`; save to that path.
+7. Excel opens it. Check the layout: `League_Id` in A1, B1 empty, row 2
+   blank, and the table at row 3 already headed `team_name, team_id,
+   league_id`.
+8. Enter a value with the keyboard (Excel ignores some clicks too): ctrl+g,
+   `b`, `1`, Return, then `1`, Return. Refresh All with ctrl+alt+F5.
+   - **Security notice** ("connects to an external data source"): click
+     **OK**. Return picks Cancel.
+   - **Privacy levels** (first refresh of a parameter workbook, once per
+     file per user): Tab until the "Ignore Privacy Levels checks for this
+     file" checkbox has focus (zoom to check; focus order varies), Space,
+     Return to Save.
+   Pass: Team 3 and Team 5, and `League_Id` / `1` are still in A1:B1 (not
+   shifted right).
+9. Set B1 to `2` the same way and refresh. Pass: Team 1 and Team 2.
+10. ctrl+s (keeps the privacy choice), ctrl+w. Then check it unattended:
+    ```powershell
+    .\tests\verify-excel.ps1 -Path C:\temp\flank-smoke\sproc-excel-params.xlsx -Parameters "League_Id=3"
+    ```
+    Pass: `OK`, 1 row. (A parameter workbook that hasn't had the privacy
+    prompt answered and saved can't refresh hidden; the checker reports
+    that the query didn't load.)
 
 ### sproc-ssrs
 
