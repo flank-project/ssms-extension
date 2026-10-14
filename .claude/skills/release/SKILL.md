@@ -81,6 +81,15 @@ Get-Process SSMS -ErrorAction SilentlyContinue | ForEach-Object { $_.CloseMainWi
 Start-Process installer\output\Flank-SSMS-Setup-X.Y.Z.exe -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait
 ```
 
+If SSMS hasn't exited after ~30 seconds, screenshot it. It can get stuck on
+a dialog while closing (e.g. an "Unable to query transaction count" error
+for a tab whose database no longer exists) that ignores clicks and Return.
+If the only open tabs are your own saved test files, force-close it
+(`Stop-Process -Name SSMS -Force`), as `install-local.ps1 -Unattended`
+does. If any tab is the user's or has unsaved changes (a `*` in its title),
+ask first. Either way, a "Recovered Files" prompt may appear on the next
+start: recover the user's files; choose Do Not Recover only for your own.
+
 Check Apps & features / the uninstall key shows the new version:
 
 ```powershell
