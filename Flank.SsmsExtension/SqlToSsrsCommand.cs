@@ -124,7 +124,7 @@ namespace Flank.SsmsExtension
 
             await SsrsWorkflow.RunAsync(
                 sql,
-                sqlReadOnly: false,
+                storedProcedure: null,
                 defaultReportName: "SSMS Query Test",
                 analyzingStatus: "Analyzing query...",
                 prepare: reportOptions =>

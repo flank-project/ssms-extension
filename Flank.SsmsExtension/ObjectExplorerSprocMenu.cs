@@ -5,10 +5,13 @@ using Microsoft.SqlServer.Management.UI.VSIntegration.ObjectExplorer;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel.Design;
 using System.Data;
+using System.Drawing;
 using System.Linq;
+using System.Reflection;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
 using Task = System.Threading.Tasks.Task;
@@ -71,13 +74,37 @@ namespace Flank.SsmsExtension
                 if (node?.GetService(typeof(IMenuHandler)) is HierarchyObject menu &&
                     extendedMenus.Add(menu))
                 {
-                    menu.AddChild(string.Empty, new SelfServeSubmenu(this));
+                    var submenu = new SelfServeSubmenu(this);
+                    menu.AddChild(string.Empty, submenu);
+                    MoveToTop(menu, submenu);
                 }
             }
             catch (Exception ex)
             {
                 // Never let a menu hook break Object Explorer.
                 System.Diagnostics.Debug.WriteLine($"Flank: Object Explorer hook failed: {ex}");
+            }
+        }
+
+        /// <summary>
+        /// AddChild appends, and the menu is built in child order. Move our submenu
+        /// to the front of the menu's private child list so it's the first entry.
+        /// If SSMS changes that field, the submenu stays where AddChild put it.
+        /// </summary>
+        private static void MoveToTop(HierarchyObject menu, object child)
+        {
+            for (var type = menu.GetType(); type != null; type = type.BaseType)
+            {
+                var field = type.GetField(
+                    "menuItemsInOrder",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+
+                if (field?.GetValue(menu) is ArrayList items && items.Contains(child))
+                {
+                    items.Remove(child);
+                    items.Insert(0, child);
+                    return;
+                }
             }
         }
 
@@ -157,8 +184,8 @@ namespace Flank.SsmsExtension
         private static Task CreateSsrsReportAsync(INodeInformation node, StoredProcedureInfo sproc)
         {
             return SsrsWorkflow.RunAsync(
-                $"EXEC {sproc.QualifiedName}",
-                sqlReadOnly: true,
+                sql: null,
+                storedProcedure: sproc.QualifiedName,
                 defaultReportName: sproc.Name,
                 analyzingStatus: "Analyzing stored procedure...",
                 prepare: reportOptions =>
@@ -229,15 +256,16 @@ namespace Flank.SsmsExtension
 
                 submenu.DropDownItems.Add(
                     "Excel (Power Query)",
-                    null,
+                    MenuIcons.Excel,
                     (s, e) => owner.RunForSelection(CreateExcelAsync));
 
                 submenu.DropDownItems.Add(
                     "SSRS Report",
-                    null,
+                    MenuIcons.Ssrs,
                     (s, e) => owner.RunForSelection(CreateSsrsReportAsync));
 
-                return new ToolStripItem[] { submenu };
+                // We're first in the menu (see MoveToTop); separate us from SSMS's items.
+                return new ToolStripItem[] { submenu, new ToolStripSeparator() };
             }
 
             public object Clone() => new SelfServeSubmenu(owner);
@@ -249,6 +277,54 @@ namespace Flank.SsmsExtension
             public void DoDefaultAction() { }
 
             public void InvokeProperties() { }
+        }
+    }
+
+    /// <summary>
+    /// The query editor menus' icons, from the same 16px strip the .vsct uses
+    /// (Excel, then SSRS), for the WinForms Object Explorer submenu.
+    /// </summary>
+    internal static class MenuIcons
+    {
+        private static readonly Lazy<Image?[]> icons = new Lazy<Image?[]>(Load);
+
+        public static Image? Excel => icons.Value[0];
+
+        public static Image? Ssrs => icons.Value[1];
+
+        private static Image?[] Load()
+        {
+            try
+            {
+                using (var stream = typeof(MenuIcons).Assembly.GetManifestResourceStream("Flank.MenuIcons.png"))
+                using (var strip = new Bitmap(stream))
+                {
+                    return new Image?[] { Slice(strip, 0), Slice(strip, 1) };
+                }
+            }
+            catch (Exception ex)
+            {
+                // A missing icon shouldn't stop the menu working.
+                System.Diagnostics.Debug.WriteLine($"Flank: could not load menu icons: {ex}");
+                return new Image?[2];
+            }
+        }
+
+        // Copies the pixels, so the icon doesn't depend on the strip's stream.
+        private static Image Slice(Bitmap strip, int index)
+        {
+            var icon = new Bitmap(16, 16);
+
+            using (var graphics = Graphics.FromImage(icon))
+            {
+                graphics.DrawImage(
+                    strip,
+                    new Rectangle(0, 0, 16, 16),
+                    new Rectangle(index * 16, 0, 16, 16),
+                    GraphicsUnit.Pixel);
+            }
+
+            return icon;
         }
     }
 

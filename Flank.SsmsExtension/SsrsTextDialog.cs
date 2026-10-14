@@ -11,7 +11,8 @@ namespace Flank.SsmsExtension
         public string Folder { get; set; }
         public string DataSource { get; set; }
         public string ReportName { get; set; }
-        public string Sql { get; set; }
+        /// <summary>The query, edited by the user. Null for a stored procedure.</summary>
+        public string? Sql { get; set; }
     }
 
     internal sealed class SsrsTextDialog : Form
@@ -19,23 +20,24 @@ namespace Flank.SsmsExtension
         private readonly ComboBox folderComboBox;
         private readonly ComboBox dataSourceComboBox;
         private readonly TextBox reportNameTextBox;
-        private readonly TextBox sqlTextBox;
+        private readonly TextBox? sqlTextBox;
 
         public SsrsReportOptions Options { get; private set; }
 
+        /// <param name="sql">The query to report on, shown editable. Null for a stored procedure.</param>
+        /// <param name="storedProcedure">The stored procedure to report on, shown read-only.</param>
         public SsrsTextDialog(
-            string sql,
+            string? sql,
             IReadOnlyList<string> folders,
             IReadOnlyList<string> dataSources,
             string defaultReportName = "SSMS Query Test",
-            bool sqlReadOnly = false)
+            string? storedProcedure = null)
         {
             Text = "Create SSRS Report";
             FormBorderStyle = FormBorderStyle.FixedDialog;
             StartPosition = FormStartPosition.CenterScreen;
             MaximizeBox = false;
             MinimizeBox = false;
-            ClientSize = new Size(540, 380);
 
             folderComboBox = AddComboBox(
                 "Folder:",
@@ -52,41 +54,59 @@ namespace Flank.SsmsExtension
                 defaultReportName,
                 100);
 
-            Controls.Add(new Label
-            {
-                Text = "SQL:",
-                Location = new Point(20, 145),
-                Width = 130
-            });
+            int buttonsY;
 
-            sqlTextBox = new TextBox
+            if (storedProcedure != null)
             {
-                Text = sql,
-                Multiline = true,
-                ScrollBars = ScrollBars.Both,
-                WordWrap = false,
-                AcceptsReturn = true,
-                AcceptsTab = true,
-                ReadOnly = sqlReadOnly,
-                Font = new Font("Consolas", 9),
-                Location = new Point(20, 165),
-                Size = new Size(500, 160)
-            };
+                // The report calls the procedure directly (CommandType StoredProcedure).
+                var procedureTextBox = AddField(
+                    "Stored Procedure:",
+                    storedProcedure,
+                    140);
 
-            Controls.Add(sqlTextBox);
+                procedureTextBox.ReadOnly = true;
+                buttonsY = 185;
+            }
+            else
+            {
+                Controls.Add(new Label
+                {
+                    Text = "SQL:",
+                    Location = new Point(20, 145),
+                    Width = 130
+                });
+
+                sqlTextBox = new TextBox
+                {
+                    Text = sql,
+                    Multiline = true,
+                    ScrollBars = ScrollBars.Both,
+                    WordWrap = false,
+                    AcceptsReturn = true,
+                    AcceptsTab = true,
+                    Font = new Font("Consolas", 9),
+                    Location = new Point(20, 165),
+                    Size = new Size(500, 160)
+                };
+
+                Controls.Add(sqlTextBox);
+                buttonsY = 340;
+            }
+
+            ClientSize = new Size(540, buttonsY + 40);
 
             var cancelButton = new Button
             {
                 Text = "Cancel",
                 DialogResult = DialogResult.Cancel,
-                Location = new Point(350, 340),
+                Location = new Point(350, buttonsY),
                 Width = 80
             };
 
             var createButton = new Button
             {
                 Text = "Create",
-                Location = new Point(440, 340),
+                Location = new Point(440, buttonsY),
                 Width = 80
             };
 
@@ -159,7 +179,7 @@ namespace Flank.SsmsExtension
             if (folderComboBox.SelectedItem == null ||
                 dataSourceComboBox.SelectedItem == null ||
                 string.IsNullOrWhiteSpace(reportNameTextBox.Text) ||
-                string.IsNullOrWhiteSpace(sqlTextBox.Text))
+                (sqlTextBox != null && string.IsNullOrWhiteSpace(sqlTextBox.Text)))
             {
                 MessageBox.Show(
                     "All fields are required.",
@@ -175,7 +195,7 @@ namespace Flank.SsmsExtension
                 Folder = folderComboBox.SelectedItem.ToString(),
                 DataSource = dataSourceComboBox.SelectedItem.ToString(),
                 ReportName = reportNameTextBox.Text.Trim(),
-                Sql = sqlTextBox.Text
+                Sql = sqlTextBox?.Text
             };
 
             DialogResult = DialogResult.OK;

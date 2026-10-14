@@ -50,6 +50,8 @@
     </VSCTCompile>
   </ItemGroup>
   <ItemGroup>
+    <!-- Same icon strip as the .vsct menus; the Object Explorer submenu is WinForms and reads it directly. -->
+    <EmbeddedResource Include="Resources\SqlToExcelPowerQueryCommand.png" LogicalName="Flank.MenuIcons.png" />
     <EmbeddedResource Update="VSPackage.resx">
       <MergeWithCTO>true</MergeWithCTO>
       <ManifestResourceName>VSPackage</ManifestResourceName>

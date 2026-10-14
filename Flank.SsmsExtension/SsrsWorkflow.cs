@@ -14,15 +14,16 @@ namespace Flank.SsmsExtension
     /// </summary>
     internal static class SsrsWorkflow
     {
-        /// <param name="sql">Shown in the report dialog.</param>
+        /// <param name="sql">The query, shown editable in the report dialog. Null for a stored procedure.</param>
+        /// <param name="storedProcedure">The stored procedure, shown read-only. Null for a query.</param>
         /// <param name="prepare">
         /// Runs on the UI thread once the report options are chosen (e.g. to
         /// discover columns). Returns the step that creates the report, which
         /// runs in the background and returns the report URL.
         /// </param>
         public static async Task RunAsync(
-            string sql,
-            bool sqlReadOnly,
+            string? sql,
+            string? storedProcedure,
             string defaultReportName,
             string analyzingStatus,
             Func<SsrsReportOptions, Func<SsrsClient, string>> prepare)
@@ -101,7 +102,7 @@ namespace Flank.SsmsExtension
                     folders,
                     dataSources,
                     defaultReportName,
-                    sqlReadOnly))
+                    storedProcedure))
                 {
                     if (dialog.ShowDialog() != DialogResult.OK)
                         return;

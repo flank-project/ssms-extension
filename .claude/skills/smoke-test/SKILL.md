@@ -83,8 +83,7 @@ For the stored procedure scenarios:
    double-click its label; the tree can scroll as it expands, so screenshot
    before each click.
 3. Click the procedure to select it, then shift+F10. Make Self-Serve is
-   7 Downs from the top (after Native Compilation Advisor); Right opens the
-   submenu.
+   the first item: Down once, then Right opens the submenu.
 
 Procedures used (all read-only):
 
@@ -99,8 +98,10 @@ The submenu shows **Excel (Power Query)** and **SSRS Report**. Escape twice.
 
 Then in Object Explorer, expand Databases > (database) > Programmability >
 Stored Procedures (double-click a folder's label to expand it), click a
-procedure, and shift+F10: **Make Self-Serve** is present. The Stored
-Procedures folder's own menu should not have it.
+procedure, and shift+F10: **Make Self-Serve** is the first item, with a
+separator under it. Open it and zoom: both items have icons (Excel's and
+the SSRS chart, as in the query editor). The Stored Procedures folder's own
+menu should not have it.
 
 ### query-excel
 
@@ -158,8 +159,9 @@ Procedures folder's own menu should not have it.
 1. On `dbo.get_leagues`, open the submenu, highlight **SSRS Report**, Return.
 2. **Connect to SSRS**: Return (Continue).
 3. **Create SSRS Report**: type-ahead `/FlankS` to select `/FlankSmoke`.
-   Report Name defaults to `get_leagues`, and the SQL box shows a read-only
-   `EXEC [dbo].[get_leagues]`. Zoom to check, then Return (Create).
+   Report Name defaults to `get_leagues`, and a read-only Stored Procedure
+   field shows `[dbo].[get_leagues]` (there's no SQL box). Zoom to check,
+   then Return (Create).
 4. **SSRS Report Created**: ctrl+c copies the link; Escape.
 5. Check it:
    ```powershell
