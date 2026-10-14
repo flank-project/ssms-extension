@@ -34,6 +34,7 @@ namespace Flank.SsmsExtension
         private readonly Label instructions;
         private readonly Label status;
         private readonly Button runButton;
+        private readonly Button testButton;
 
         private readonly List<AccessSignIn> signInOptions;
 
@@ -159,7 +160,11 @@ namespace Flank.SsmsExtension
             };
             Controls.Add(status);
 
-            var copyButton = new Button { Text = "Copy script", Width = 100, Location = new Point(ClientSize.Width - 336, ClientSize.Height - 40), Anchor = AnchorStyles.Bottom | AnchorStyles.Right };
+            var copyButton = new Button { Text = "Copy script", Width = 100, Location = new Point(ClientSize.Width - 466, ClientSize.Height - 40), Anchor = AnchorStyles.Bottom | AnchorStyles.Right };
+
+            // Checks the user's permissions by impersonating them.
+            testButton = new Button { Text = "Test as this user", Width = 120, Location = new Point(ClientSize.Width - 346, ClientSize.Height - 40), Anchor = AnchorStyles.Bottom | AnchorStyles.Right };
+            testButton.Click += (s, e) => Test();
             copyButton.Click += (s, e) =>
             {
                 if (TryBuild(out var request))
@@ -174,6 +179,7 @@ namespace Flank.SsmsExtension
             var closeButton = new Button { Text = "Close", Width = 100, DialogResult = DialogResult.Cancel, Location = new Point(ClientSize.Width - 116, ClientSize.Height - 40), Anchor = AnchorStyles.Bottom | AnchorStyles.Right };
 
             Controls.Add(copyButton);
+            Controls.Add(testButton);
             Controls.Add(runButton);
             Controls.Add(closeButton);
             CancelButton = closeButton;
@@ -253,6 +259,7 @@ namespace Flank.SsmsExtension
             bool ready = TryBuild(out var request);
             script.Text = ready ? AccessScript.ToText(request) : "-- Enter a name to see the script.";
             runButton.Enabled = ready;
+            testButton.Enabled = ready;
 
             string who = ready ? request.Name : "the user";
             switch (selected)
@@ -273,6 +280,77 @@ namespace Flank.SsmsExtension
                         $"Their computer must be able to reach {server} (e.g. on the network or VPN).\n" +
                         "When Excel asks them to sign in, they choose Windows and use their current credentials.";
                     break;
+            }
+        }
+
+        /// <summary>
+        /// Whether the user can do what the workbook or report needs: EXECUTE on
+        /// the procedure, or SELECT on each table the query reads.
+        /// </summary>
+        private void Test()
+        {
+            string user = name.Text.Trim();
+
+            var checks = procedure != null
+                ? new List<PermissionCheck> { new PermissionCheck(procedure, "EXECUTE") }
+                : queryTables.Select(t => new PermissionCheck(t, "SELECT")).ToList();
+
+            if (checks.Count == 0)
+            {
+                status.ForeColor = SystemColors.ControlText;
+                status.Text = "Couldn't tell which tables this query reads, so there's nothing to test.";
+                return;
+            }
+
+            status.ForeColor = SystemColors.ControlText;
+            status.Text = "Testing...";
+            status.Refresh();
+            UseWaitCursor = true;
+
+            try
+            {
+                bool exists = false;
+
+                useConnection(connection =>
+                {
+                    exists = AccessTester.UserExists(connection, user);
+                    if (exists)
+                        AccessTester.Check(connection, user, checks);
+                });
+
+                if (!exists)
+                {
+                    status.ForeColor = Color.Firebrick;
+                    status.Text = $"{user} doesn't exist yet. Run the script first.";
+                    return;
+                }
+
+                var missing = checks.Where(c => !c.Granted).ToList();
+
+                if (missing.Count == 0)
+                {
+                    status.ForeColor = Color.ForestGreen;
+                    status.Text = $"{user} can " + string.Join(", ", checks.Select(c => $"{c.Permission} {c.ObjectName}")) + ".";
+                }
+                else
+                {
+                    status.ForeColor = Color.Firebrick;
+                    status.Text = $"{user} can't " + string.Join(", ", missing.Select(c => $"{c.Permission} {c.ObjectName}")) +
+                                  ". Run the script, or choose broader access.";
+                }
+            }
+            catch (Exception ex)
+            {
+                status.ForeColor = Color.Firebrick;
+                // The user exists (checked above), so a failure to impersonate
+                // means we lack permission to.
+                status.Text = ex.Message.IndexOf("Cannot execute as", StringComparison.OrdinalIgnoreCase) >= 0
+                    ? "You need IMPERSONATE permission on that user (e.g. db_owner) to test as them."
+                    : ex.Message;
+            }
+            finally
+            {
+                UseWaitCursor = false;
             }
         }
 

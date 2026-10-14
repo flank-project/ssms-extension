@@ -240,7 +240,14 @@ database) and drops it at the end.
 5. Query editor: with `SELECT id, name FROM leagues` in a query window,
    **Give Someone Access...** (third submenu item) offers "Only the tables
    this query reads: [dbo].[leagues]".
-6. Clean up: in a query window run `DROP USER IF EXISTS [flank_smoke_user];`.
+6. **Test as this user** (focus starts on Sign in with when the dialog
+   opens; Tab once reaches Username, so reopen the dialog to change the
+   name). Pass, for `flank_smoke_user` with only the procedure grant:
+   on the procedure, green "can EXECUTE"; on the leagues query, red "can't
+   SELECT [dbo].[leagues]". For a name that doesn't exist: "doesn't exist
+   yet". Afterwards `SELECT USER_NAME()` in the query window is still the
+   window's own user (the test reverts its impersonation).
+7. Clean up: in a query window run `DROP USER IF EXISTS [flank_smoke_user];`.
    Keep the clipboard script until then: once the user exists, running the
    dialog again doesn't change its password.
 

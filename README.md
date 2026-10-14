@@ -107,6 +107,7 @@ Right-click the query (or the stored procedure in Object Explorer) and choose **
   - their **Windows / Active Directory** account (SQL Server)
 - grants only what's needed: `EXECUTE` on the stored procedure, or `SELECT` on the tables the query reads, or, if you choose, every table (`db_datareader`)
 - shows the exact T-SQL, which you can copy or run, and tells you what to send the person and which sign-in option to pick when Excel asks
+- **Test as this user** checks, before you send anything, that the person can run the procedure or read the query's tables. It impersonates them (`EXECUTE AS USER`), so you need `IMPERSONATE` permission on them (db_owner has it)
 
 Prefer an identity people already have: Entra on Azure SQL, Windows / Active Directory on SQL Server. Use SQL usernames when those aren't available.
 
