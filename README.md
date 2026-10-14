@@ -83,7 +83,7 @@ Not supported yet:
 
 - SQL
   - Parameters for queries from the query editor (stored procedures only)
-  - Multiple result sets: Power Query only reads a procedure's first result set, so that's the one the workbook uses (Flank's preview shows them all)
+  - Multiple result sets: Power Query only reads a procedure's first result set, so that's the one the workbook uses. Flank's preview shows them all and warns before creating the workbook; to include the others, split the procedure into one per result set
 - Excel
   - Excel for the web
  

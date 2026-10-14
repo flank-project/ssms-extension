@@ -93,7 +93,9 @@ Procedures used (all read-only):
 - `dbo.get_leagues`: no parameters; returns `id, name` (5 rows).
 - `dbo.test_multiset_n`: takes `@N` and two OUTPUT parameters; returns three
   result sets (TOP @N, empty, TOP 2×@N). Only the first is used; the Run
-  dialog says so and shows all three as tabs. Excel workbooks for it get an
+  dialog shows all three as tabs, and Create workbook / Continue first shows
+  a warning ("returns 3 result sets ... only Result 1 will be included",
+  Cancel by default; Left then Return picks OK). Excel workbooks for it get an
   extra one-time "Native Database Query" approval (click **Run**). SSRS:
   `verify-ssrs.ps1` gives 2 rows with the default N=2, 3 with
   `-Parameters "N=3"`.

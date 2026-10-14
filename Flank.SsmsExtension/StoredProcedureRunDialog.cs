@@ -19,6 +19,7 @@ namespace Flank.SsmsExtension
         public const int MaxRows = 50000;
 
         private readonly string procedureName;
+        private readonly string outputName;
         private readonly IReadOnlyList<SprocParameter> parameters;
         private readonly IReadOnlyList<SprocParameter> outputParameters;
         private readonly Func<IDbConnection> openConnection;
@@ -30,13 +31,16 @@ namespace Flank.SsmsExtension
 
         /// <param name="parameters">All of the procedure's parameters; OUTPUT ones get no input.</param>
         /// <param name="openConnection">Opens a connection to the procedure's database.</param>
+        /// <param name="outputName">What's being created, for messages, e.g. "Excel (Power Query)".</param>
         public StoredProcedureRunDialog(
             string procedureName,
             IReadOnlyList<SprocParameter> parameters,
             Func<IDbConnection> openConnection,
-            string createText)
+            string createText,
+            string outputName)
         {
             this.procedureName = procedureName;
+            this.outputName = outputName;
             this.parameters = parameters.Where(p => !p.IsOutput).ToList();
             outputParameters = parameters.Where(p => p.IsOutput).ToList();
             parameters = this.parameters;
@@ -164,6 +168,9 @@ namespace Flank.SsmsExtension
             };
             createButton.Click += (s, e) =>
             {
+                if (!ConfirmFirstResultSetOnly())
+                    return;
+
                 DialogResult = DialogResult.OK;
                 Close();
             };
@@ -182,6 +189,31 @@ namespace Flank.SsmsExtension
 
         /// <summary>When the last run happened.</summary>
         public DateTime RanAt { get; private set; }
+
+        /// <summary>
+        /// Power Query and SSRS only ever read a procedure's first result set,
+        /// so make sure the user knows the rest won't be in the output.
+        /// </summary>
+        private bool ConfirmFirstResultSetOnly()
+        {
+            if (Results.Count <= 1)
+                return true;
+
+            var answer = MessageBox.Show(
+                this,
+                $"{procedureName} returns {Results.Count} result sets.\n\n" +
+                $"{outputName} only supports one result set per stored procedure, so only " +
+                $"Result 1 ({Results[0].Columns.Count} columns) will be included. " +
+                $"Results 2-{Results.Count} will be left out.\n\n" +
+                "To include them, split the procedure into one procedure per result set.\n\n" +
+                "Continue with Result 1 only?",
+                "Flank: only the first result set is supported",
+                MessageBoxButtons.OKCancel,
+                MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button2);
+
+            return answer == DialogResult.OK;
+        }
 
         private void InvalidatePreview()
         {

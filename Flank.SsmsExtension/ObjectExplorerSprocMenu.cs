@@ -182,7 +182,8 @@ namespace Flank.SsmsExtension
                 sproc.QualifiedName,
                 parameters,
                 () => OpenConnection(node, sproc.Database),
-                "Create workbook"))
+                "Create workbook",
+                "Excel (Power Query)"))
             {
                 if (dialog.ShowDialog() != DialogResult.OK)
                     return;
@@ -248,7 +249,8 @@ namespace Flank.SsmsExtension
                 sproc.QualifiedName,
                 parameters,
                 () => OpenConnection(node, sproc.Database),
-                "Continue"))
+                "Continue",
+                "SSRS"))
             {
                 if (dialog.ShowDialog() != DialogResult.OK)
                     return;
