@@ -28,6 +28,12 @@
 <Reference Include="Microsoft.SqlServer.RegSvrEnum">
   <HintPath>C:\SSMS-Weird\Common7\IDE\Microsoft.SqlServer.RegSvrEnum.dll</HintPath>
 </Reference>
+<Reference Include="Microsoft.SqlServer.ConnectionInfo">
+  <HintPath>C:\SSMS-Weird\Common7\IDE\Microsoft.SqlServer.ConnectionInfo.dll</HintPath>
+</Reference>
+<Reference Include="Microsoft.SqlServer.Management.Sdk.SqlStudio">
+  <HintPath>C:\SSMS-Weird\Common7\IDE\Microsoft.SqlServer.Management.Sdk.SqlStudio.dll</HintPath>
+</Reference>
 <Reference Include="SqlPackageBase">
   <HintPath>C:\SSMS-Weird\Common7\IDE\SqlPackageBase.dll</HintPath>
 </Reference>
@@ -44,6 +50,8 @@
     </VSCTCompile>
   </ItemGroup>
   <ItemGroup>
+    <!-- Same icon strip as the .vsct menus; the Object Explorer submenu is WinForms and reads it directly. -->
+    <EmbeddedResource Include="Resources\SqlToExcelPowerQueryCommand.png" LogicalName="Flank.MenuIcons.png" />
     <EmbeddedResource Update="VSPackage.resx">
       <MergeWithCTO>true</MergeWithCTO>
       <ManifestResourceName>VSPackage</ManifestResourceName>

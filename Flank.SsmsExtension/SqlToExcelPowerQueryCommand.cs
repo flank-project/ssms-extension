@@ -1,9 +1,12 @@
 ﻿using Flank.Excel;
+using Flank.Ssrs;
 using Microsoft.SqlServer.Management.UI.VSIntegration;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
 using System;
+using System.Collections.Generic;
 using System.ComponentModel.Design;
+using System.Linq;
 using System.Threading.Tasks;
 using Task = System.Threading.Tasks.Task;
 
@@ -65,11 +68,10 @@ namespace Flank.SsmsExtension
             string step = "Reading query";
             string server = null;
             string database = null;
-            string outputPath = null;
+            string sql;
 
             try
             {
-                string sql;
                 try
                 {
                     sql = SsmsQueryHelper.GetCurrentSql();
@@ -109,84 +111,80 @@ namespace Flank.SsmsExtension
                 if (string.IsNullOrWhiteSpace(database))
                     throw new Exception(
                         "Could not determine the database name.");
-
-                step = "Choosing output file";
-
-                using (var dialog = new System.Windows.Forms.SaveFileDialog
-                {
-                    Filter = "Excel Workbook (*.xlsx)|*.xlsx",
-                    DefaultExt = "xlsx",
-                    AddExtension = true,
-                    FileName = "report.xlsx",
-                    Title = "Save as refreshable Excel"
-                })
-                {
-                    if (dialog.ShowDialog() !=
-                        System.Windows.Forms.DialogResult.OK)
-                    {
-                        return;
-                    }
-
-                    outputPath = dialog.FileName;
-                }
-
-                step = "Creating Excel workbook";
-
-                await Task.Run(() =>
-                {
-                    ExcelExporter.Generate(
-                        outputPath,
-                        sql,
-                        server,
-                        database);
-                });
-
-                await ThreadHelper.JoinableTaskFactory
-                    .SwitchToMainThreadAsync();
-
-                step = "Opening Excel workbook";
-
-                SsmsUiHelper.SetStatusBar(
-                    "Refreshable Excel created — opening Excel...");
-
-                System.Diagnostics.Process.Start(outputPath);
             }
             catch (Exception ex)
             {
-                await ThreadHelper.JoinableTaskFactory
-                    .SwitchToMainThreadAsync();
-
-                ShowFailure(
+                ExcelWorkflow.ShowFailure(
                     step,
                     ex,
                     server,
                     database,
-                    outputPath);
+                    null);
+                return;
             }
-        }
 
-        private void ShowFailure(
-            string step,
-            Exception exception,
-            string server,
-            string database,
-            string outputPath)
-        {
-            ThreadHelper.ThrowIfNotOnUIThread();
+            System.Data.IDbConnection queryConnection;
+            bool isAzure = false;
+            IReadOnlyList<string> tables = Array.Empty<string>();
+            string tablesProblem = null;
 
-            var message =
-                "Flank couldn't create the refreshable Excel workbook.\n\n" +
-                $"Step: {step}\n" +
-                $"Error: {exception.Message}\n\n" +
-                $"Server: {server ?? "(unknown)"}\n" +
-                $"Database: {database ?? "(unknown)"}\n" +
-                $"Output: {outputPath ?? "(not chosen yet)"}\n\n" +
-                "Please screenshot this message when reporting the issue.";
+            try
+            {
+                queryConnection = SsmsQueryHelper.GetCurrentConnection();
 
-            SsmsUiHelper.ShowMessage(
-                message,
-                OLEMSGICON.OLEMSGICON_CRITICAL,
-                "Flank Error");
+                SsmsQueryHelper.UseBorrowedConnection(queryConnection, connection =>
+                {
+                    isAzure = AccessDiscovery.IsAzureSqlDatabase(connection);
+
+                    // The tables and views the query names, for granting SELECT.
+                    try
+                    {
+                        tables = QueryObjects.Resolve(connection, QueryObjects.Find(sql));
+                        if (tables.Count == 0)
+                            tablesProblem = "none found in this database";
+                    }
+                    catch (Exception ex)
+                    {
+                        tablesProblem = ex.Message;
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                ExcelWorkflow.ShowFailure(
+                    "Reading SQL Server connection",
+                    ex,
+                    server,
+                    database,
+                    null);
+                return;
+            }
+
+            // Who refreshes it, their access, then a run as them: the workbook
+            // starts with that run's rows.
+            WorkbookRequest request;
+            string fileName;
+
+            // The query window's connection is borrowed, never closed.
+            using (var wizard = new ExcelWorkbookWizard(
+                server,
+                database,
+                isAzure,
+                procedure: null,
+                procedureParameters: Array.Empty<SprocParameter>(),
+                query: sql,
+                queryTables: tables,
+                queryTablesProblem: tablesProblem,
+                action => SsmsQueryHelper.UseBorrowedConnection(queryConnection, action)))
+            {
+                if (wizard.ShowDialog() != System.Windows.Forms.DialogResult.OK || wizard.Request == null)
+                    return;
+
+                request = wizard.Request;
+                fileName = wizard.DefaultFileName;
+            }
+
+            await ExcelWorkflow.RunAsync(request, fileName);
         }
     }
 }

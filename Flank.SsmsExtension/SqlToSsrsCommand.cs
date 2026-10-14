@@ -122,153 +122,24 @@ namespace Flank.SsmsExtension
                 return;
             }
 
-            SsrsConnectionOptions connectionOptions;
-
-            using (var dialog = new SsrsConnectionDialog())
-            {
-                if (dialog.ShowDialog() != DialogResult.OK)
-                    return;
-
-                connectionOptions = dialog.Options;
-            }
-
-            SsrsProgressDialog progressDialog = null;
-
-            try
-            {
-                //
-                // Step 1: Connect to SSRS and discover folders/data sources
-                //
-
-                var client = new SsrsClient(
-                    connectionOptions.ReportServerUrl,
-                    connectionOptions.ReportPortalUrl);
-
-                progressDialog = new SsrsProgressDialog();
-                progressDialog.SetStatus(
-                    "Loading SSRS folders and data sources...");
-                progressDialog.Show();
-                progressDialog.Refresh();
-
-                IReadOnlyList<string> folders;
-                IReadOnlyList<string> dataSources;
-
-                try
+            await SsrsWorkflow.RunAsync(
+                sql,
+                storedProcedure: null,
+                defaultReportName: "SSMS Query Test",
+                analyzingStatus: "Analyzing query...",
+                prepare: reportOptions =>
                 {
-                    var result = await Task.Run(() =>
-                    {
-                        client.TestConnection();
+                    IReadOnlyList<ReportColumn> columns = null;
+                    SsmsQueryHelper.UseBorrowedConnection(connection, c =>
+                        columns = SqlMetadataDiscovery.DiscoverQueryColumns(reportOptions.Sql, c));
 
-                        return new
-                        {
-                            Folders = client.GetFolders(),
-                            DataSources = client.GetSharedDataSources()
-                        };
-                    });
-
-                    folders = result.Folders;
-                    dataSources = result.DataSources;
-                }
-                finally
-                {
-                    await ThreadHelper.JoinableTaskFactory
-                        .SwitchToMainThreadAsync();
-
-                    if (progressDialog != null)
-                    {
-                        progressDialog.Close();
-                        progressDialog.Dispose();
-                        progressDialog = null;
-                    }
-                }
-
-                //
-                // Step 2: Get report options
-                //
-
-                SsrsReportOptions reportOptions;
-
-                using (var dialog = new SsrsTextDialog(
-                    sql,
-                    folders,
-                    dataSources))
-                {
-                    if (dialog.ShowDialog() != DialogResult.OK)
-                        return;
-
-                    reportOptions = dialog.Options;
-                }
-
-                //
-                // Step 3: Discover SQL schema
-                //
-
-                progressDialog = new SsrsProgressDialog();
-                progressDialog.SetStatus("Analyzing query...");
-                progressDialog.Show();
-                progressDialog.Refresh();
-
-                var columns =
-                    SqlMetadataDiscovery.DiscoverQueryColumns(
-                        reportOptions.Sql,
-                        connection);
-
-                // SSMS's connection is no longer needed.
-
-                //
-                // Step 4: Create report
-                //
-
-                progressDialog.SetStatus(
-                    "Creating report in SSRS...");
-
-                string reportUrl = await Task.Run(() =>
-                {
-                    return client.CreateReportFromText(
+                    return client => client.CreateReportFromText(
                         reportOptions.Sql,
                         columns,
                         reportOptions.DataSource,
                         reportOptions.Folder,
                         reportOptions.ReportName);
                 });
-
-                await ThreadHelper.JoinableTaskFactory
-                    .SwitchToMainThreadAsync();
-
-                progressDialog.Close();
-                progressDialog.Dispose();
-                progressDialog = null;
-
-                //
-                // Step 5: Success
-                //
-
-                using (var successDialog =
-                    new SsrsSuccessDialog(
-                        reportOptions.ReportName,
-                        reportUrl))
-                {
-                    successDialog.ShowDialog();
-                }
-            }
-            catch (Exception ex)
-            {
-                await ThreadHelper.JoinableTaskFactory
-                    .SwitchToMainThreadAsync();
-
-                if (progressDialog != null)
-                {
-                    progressDialog.Close();
-                    progressDialog.Dispose();
-                    progressDialog = null;
-                }
-
-                SsmsUiHelper.ShowMessage(
-                    "Flank couldn't create the SSRS report.\n\n" +
-                    ex.Message,
-                    OLEMSGICON.OLEMSGICON_CRITICAL,
-                    "Flank Error");
-            }
         }
     }
 }

@@ -62,14 +62,10 @@ namespace Flank.Ssrs
             string reportFolder,
             string reportName)
         {
-            string queryXml = $@"
-        <CommandText>{XmlEscape(sql)}</CommandText>";
-
-            string rdl = BuildReportRdl(
+            string rdl = BuildTextReportRdl(
+                sql,
                 columns,
-                sharedDataSourcePath,
-                queryXml,
-                null);
+                sharedDataSourcePath);
 
             DeployReport(
                 rdl,
@@ -87,26 +83,15 @@ namespace Flank.Ssrs
             IReadOnlyList<ReportColumn> columns,
             string sharedDataSourcePath,
             string reportFolder,
-            string reportName)
+            string reportName,
+            IReadOnlyDictionary<string, object?>? defaultValues = null)
         {
-            string reportParametersXml;
-            string queryParametersXml;
-
-            BuildStoredProcedureParameters(
+            string rdl = BuildStoredProcedureReportRdl(
+                procedureName,
                 parameters,
-                out reportParametersXml,
-                out queryParametersXml);
-
-            string queryXml = $@"
-        <CommandType>StoredProcedure</CommandType>
-        <CommandText>{XmlEscape(procedureName)}</CommandText>
-{queryParametersXml}";
-
-            string rdl = BuildReportRdl(
                 columns,
                 sharedDataSourcePath,
-                queryXml,
-                reportParametersXml);
+                defaultValues);
 
             DeployReport(
                 rdl,
@@ -117,8 +102,63 @@ namespace Flank.Ssrs
                 reportFolder,
                 reportName);
         }
+        // RDL building is separate from deployment so it can be tested without a server.
+        internal static string BuildTextReportRdl(
+            string sql,
+            IReadOnlyList<ReportColumn> columns,
+            string sharedDataSourcePath)
+        {
+            string queryXml = $@"
+        <CommandText>{XmlEscape(sql)}</CommandText>";
+
+            return BuildReportRdl(
+                columns,
+                sharedDataSourcePath,
+                queryXml,
+                null);
+        }
+
+        /// <param name="defaultValues">
+        /// Report parameter defaults by SQL parameter name (with '@'), so the
+        /// report shows data when opened. Missing or null: no default.
+        /// </param>
+        internal static string BuildStoredProcedureReportRdl(
+            string procedureName,
+            IReadOnlyList<SprocParameter> parameters,
+            IReadOnlyList<ReportColumn> columns,
+            string sharedDataSourcePath,
+            IReadOnlyDictionary<string, object?>? defaultValues = null)
+        {
+            string reportParametersXml;
+            string queryParametersXml;
+
+            BuildStoredProcedureParameters(
+                parameters,
+                defaultValues,
+                out reportParametersXml,
+                out queryParametersXml);
+
+            // SSRS can't supply OUTPUT parameters to a stored procedure call, so
+            // a procedure with any is called from a batch that declares them.
+            string queryXml = parameters.Any(p => p.IsOutput)
+                ? $@"
+        <CommandText>{XmlEscape(ProcedureCall.BuildExec(procedureName, parameters))}</CommandText>
+{queryParametersXml}"
+                : $@"
+        <CommandType>StoredProcedure</CommandType>
+        <CommandText>{XmlEscape(procedureName)}</CommandText>
+{queryParametersXml}";
+
+            return BuildReportRdl(
+                columns,
+                sharedDataSourcePath,
+                queryXml,
+                reportParametersXml);
+        }
+
         private static void BuildStoredProcedureParameters(
             IReadOnlyList<SprocParameter> parameters,
+            IReadOnlyDictionary<string, object?>? defaultValues,
             out string reportParametersXml,
             out string queryParametersXml)
         {
@@ -143,10 +183,24 @@ namespace Flank.Ssrs
                     GetRdlParameterType(
                         parameter.SqlType);
 
+                string defaultXml = "";
+
+                if (defaultValues != null &&
+                    defaultValues.TryGetValue(sqlParameterName, out object? defaultValue) &&
+                    defaultValue != null)
+                {
+                    defaultXml = $@"
+      <DefaultValue>
+        <Values>
+          <Value>{XmlEscape(FormatRdlValue(defaultValue, rdlType))}</Value>
+        </Values>
+      </DefaultValue>";
+                }
+
                 reportParameters.Append($@"
     <ReportParameter Name=""{XmlEscape(reportParameterName)}"">
       <DataType>{rdlType}</DataType>
-      <Nullable>true</Nullable>
+      <Nullable>true</Nullable>{defaultXml}
       <Prompt>{XmlEscape(reportParameterName)}</Prompt>
     </ReportParameter>");
 
@@ -316,6 +370,11 @@ namespace Flank.Ssrs
 
             int columnNumber = 0;
 
+            // SSRS requires unique field and textbox names, but different
+            // columns can map to the same safe name ("a b" and "a_b").
+            var usedFieldNames =
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
             foreach (var column in columns)
             {
                 columnNumber++;
@@ -332,6 +391,13 @@ namespace Flank.Ssrs
                     MakeSafeRdlName(
                         sourceName,
                         columnNumber);
+
+                string baseFieldName = fieldName;
+
+                for (int suffix = 2; !usedFieldNames.Add(fieldName); suffix++)
+                {
+                    fieldName = baseFieldName + "_" + suffix;
+                }
 
                 fields.Append($@"
         <Field Name=""{XmlEscape(fieldName)}"">
@@ -505,7 +571,23 @@ namespace Flank.Ssrs
                 .Escape(value);
         }
 
-        private static string GetRdlParameterType(
+        // RDL parameter values are invariant text: 2024-01-02T00:00:00, true, 1.5.
+        internal static string FormatRdlValue(object value, string rdlType)
+        {
+            switch (value)
+            {
+                case DateTime date:
+                    return date.ToString("yyyy-MM-ddTHH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
+                case bool flag:
+                    return flag ? "true" : "false";
+                case IFormattable formattable:
+                    return formattable.ToString(null, System.Globalization.CultureInfo.InvariantCulture);
+                default:
+                    return value.ToString() ?? "";
+            }
+        }
+
+        internal static string GetRdlParameterType(
             string sqlType)
         {
             switch (sqlType.ToLowerInvariant())
@@ -554,7 +636,7 @@ namespace Flank.Ssrs
             }
         }
 
-        private static string MakeSafeRdlName(
+        internal static string MakeSafeRdlName(
             string name,
             int fallbackNumber)
         {

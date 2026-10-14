@@ -1,0 +1,118 @@
+using Flank.Ssrs;
+using System;
+using System.Collections.Generic;
+using System.Data;
+using System.Drawing;
+using System.Linq;
+using System.Windows.Forms;
+
+namespace Flank.SsmsExtension
+{
+    /// <summary>
+    /// Runs a stored procedure to preview its results before creating an SSRS
+    /// report from it (the report takes its columns from the run).
+    /// </summary>
+    internal sealed class StoredProcedureRunDialog : Form
+    {
+        private readonly string procedureName;
+        private readonly string outputName;
+        private readonly PreviewPanel preview;
+        private readonly Button createButton;
+
+        /// <param name="parameters">All of the procedure's parameters; OUTPUT ones get no input.</param>
+        /// <param name="openConnection">Opens a connection to the procedure's database.</param>
+        /// <param name="outputName">What's being created, for messages, e.g. "SSRS".</param>
+        public StoredProcedureRunDialog(
+            string procedureName,
+            IReadOnlyList<SprocParameter> parameters,
+            Func<IDbConnection> openConnection,
+            string createText,
+            string outputName)
+        {
+            this.procedureName = procedureName;
+            this.outputName = outputName;
+
+            var inputs = parameters.Where(p => !p.IsOutput).ToList();
+            var outputs = parameters.Where(p => p.IsOutput).ToList();
+
+            Text = "Run " + procedureName;
+            FormBorderStyle = FormBorderStyle.Sizable;
+            StartPosition = FormStartPosition.CenterScreen;
+            MinimizeBox = false;
+            ClientSize = new Size(780, 600);
+            MinimumSize = new Size(600, 450);
+
+            Controls.Add(new Label
+            {
+                Text = "Run the procedure to preview its results.",
+                Location = new Point(16, 12),
+                Size = new Size(748, 20),
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+            });
+
+            preview = new PreviewPanel(inputs, new Size(748, ClientSize.Height - 40 - 52))
+            {
+                Location = new Point(16, 40),
+                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
+                Runner = values =>
+                {
+                    var named = inputs
+                        .Select((p, i) => new KeyValuePair<string, object?>(p.Name, values[i]))
+                        .ToList();
+
+                    using (var connection = openConnection())
+                    {
+                        return StoredProcedureRunner.Run(connection, procedureName, named, PreviewPanel.MaxRows, outputs);
+                    }
+                },
+            };
+            Controls.Add(preview);
+
+            var cancelButton = new Button
+            {
+                Text = "Cancel",
+                DialogResult = DialogResult.Cancel,
+                Location = new Point(ClientSize.Width - 106, ClientSize.Height - 40),
+                Width = 90,
+                Anchor = AnchorStyles.Bottom | AnchorStyles.Right,
+            };
+
+            createButton = new Button
+            {
+                Text = createText,
+                Enabled = false,
+                Location = new Point(ClientSize.Width - 256, ClientSize.Height - 40),
+                Width = 140,
+                Anchor = AnchorStyles.Bottom | AnchorStyles.Right,
+            };
+            createButton.Click += (s, e) =>
+            {
+                if (!PreviewPanel.ConfirmFirstResultSetOnly(this, this.procedureName, preview.Results, this.outputName))
+                    return;
+
+                DialogResult = DialogResult.OK;
+                Close();
+            };
+
+            preview.ResultsChanged += (s, e) =>
+            {
+                createButton.Enabled = preview.HasResults;
+                AcceptButton = preview.HasResults ? createButton : preview.RunButton;
+            };
+
+            Controls.Add(cancelButton);
+            Controls.Add(createButton);
+            CancelButton = cancelButton;
+            AcceptButton = preview.RunButton;
+        }
+
+        /// <summary>Typed values from the last run, in input-parameter order (null = default).</summary>
+        public IReadOnlyList<object?> ParameterValues => preview.ParameterValues;
+
+        /// <summary>Result sets from the last run.</summary>
+        public IReadOnlyList<ResultSet> Results => preview.Results;
+
+        /// <summary>When the last run happened.</summary>
+        public DateTime RanAt => preview.RanAt;
+    }
+}

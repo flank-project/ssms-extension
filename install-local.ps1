@@ -138,15 +138,27 @@ foreach ($key in $installerKeys) {
 }
 
 Write-Host "Installing extension..."
-Remove-Item $dest -Recurse -Force -ErrorAction SilentlyContinue
-New-Item $dest -ItemType Directory -Force | Out-Null
-
 $build = "$repo\Flank.SsmsExtension\bin\Debug\net472"
 
-Copy-Item "$build\Flank.SsmsExtension.dll" $dest
-Copy-Item "$build\Flank.SsmsExtension.pkgdef" $dest
-Copy-Item "$build\Flank.Excel.dll" $dest
-Copy-Item "$build\Flank.Ssrs.dll" $dest
+# Windows can hold the old DLLs for a moment after SSMS exits (especially
+# after a forced close), so retry briefly before giving up.
+$deadline = (Get-Date).AddSeconds(20)
+while ($true) {
+    try {
+        Remove-Item $dest -Recurse -Force -ErrorAction SilentlyContinue
+        New-Item $dest -ItemType Directory -Force | Out-Null
+
+        Copy-Item "$build\Flank.SsmsExtension.dll" $dest
+        Copy-Item "$build\Flank.SsmsExtension.pkgdef" $dest
+        Copy-Item "$build\Flank.Excel.dll" $dest
+        Copy-Item "$build\Flank.Ssrs.dll" $dest
+        break
+    }
+    catch [System.IO.IOException] {
+        if ((Get-Date) -ge $deadline) { throw }
+        Start-Sleep -Milliseconds 500
+    }
+}
 
 # SSMS is a GUI app, so wait explicitly or /setup can still be running at launch.
 Write-Host "Registering extension..."

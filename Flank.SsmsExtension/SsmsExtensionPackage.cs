@@ -34,6 +34,8 @@ namespace Flank.SsmsExtension
     /// </remarks>
     [PackageRegistration(UseManagedResourcesOnly = true, AllowsBackgroundLoading = true)]
     [ProvideMenuResource("Menus.ctmenu", 1)]
+    // Load at startup so the Object Explorer menu hook is in place before any command is used.
+    [ProvideAutoLoad(VSConstants.UICONTEXT.NoSolution_string, PackageAutoLoadFlags.BackgroundLoad)]
     [Guid(SsmsExtensionPackage.PackageGuidString)]
     [SuppressMessage("StyleCop.CSharp.DocumentationRules", "SA1650:ElementDocumentationMustBeSpelledCorrectly", Justification = "pkgdef, VS and vsixmanifest are valid VS terms")]
     public sealed class SsmsExtensionPackage : AsyncPackage
@@ -70,6 +72,7 @@ namespace Flank.SsmsExtension
             await this.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
             await SqlToExcelPowerQueryCommand.InitializeAsync(this);
             await SqlToSsrsCommand.InitializeAsync(this);
+            await ObjectExplorerSprocMenu.InitializeAsync(this);
         }
 
         #endregion
