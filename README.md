@@ -118,6 +118,7 @@ Prefer an identity people already have: Entra on Azure SQL, Windows / Active Dir
 One-time setup Flank doesn't do for you:
 
 - **Network access:** the end user's computer must reach the server (for example, on the corporate network or VPN). On Azure SQL, the server's firewall must allow their IP address or network.
+- **Server name:** the workbook uses the server name SSMS is connected with. Connect using a name others can reach (e.g. `SQLPROD01`), not `localhost` or `.`; Flank warns if you don't.
 - **SQL usernames on SQL Server:** the server must allow SQL Server authentication (Server properties → Security → *SQL Server and Windows Authentication mode*, then restart SQL Server). Azure SQL always allows it; Flank creates the user in the database itself.
 - **Microsoft Entra:** the Azure SQL server needs a Microsoft Entra admin (Azure Portal → the SQL server → Microsoft Entra ID), and you must be connected with Entra to create Entra users. The person must already be in your Entra tenant; use their User Principal Name (often, but not always, their email address).
 

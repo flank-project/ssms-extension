@@ -88,9 +88,11 @@ Check Apps & features / the uninstall key shows the new version:
                   'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{D5B81B12-1A97-4C4A-9B77-6A996793EBC1}_is1' -ErrorAction SilentlyContinue).DisplayVersion
 ```
 
-Then start SSMS and run the `menus` and `query-excel` scenarios of the
-`smoke-test` skill, skipping its set-up step (no `install-local.ps1`: the
-point is to test the installer).
+Then start SSMS and run the `menus`, `query-excel`, `query-ssrs` and
+`sproc-excel` scenarios of the `smoke-test` skill (one of each output, from
+both the query editor and Object Explorer), skipping its set-up step (no
+`install-local.ps1`: the point is to test the installer). Connect SSMS to
+the sandbox by its real name, not `localhost`.
 
 ## 6. Draft the release
 

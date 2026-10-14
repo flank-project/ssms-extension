@@ -621,6 +621,21 @@ namespace Flank.SsmsExtension
             if (!PreviewPanel.ConfirmFirstResultSetOnly(this, effective ?? "The query", preview.Results, "Excel (Power Query)"))
                 return;
 
+            if (IsLocalServerName(server) &&
+                MessageBox.Show(
+                    this,
+                    $"SSMS is connected to this server as \"{server}\", and the workbook will use that name. " +
+                    "On anyone else's computer it means their own computer, so the workbook won't connect for them.\n\n" +
+                    "To share it, connect SSMS using the server's network name (e.g. SQLPROD01) and create the workbook again.\n\n" +
+                    "Create it anyway?",
+                    "Flank",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning,
+                    MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+            {
+                return;
+            }
+
             var result = preview.Results[0];
 
             if (result.Truncated)
@@ -656,6 +671,19 @@ namespace Flank.SsmsExtension
         // ---------------------------------------------------------------- names
 
         private static string StripBrackets(string name) => name.Replace("[", "").Replace("]", "");
+
+        /// <summary>"localhost", ".", "(local)", 127.0.0.1 or LocalDB, with or without an instance or port.</summary>
+        internal static bool IsLocalServerName(string server)
+        {
+            string host = server.Trim();
+            if (host.StartsWith("tcp:", StringComparison.OrdinalIgnoreCase))
+                host = host.Substring(4);
+            if (host.StartsWith("(localdb)", StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            host = host.Split('\\', ',')[0].Trim().ToLowerInvariant();
+            return host == "localhost" || host == "." || host == "(local)" || host == "127.0.0.1" || host == "::1";
+        }
 
         /// <summary>"monthly", "dbo.monthly" or "[dbo].[monthly]" -> "[dbo].[monthly]"; null if invalid.</summary>
         private static string? NormalizeProcedureName(string text)

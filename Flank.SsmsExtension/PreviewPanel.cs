@@ -82,7 +82,15 @@ namespace Flank.SsmsExtension
                 y += 22;
             }
 
-            RunButton = new Button { Text = "Run", Location = new Point(0, y), Width = 140 };
+            // Grows to fit e.g. "Run as DOMAIN\someone"; the status follows it.
+            RunButton = new Button
+            {
+                Text = "Run",
+                Location = new Point(0, y),
+                MinimumSize = new Size(140, 0),
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            };
             RunButton.Click += async (s, e) => await RunAsync();
             Controls.Add(RunButton);
 
@@ -94,6 +102,11 @@ namespace Flank.SsmsExtension
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
             };
             Controls.Add(status);
+            RunButton.SizeChanged += (s, e) =>
+            {
+                status.Left = RunButton.Right + 10;
+                status.Width = Width - status.Left;
+            };
 
             y += 40;
 
