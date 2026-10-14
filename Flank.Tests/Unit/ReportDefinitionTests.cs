@@ -95,6 +95,33 @@ public class ReportDefinitionTests
     }
 
     [Fact]
+    public void Sproc_report_parameters_get_default_values()
+    {
+        var rdl = XDocument.Parse(SsrsClient.BuildStoredProcedureReportRdl(
+            "dbo.get_things",
+            new[] { Param("@Id", "int"), Param("@From", "date"), Param("@Active", "bit"), Param("@Name", "varchar") },
+            Columns("x"),
+            "/Data Sources/Main",
+            new Dictionary<string, object?>
+            {
+                ["@Id"] = 2L,
+                ["@From"] = new DateTime(2024, 1, 2),
+                ["@Active"] = true,
+                ["@Name"] = null,
+            }));
+
+        string? Default(string name) =>
+            rdl.Descendants(Rdl + "ReportParameter")
+                .Single(p => (string)p.Attribute("Name")! == name)
+                .Descendants(Rdl + "Value").Select(v => (string)v).SingleOrDefault();
+
+        Assert.Equal("2", Default("Id"));
+        Assert.Equal("2024-01-02T00:00:00", Default("From"));
+        Assert.Equal("true", Default("Active"));
+        Assert.Null(Default("Name"));
+    }
+
+    [Fact]
     public void Sproc_report_skips_output_parameters()
     {
         var rdl = SprocReport(

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO.Compression;
 using System.Text;
 using System.Xml.Linq;
@@ -59,6 +60,18 @@ public static class ExcelExporter
         IReadOnlyList<string> parameterNames,
         IReadOnlyList<string>? columnNames = null)
     {
+        Generate(outputPath, new WorkbookRequest(sql, server, database)
+        {
+            ParameterNames = parameterNames,
+            ColumnNames = columnNames,
+        });
+    }
+
+    public static void Generate(string outputPath, WorkbookRequest request)
+    {
+        var parameterNames = request.ParameterNames;
+        var columnNames = request.ColumnNames;
+
         var assembly = typeof(ExcelExporter).Assembly;
 
         using var templateStream =
@@ -74,9 +87,15 @@ public static class ExcelExporter
             outputPath,
             ZipArchiveMode.Update);
 
-        UpdateQuery(workbook, sql, server, database, parameterNames);
+        UpdateQuery(workbook, request.Sql, request.Server, request.Database, parameterNames);
 
         SetNote(workbook, parameterNames.Count > 0 ? ParameterRefreshNote : RefreshNote);
+
+        if (request.RowsFetchedAt is DateTime fetched)
+        {
+            // Same text the LastRefreshed query writes.
+            SetText(workbook, "A2", "Last refreshed: " + fetched.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture));
+        }
 
         // By default the table inserts and deletes cells as it grows, which
         // shifts the cells above it (note, timestamp, parameters). Overwrite.
@@ -85,9 +104,11 @@ public static class ExcelExporter
             queryTable.Root!.SetAttributeValue("growShrinkType", "overwriteClear");
         });
 
+        var cells = new CellWriter(workbook);
+
         if (parameterNames.Count > 0)
         {
-            AddParameterCells(workbook, parameterNames);
+            AddParameterCells(workbook, parameterNames, request.ParameterValues, cells);
         }
 
         if (columnNames != null && CanUseAsTableColumns(columnNames))
@@ -95,8 +116,12 @@ public static class ExcelExporter
             SetTableColumns(
                 workbook,
                 columnNames,
-                tableRow: TableRow(parameterNames.Count));
+                request.Rows ?? Array.Empty<IReadOnlyList<object?>>(),
+                tableRow: TableRow(parameterNames.Count),
+                cells);
         }
+
+        cells.SaveStyles();
     }
 
     private static int TableRow(int parameterCount)
@@ -108,13 +133,18 @@ public static class ExcelExporter
 
     private static void SetNote(ZipArchive workbook, string note)
     {
+        SetText(workbook, "A1", note);
+    }
+
+    private static void SetText(ZipArchive workbook, string reference, string text)
+    {
         UpdateXml(workbook, "xl/worksheets/sheet1.xml", sheet =>
         {
-            var cell = sheet.Root!.Descendants(Sheet + "c").Single(c => (string)c.Attribute("r")! == "A1");
+            var cell = sheet.Root!.Descendants(Sheet + "c").Single(c => (string)c.Attribute("r")! == reference);
 
             cell.RemoveNodes();
             cell.SetAttributeValue("t", "inlineStr");
-            cell.Add(new XElement(Sheet + "is", new XElement(Sheet + "t", note)));
+            cell.Add(new XElement(Sheet + "is", new XElement(Sheet + "t", text)));
         });
     }
 
@@ -134,18 +164,23 @@ public static class ExcelExporter
     private static void SetTableColumns(
         ZipArchive workbook,
         IReadOnlyList<string> columnNames,
-        int tableRow)
+        IReadOnlyList<IReadOnlyList<object?>> rows,
+        int tableRow,
+        CellWriter cells)
     {
         int count = columnNames.Count;
         string lastColumn = ColumnLetter(count);
-        string tableRef = $"A{tableRow}:{lastColumn}{tableRow + 1}";
+
+        // A table always has at least one (possibly empty) data row.
+        int lastRow = tableRow + Math.Max(rows.Count, 1);
+        string tableRef = $"A{tableRow}:{lastColumn}{lastRow}";
 
         UpdateXml(workbook, "xl/worksheets/sheet1.xml", sheet =>
         {
-            var rows = sheet.Root!.Element(Sheet + "sheetData")!.Elements(Sheet + "row").ToList();
-            var header = rows.Single(r => (int)r.Attribute("r")! == tableRow);
+            var sheetRows = sheet.Root!.Element(Sheet + "sheetData")!.Elements(Sheet + "row").ToList();
+            var header = sheetRows.Single(r => (int)r.Attribute("r")! == tableRow);
             // The empty first data row may not exist in the sheet yet.
-            var data = rows.SingleOrDefault(r => (int)r.Attribute("r")! == tableRow + 1);
+            var data = sheetRows.SingleOrDefault(r => (int)r.Attribute("r")! == tableRow + 1);
 
             if (data == null)
             {
@@ -170,15 +205,40 @@ public static class ExcelExporter
                     new XAttribute("t", "inlineStr"),
                     new XElement(Sheet + "is", new XElement(Sheet + "t", columnNames[i]))));
 
-                var cell = new XElement(Sheet + "c", new XAttribute("r", column + (tableRow + 1)));
-                if (dataStyle != null)
-                    cell.SetAttributeValue("s", dataStyle);
-                data.Add(cell);
+                if (rows.Count == 0)
+                {
+                    var cell = new XElement(Sheet + "c", new XAttribute("r", column + (tableRow + 1)));
+                    if (dataStyle != null)
+                        cell.SetAttributeValue("s", dataStyle);
+                    data.Add(cell);
+                }
+            }
+
+            // Preview rows, shown until the first refresh replaces them.
+            var previous = data;
+
+            for (int r = 0; r < rows.Count; r++)
+            {
+                int rowNumber = tableRow + 1 + r;
+                var row = r == 0 ? data : new XElement(Sheet + "row", new XAttribute("r", rowNumber));
+
+                for (int i = 0; i < count && i < rows[r].Count; i++)
+                {
+                    var cell = cells.Cell(ColumnLetter(i + 1) + rowNumber, rows[r][i]);
+                    if (cell != null)
+                        row.Add(cell);
+                }
+
+                if (r > 0)
+                {
+                    previous.AddAfterSelf(row);
+                    previous = row;
+                }
             }
 
             // Parameter cells use columns A-B.
             sheet.Root.Element(Sheet + "dimension")?
-                .SetAttributeValue("ref", $"A1:{ColumnLetter(Math.Max(count, 2))}{tableRow + 1}");
+                .SetAttributeValue("ref", $"A1:{ColumnLetter(Math.Max(count, 2))}{lastRow}");
         });
 
         UpdateXml(workbook, "xl/tables/table1.xml", table =>
@@ -231,7 +291,7 @@ public static class ExcelExporter
             {
                 if ((string)name.Attribute("name")! == "ExternalData_1")
                 {
-                    name.Value = $"Query1!$A${tableRow}:${lastColumn}${tableRow + 1}";
+                    name.Value = $"Query1!$A${tableRow}:${lastColumn}${lastRow}";
                 }
             }
         });
@@ -448,7 +508,9 @@ in
     /// </summary>
     private static void AddParameterCells(
         ZipArchive workbook,
-        IReadOnlyList<string> parameterNames)
+        IReadOnlyList<string> parameterNames,
+        IReadOnlyList<object?>? parameterValues,
+        CellWriter cells)
     {
         int count = parameterNames.Count;
         int lastParameterRow = FirstParameterRow + count - 1;
@@ -486,6 +548,13 @@ in
                         new XAttribute("t", "inlineStr"),
                         new XElement(Sheet + "is",
                             new XElement(Sheet + "t", parameterNames[i]))));
+
+                if (parameterValues != null && i < parameterValues.Count)
+                {
+                    var value = cells.Cell("B" + r, parameterValues[i]);
+                    if (value != null)
+                        row.Add(value);
+                }
 
                 if (firstTableRow != null)
                     firstTableRow.AddBeforeSelf(row);
@@ -545,5 +614,117 @@ in
 
         using var output = workbook.CreateEntry(path).Open();
         xml.Save(output);
+    }
+
+    /// <summary>
+    /// Writes typed cells: numbers, booleans and dates as values (dates with a
+    /// date format), everything else as text. Adds the date style on demand.
+    /// </summary>
+    private sealed class CellWriter
+    {
+        private readonly ZipArchive workbook;
+        private XDocument? styles;
+        private int? dateStyle;
+
+        public CellWriter(ZipArchive workbook)
+        {
+            this.workbook = workbook;
+        }
+
+        public XElement? Cell(string reference, object? value)
+        {
+            var cell = new XElement(Sheet + "c", new XAttribute("r", reference));
+
+            switch (value)
+            {
+                case null:
+                case DBNull:
+                    return null;
+
+                case bool b:
+                    cell.SetAttributeValue("t", "b");
+                    cell.Add(new XElement(Sheet + "v", b ? "1" : "0"));
+                    return cell;
+
+                case byte or sbyte or short or ushort or int or uint or long or ulong or float or double or decimal:
+                    cell.Add(new XElement(Sheet + "v", Convert.ToString(value, CultureInfo.InvariantCulture)));
+                    return cell;
+
+                case DateTime date:
+                    return DateCell(cell, date);
+
+                case DateTimeOffset offset:
+                    return DateCell(cell, offset.DateTime);
+
+                case byte[] bytes:
+                    return TextCell(cell, "0x" + BitConverter.ToString(bytes).Replace("-", ""));
+
+                default:
+                    return TextCell(cell, Convert.ToString(value, CultureInfo.InvariantCulture) ?? "");
+            }
+        }
+
+        private static XElement TextCell(XElement cell, string text)
+        {
+            cell.SetAttributeValue("t", "inlineStr");
+            var t = new XElement(Sheet + "t", text);
+
+            // Keep leading/trailing spaces.
+            if (text.Length > 0 && (char.IsWhiteSpace(text[0]) || char.IsWhiteSpace(text[text.Length - 1])))
+                t.SetAttributeValue(XNamespace.Xml + "space", "preserve");
+
+            cell.Add(new XElement(Sheet + "is", t));
+            return cell;
+        }
+
+        private XElement DateCell(XElement cell, DateTime date)
+        {
+            cell.SetAttributeValue("s", DateStyle());
+            cell.Add(new XElement(Sheet + "v", date.ToOADate().ToString("R", CultureInfo.InvariantCulture)));
+            return cell;
+        }
+
+        // A cell format using built-in number format 22 (m/d/yyyy h:mm).
+        private int DateStyle()
+        {
+            if (dateStyle != null)
+                return dateStyle.Value;
+
+            var entry = workbook.GetEntry("xl/styles.xml")
+                ?? throw new Exception("Could not find xl/styles.xml");
+
+            using (var stream = entry.Open())
+            {
+                styles = XDocument.Load(stream);
+            }
+
+            var cellXfs = styles.Root!.Element(Sheet + "cellXfs")
+                ?? throw new Exception("Could not find cellXfs");
+
+            cellXfs.Add(new XElement(Sheet + "xf",
+                new XAttribute("numFmtId", 22),
+                new XAttribute("fontId", 0),
+                new XAttribute("fillId", 0),
+                new XAttribute("borderId", 0),
+                new XAttribute("xfId", 0),
+                new XAttribute("applyNumberFormat", 1)));
+
+            int index = cellXfs.Elements(Sheet + "xf").Count() - 1;
+            cellXfs.SetAttributeValue("count", index + 1);
+
+            dateStyle = index;
+            return index;
+        }
+
+        public void SaveStyles()
+        {
+            if (styles == null)
+                return;
+
+            workbook.GetEntry("xl/styles.xml")!.Delete();
+
+            using var output = workbook.CreateEntry("xl/styles.xml").Open();
+            styles.Save(output);
+        }
     }
 }

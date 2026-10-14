@@ -1,3 +1,4 @@
+using Flank.Excel;
 using Flank.Ssrs;
 using Microsoft.SqlServer.Management;
 using Microsoft.SqlServer.Management.Common;
@@ -142,7 +143,6 @@ namespace Flank.SsmsExtension
         {
             string step = "Reading stored procedure";
             IReadOnlyList<SprocParameter> parameters;
-            IReadOnlyList<ReportColumn> columns;
 
             try
             {
@@ -166,15 +166,31 @@ namespace Flank.SsmsExtension
                         return;
                     }
 
-                    // Fails with a clear message if there's no result set to load.
-                    columns = SqlMetadataDiscovery.DiscoverStoredProcedureColumns(
-                        objectId, sproc.QualifiedName, connection);
                 }
             }
             catch (Exception ex)
             {
                 ExcelWorkflow.ShowFailure(step, ex, sproc.Server, sproc.Database, null);
                 return;
+            }
+
+            // Run it first: the workbook starts with these values and rows.
+            IReadOnlyList<object?> values;
+            ResultSet result;
+            DateTime ranAt;
+
+            using (var dialog = new StoredProcedureRunDialog(
+                sproc.QualifiedName,
+                parameters,
+                () => OpenConnection(node, sproc.Database),
+                "Create workbook"))
+            {
+                if (dialog.ShowDialog() != DialogResult.OK)
+                    return;
+
+                values = dialog.ParameterValues;
+                result = dialog.Results[0];
+                ranAt = dialog.RanAt;
             }
 
             // Parameters become cells the user fills in (names in column A,
@@ -186,44 +202,80 @@ namespace Flank.SsmsExtension
                 : $"EXEC {sproc.QualifiedName} " +
                   string.Join(", ", names.Select(n => $"@{n} = @{n}"));
 
-            await ExcelWorkflow.RunAsync(
-                sql,
-                sproc.Server,
-                sproc.Database,
-                sproc.Name + ".xlsx",
-                names,
-                columns.Select(c => c.Name).ToList());
+            var request = new WorkbookRequest(sql, sproc.Server, sproc.Database)
+            {
+                ParameterNames = names,
+                ParameterValues = values,
+                ColumnNames = result.Columns,
+                Rows = result.Rows,
+                RowsFetchedAt = ranAt,
+            };
+
+            await ExcelWorkflow.RunAsync(request, sproc.Name + ".xlsx");
         }
 
-        private static Task CreateSsrsReportAsync(INodeInformation node, StoredProcedureInfo sproc)
+        private static async Task CreateSsrsReportAsync(INodeInformation node, StoredProcedureInfo sproc)
         {
-            return SsrsWorkflow.RunAsync(
+            IReadOnlyList<SprocParameter> parameters;
+
+            try
+            {
+                using (var connection = OpenConnection(node, sproc.Database))
+                {
+                    int objectId = SqlMetadataDiscovery.GetStoredProcedureObjectId(
+                        sproc.QualifiedName, connection);
+
+                    parameters = SqlMetadataDiscovery.DiscoverStoredProcedureParameters(
+                        objectId, connection);
+                }
+            }
+            catch (Exception ex)
+            {
+                SsmsUiHelper.ShowMessage(
+                    "Flank couldn't read the stored procedure.\n\n" + ex.Message,
+                    OLEMSGICON.OLEMSGICON_CRITICAL,
+                    "Flank Error");
+                return;
+            }
+
+            // Run it first: the values become the report parameters' defaults,
+            // so the report shows data when opened.
+            var inputs = parameters.Where(p => !p.IsOutput).ToList();
+            var defaults = new Dictionary<string, object?>();
+            ResultSet result;
+
+            using (var dialog = new StoredProcedureRunDialog(
+                sproc.QualifiedName,
+                inputs,
+                () => OpenConnection(node, sproc.Database),
+                "Continue"))
+            {
+                if (dialog.ShowDialog() != DialogResult.OK)
+                    return;
+
+                for (int i = 0; i < inputs.Count; i++)
+                    defaults[inputs[i].Name] = dialog.ParameterValues[i];
+
+                result = dialog.Results[0];
+            }
+
+            var columns = result.Columns
+                .Select(name => new ReportColumn { Name = name })
+                .ToList();
+
+            await SsrsWorkflow.RunAsync(
                 sql: null,
                 storedProcedure: sproc.QualifiedName,
                 defaultReportName: sproc.Name,
-                analyzingStatus: "Analyzing stored procedure...",
-                prepare: reportOptions =>
-                {
-                    using (var connection = OpenConnection(node, sproc.Database))
-                    {
-                        int objectId = SqlMetadataDiscovery.GetStoredProcedureObjectId(
-                            sproc.QualifiedName, connection);
-
-                        var parameters = SqlMetadataDiscovery.DiscoverStoredProcedureParameters(
-                            objectId, connection);
-
-                        var columns = SqlMetadataDiscovery.DiscoverStoredProcedureColumns(
-                            objectId, sproc.QualifiedName, connection);
-
-                        return client => client.CreateReportFromStoredProcedure(
-                            sproc.QualifiedName,
-                            parameters,
-                            columns,
-                            reportOptions.DataSource,
-                            reportOptions.Folder,
-                            reportOptions.ReportName);
-                    }
-                });
+                analyzingStatus: "Preparing report...",
+                prepare: reportOptions => client => client.CreateReportFromStoredProcedure(
+                    sproc.QualifiedName,
+                    parameters,
+                    columns,
+                    reportOptions.DataSource,
+                    reportOptions.Folder,
+                    reportOptions.ReportName,
+                    defaults));
         }
 
         /// <summary>Opens a connection to the node's server, in the procedure's database.</summary>

@@ -36,7 +36,7 @@ Flank currently supports:
 - SSRS with Windows Authentication
 - Existing shared data sources
 - Selected SQL, or the entire query if nothing is selected
-- Stored procedures, from Object Explorer. The report calls the procedure directly, and its parameters become report parameters that the viewer fills in
+- Stored procedures, from Object Explorer. Flank asks for parameter values and runs the procedure so you can preview the results; the report calls the procedure directly, and its parameters become report parameters, defaulting to the values you ran it with
 - Basic tabular reports using the columns returned by the query
 
 Not supported yet:
@@ -71,7 +71,9 @@ Flank currently supports:
   - Uses Power Query's "native SQL query" support
   - Includes `SELECT` queries, CTEs, temp tables, variables, and stored procedures that return a result set
 - **Stored procedures with parameters**, from Object Explorer
-  - The workbook lists the parameters at the top (names in column A, values in column B). End users type values and refresh
+  - Flank asks for parameter values and runs the procedure so you can preview the results
+  - The workbook starts with those values and rows, so end users see data straight away
+  - The parameters are listed at the top (names in column A, values in column B). End users change the values and refresh
 - Every workbook starts with a short "how to update" note and a **Last refreshed** time
 
 Not supported yet:

@@ -239,6 +239,98 @@ public class ExcelExporterTests : IDisposable
         Assert.Equal("Last refreshed: never", Cell("A2"));
     }
 
+    private System.Xml.Linq.XElement CellElement(string reference) =>
+        ReadPart("xl/worksheets/sheet1.xml").Descendants(Sheet + "c")
+            .Single(c => (string)c.Attribute("r")! == reference);
+
+    [Fact]
+    public void Parameter_values_fill_column_b()
+    {
+        ExcelExporter.Generate(outputPath, new WorkbookRequest("EXEC x @a = @a, @b = @b, @c = @c", "s", "d")
+        {
+            ParameterNames = new[] { "a", "b", "c" },
+            ParameterValues = new object?[] { 1, "abc", null },
+        });
+
+        Assert.Equal("1", (string)CellElement("B4").Element(Sheet + "v")!);
+        Assert.Equal("abc", Cell("B5"));
+        Assert.DoesNotContain(
+            ReadPart("xl/worksheets/sheet1.xml").Descendants(Sheet + "c"),
+            c => (string)c.Attribute("r")! == "B6");
+    }
+
+    [Fact]
+    public void Preview_rows_fill_the_table_with_typed_cells()
+    {
+        ExcelExporter.Generate(outputPath, new WorkbookRequest("SELECT 1", "s", "d")
+        {
+            ColumnNames = new[] { "id", "name", "played", "active" },
+            Rows = new IReadOnlyList<object?>[]
+            {
+                new object?[] { 1, "NBA", new DateTime(2024, 1, 2, 3, 4, 0), true },
+                new object?[] { 2.5m, null, DBNull.Value, false },
+            },
+        });
+
+        var table = ReadPart("xl/tables/table1.xml").Root!;
+        Assert.Equal("A4:D6", (string)table.Attribute("ref")!);
+
+        var names = ReadPart("xl/workbook.xml").Descendants(Sheet + "definedName")
+            .ToDictionary(n => (string)n.Attribute("name")!, n => n.Value);
+        Assert.Equal("Query1!$A$4:$D$6", names["ExternalData_1"]);
+
+        Assert.Equal("1", (string)CellElement("A5").Element(Sheet + "v")!);
+        Assert.Equal("NBA", Cell("B5"));
+        Assert.Equal("b", (string)CellElement("D5").Attribute("t")!);
+        Assert.Equal("1", (string)CellElement("D5").Element(Sheet + "v")!);
+        Assert.Equal("2.5", (string)CellElement("A6").Element(Sheet + "v")!);
+        Assert.Equal("0", (string)CellElement("D6").Element(Sheet + "v")!);
+
+        // Dates are serial numbers with a date format.
+        var date = CellElement("C5");
+        Assert.Equal(new DateTime(2024, 1, 2, 3, 4, 0).ToOADate(), double.Parse((string)date.Element(Sheet + "v")!, System.Globalization.CultureInfo.InvariantCulture));
+        int style = (int)date.Attribute("s")!;
+        var xf = ReadPart("xl/styles.xml").Root!.Element(Sheet + "cellXfs")!.Elements(Sheet + "xf").ElementAt(style);
+        Assert.Equal("22", (string)xf.Attribute("numFmtId")!);
+
+        // Nulls leave the cell out.
+        Assert.DoesNotContain(
+            ReadPart("xl/worksheets/sheet1.xml").Descendants(Sheet + "c"),
+            c => (string)c.Attribute("r")! == "B6" || (string)c.Attribute("r")! == "C6");
+    }
+
+    [Fact]
+    public void Preview_rows_show_when_they_were_fetched()
+    {
+        ExcelExporter.Generate(outputPath, new WorkbookRequest("SELECT 1", "s", "d")
+        {
+            ColumnNames = new[] { "id" },
+            Rows = new IReadOnlyList<object?>[] { new object?[] { 1 } },
+            RowsFetchedAt = new DateTime(2026, 10, 14, 2, 56, 0),
+        });
+
+        Assert.Equal("Last refreshed: 2026-10-14 02:56", Cell("A2"));
+    }
+
+    [Fact]
+    public void Preview_rows_go_below_the_parameters()
+    {
+        ExcelExporter.Generate(outputPath, new WorkbookRequest("EXEC x @a = @a", "s", "d")
+        {
+            ParameterNames = new[] { "a" },
+            ParameterValues = new object?[] { 7 },
+            ColumnNames = new[] { "id" },
+            Rows = new IReadOnlyList<object?>[] { new object?[] { 1 }, new object?[] { 2 }, new object?[] { 3 } },
+        });
+
+        // Parameter at row 4, gap, header at 6, data 7-9.
+        Assert.Equal("A6:A9", (string)ReadPart("xl/tables/table1.xml").Root!.Attribute("ref")!);
+        Assert.Equal("3", (string)CellElement("A9").Element(Sheet + "v")!);
+        Assert.Equal(
+            new[] { "1", "2", "4", "6", "7", "8", "9" },
+            ReadPart("xl/worksheets/sheet1.xml").Descendants(Sheet + "row").Select(r => (string)r.Attribute("r")!));
+    }
+
     [Fact]
     public void Overwrites_an_existing_file()
     {

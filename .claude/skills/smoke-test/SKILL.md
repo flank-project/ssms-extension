@@ -144,30 +144,35 @@ menu should not have it.
 1. `Set-Clipboard -Value "C:\temp\flank-smoke\sproc-excel.xlsx"`
 2. On `dbo.get_leagues`, open the submenu, highlight **Excel (Power
    Query)**, Return.
-3. Save dialog (default name `get_leagues`): ctrl+a, ctrl+v, zoom, Return.
-4. Excel opens the workbook; close it with ctrl+w.
-5. Check it:
+3. **Run** dialog ("This procedure has no parameters"): Return runs it.
+   Pass: 5 rows in the grid. Return again (Create workbook).
+4. Save dialog (default name `get_leagues`): ctrl+a, ctrl+v, zoom, Return.
+5. Excel opens the workbook, already showing the 5 rows and a "Last
+   refreshed" time; close it with ctrl+w.
+6. Check it:
    ```powershell
    .\tests\verify-excel.ps1 -Path C:\temp\flank-smoke\sproc-excel.xlsx
    ```
    Pass: `OK`, with 5 rows and columns `id, name`, and a `Last refreshed:` time.
-6. Parameters. `Set-Clipboard -Value "C:\temp\flank-smoke\sproc-excel-params.xlsx"`,
+7. Parameters. `Set-Clipboard -Value "C:\temp\flank-smoke\sproc-excel-params.xlsx"`,
    bring SSMS back, and run **Excel (Power Query)** on
-   `dbo.sgm_ListTeamsByLeague`; save to that path.
-7. Excel opens it. Check the layout: `League_Id` in A1, B1 empty, row 2
-   blank, and the table at row 3 already headed `team_name, team_id,
-   league_id`.
-8. Enter a value with the keyboard (Excel ignores some clicks too): ctrl+g,
-   `b`, `1`, Return, then `1`, Return. Refresh All with ctrl+alt+F5.
+   `dbo.sgm_ListTeamsByLeague`. In the Run dialog, click the
+   `@League_Id (int)` box, type `2`, Return (Run). Pass: Team 1 and Team 2
+   in the grid. Return (Create workbook); save to that path.
+8. Excel opens it. Check the layout: note in row 1, "Last refreshed" with
+   the run time in row 2, `League_Id` / `2` in A4:B4, then the table from
+   row 6 already showing Team 1 and Team 2. Set the value to 1 with the
+   keyboard (Excel ignores some clicks too): ctrl+g, `b`, `4`, Return, then
+   `1`, Return. Refresh All with ctrl+alt+F5.
    - **Security notice** ("connects to an external data source"): click
      **OK**. Return picks Cancel.
    - **Privacy levels** (first refresh of a parameter workbook, once per
      file per user): Tab until the "Ignore Privacy Levels checks for this
      file" checkbox has focus (zoom to check; focus order varies), Space,
      Return to Save.
-   Pass: Team 3 and Team 5, and `League_Id` / `1` are still in A1:B1 (not
+   Pass: Team 3 and Team 5, and `League_Id` / `1` are still in A4:B4 (not
    shifted right).
-9. Set B1 to `2` the same way and refresh. Pass: Team 1 and Team 2.
+9. Set B4 to `2` the same way and refresh. Pass: Team 1 and Team 2.
 10. ctrl+s (keeps the privacy choice), ctrl+w. Then check it unattended:
     ```powershell
     .\tests\verify-excel.ps1 -Path C:\temp\flank-smoke\sproc-excel-params.xlsx -Parameters "League_Id=3"
@@ -179,17 +184,27 @@ menu should not have it.
 ### sproc-ssrs
 
 1. On `dbo.get_leagues`, open the submenu, highlight **SSRS Report**, Return.
-2. **Connect to SSRS**: Return (Continue).
-3. **Create SSRS Report**: type-ahead `/FlankS` to select `/FlankSmoke`.
+2. **Run** dialog: Return runs it (5 rows), Return again (Continue).
+3. **Connect to SSRS**: Return (Continue).
+4. **Create SSRS Report**: type-ahead `/FlankS` to select `/FlankSmoke`.
    Report Name defaults to `get_leagues`, and a read-only Stored Procedure
    field shows `[dbo].[get_leagues]` (there's no SQL box). Zoom to check,
    then Return (Create).
-4. **SSRS Report Created**: ctrl+c copies the link; Escape.
-5. Check it:
+5. **SSRS Report Created**: ctrl+c copies the link; Escape.
+6. Check it:
    ```powershell
    .\tests\verify-ssrs.ps1 -Report (Get-Clipboard)
    ```
    Pass: `OK`, with 5 rows and columns `Value_id, Value_name`.
+7. Parameters: on `dbo.sgm_ListTeamsByLeague`, **SSRS Report**; in the Run
+   dialog type `2` for `@League_Id`, Return (Run), Return (Continue), then
+   the SSRS dialogs as above. The entered value becomes the report
+   parameter's default. Check it renders without passing a value, and that
+   a value can still be passed:
+   ```powershell
+   .	estserify-ssrs.ps1 -Report (Get-Clipboard)                            # 2 rows (league 2)
+   .	estserify-ssrs.ps1 -Report (Get-Clipboard) -Parameters "League_Id=3"  # 1 row
+   ```
 
 ## 5. Report
 

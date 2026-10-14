@@ -1,4 +1,5 @@
-﻿using Flank.Ssrs;
+﻿using Flank.Excel;
+using Flank.Ssrs;
 using Microsoft.SqlServer.Management.UI.VSIntegration;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
@@ -122,12 +123,12 @@ namespace Flank.SsmsExtension
                 return;
             }
 
-            await ExcelWorkflow.RunAsync(
-                sql,
-                server,
-                database,
-                "report.xlsx",
-                columnNames: TryDiscoverColumns(sql));
+            var request = new WorkbookRequest(sql, server, database)
+            {
+                ColumnNames = TryDiscoverColumns(sql),
+            };
+
+            await ExcelWorkflow.RunAsync(request, "report.xlsx");
         }
 
         /// <summary>
