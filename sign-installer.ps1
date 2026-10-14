@@ -6,7 +6,12 @@ $signtool = "C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\signtoo
 $dlib = "C:\artifact-signing\Microsoft.ArtifactSigning.Client\bin\x64\Azure.CodeSigning.Dlib.dll"
 
 $metadata = "$repo\installer\artifact-signing.json"
-$installer = "$repo\installer\output\Flank-SSMS-Setup-0.2.5.exe"
+# The installer build-installer.ps1 made for the version in VERSION.
+$version = (Get-Content "$repo\VERSION" -Raw).Trim()
+$installer = "$repo\installer\output\Flank-SSMS-Setup-$version.exe"
+if (-not (Test-Path $installer)) {
+    throw "$installer doesn't exist. Run build-installer.ps1 first."
+}
 
 Write-Host "Signing Flank installer..."
 

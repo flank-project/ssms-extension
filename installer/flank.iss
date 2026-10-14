@@ -1,5 +1,11 @@
 #define MyAppName "Flank"
-#define MyAppVersion "0.2.5"
+; The version comes from VERSION at the repo root (build-installer.ps1 also
+; passes it as /DMyAppVersion=...).
+#ifndef MyAppVersion
+  #define VersionFile FileOpen(AddBackslash(SourcePath) + "..\VERSION")
+  #define MyAppVersion Trim(FileRead(VersionFile))
+  #expr FileClose(VersionFile)
+#endif
 #define MyAppPublisher "Flank Technologies, Inc."
 
 [Setup]
