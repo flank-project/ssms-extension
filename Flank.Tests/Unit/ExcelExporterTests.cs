@@ -332,6 +332,15 @@ public class ExcelExporterTests : IDisposable
     }
 
     [Fact]
+    public void Has_a_single_sheet()
+    {
+        Generate("SELECT 1");
+
+        var sheets = ReadPart("xl/workbook.xml").Descendants(Sheet + "sheet").ToList();
+        Assert.Single(sheets);
+    }
+
+    [Fact]
     public void Overwrites_an_existing_file()
     {
         File.WriteAllText(outputPath, "not a workbook");
