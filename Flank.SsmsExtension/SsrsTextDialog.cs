@@ -31,7 +31,9 @@ namespace Flank.SsmsExtension
             IReadOnlyList<string> folders,
             IReadOnlyList<string> dataSources,
             string defaultReportName = "SSMS Query Test",
-            string? storedProcedure = null)
+            string? storedProcedure = null,
+            string? defaultFolder = null,
+            string? defaultDataSource = null)
         {
             Text = "Create SSRS Report";
             FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -42,11 +44,13 @@ namespace Flank.SsmsExtension
             folderComboBox = AddComboBox(
                 "Folder:",
                 folders,
+                defaultFolder,
                 20);
 
             dataSourceComboBox = AddComboBox(
                 "Shared Data Source:",
                 dataSources,
+                defaultDataSource,
                 60);
 
             reportNameTextBox = AddField(
@@ -119,9 +123,11 @@ namespace Flank.SsmsExtension
             CancelButton = cancelButton;
         }
 
+        /// <param name="preferred">Selected if it's in the list; otherwise the first item.</param>
         private ComboBox AddComboBox(
             string label,
             IReadOnlyList<string> items,
+            string? preferred,
             int y)
         {
             var labelControl = new Label
@@ -140,7 +146,11 @@ namespace Flank.SsmsExtension
 
             comboBox.Items.AddRange(items.ToArray());
 
-            if (comboBox.Items.Count > 0)
+            int index = preferred == null ? -1 : comboBox.Items.IndexOf(preferred);
+
+            if (index >= 0)
+                comboBox.SelectedIndex = index;
+            else if (comboBox.Items.Count > 0)
                 comboBox.SelectedIndex = 0;
 
             Controls.Add(labelControl);

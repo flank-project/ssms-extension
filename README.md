@@ -57,6 +57,8 @@ If you normally view reports in a browser, the URL you use is the **Report Porta
 
 Then choose a folder and shared data source, name the report, and click **Create Report**.
 
+Flank remembers the server URLs, folder and data source from the last report you created (per Windows user) and pre-fills them next time.
+
 ## Excel (Power Query)
 
 Flank can turn a SQL query into an .xlsx workbook that end users can refresh themselves using Power Query.

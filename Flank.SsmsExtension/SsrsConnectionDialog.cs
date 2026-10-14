@@ -17,7 +17,7 @@ namespace Flank.SsmsExtension
 
         public SsrsConnectionOptions Options { get; private set; }
 
-        public SsrsConnectionDialog()
+        public SsrsConnectionDialog(string reportServerUrl, string reportPortalUrl)
         {
             Text = "Connect to SSRS";
             FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -28,12 +28,12 @@ namespace Flank.SsmsExtension
 
             reportServerTextBox = AddField(
                 "Report Server URL:",
-                "http://localhost/ReportServer",
+                reportServerUrl,
                 20);
 
             reportPortalTextBox = AddField(
                 "Report Portal URL:",
-                "http://localhost/Reports",
+                reportPortalUrl,
                 60);
 
             var cancelButton = new Button

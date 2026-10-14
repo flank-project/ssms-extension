@@ -126,8 +126,9 @@ menu should not have it.
 2. Highlight **SSRS Report**, Return.
 3. **Connect to SSRS**: defaults are `http://localhost/ReportServer` and
    `http://localhost/Reports`. Return (Continue).
-4. **Create SSRS Report**: focus starts on Folder. Type-ahead `/FlankS` one
-   key per action to select `/FlankSmoke`. Tab, Tab to Report Name;
+4. **Create SSRS Report**: focus starts on Folder. It's pre-selected with the
+   last folder used (Flank remembers it in HKCU\Software\Flank\Ssrs);
+   otherwise type-ahead `/FlankS` one key per action to select `/FlankSmoke`. Tab, Tab to Report Name;
    `Set-Clipboard -Value "Query smoke"`, ctrl+a, ctrl+v. Zoom to check
    Folder, Shared Data Source (`/HardcodedTest`) and Report Name, then
    Return (Create).
