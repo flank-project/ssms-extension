@@ -9,6 +9,10 @@
   </PropertyGroup>
 	<ItemGroup>
 		<Reference Include="System.Web.Services" />
+		<!-- SSMS's own T-SQL parser; at run time inside SSMS, SSMS's copy is used. -->
+		<Reference Include="Microsoft.SqlServer.TransactSql.ScriptDom">
+			<HintPath>C:\SSMS-Weird\Common7\IDE\Extensions\Application\Microsoft.SqlServer.TransactSql.ScriptDom.dll</HintPath>
+		</Reference>
 	</ItemGroup>
 	<ItemGroup>
 		<!-- Flank.Tests is signed with Flank.snk too. -->

@@ -108,5 +108,31 @@ namespace Flank.SsmsExtension
 
             return connection;
         }
+
+        /// <summary>
+        /// Calls <paramref name="action"/> with a query window's connection,
+        /// with SQL errors raised as exceptions. SSMS sets
+        /// FireInfoMessageEventOnUserErrors on its editor connections, which
+        /// turns errors into info messages, so a failed statement would
+        /// otherwise look like it succeeded.
+        /// </summary>
+        public static void UseBorrowedConnection(IDbConnection connection, Action<IDbConnection> action)
+        {
+            var property = connection.GetType().GetProperty("FireInfoMessageEventOnUserErrors");
+            bool wasOn = property != null && (bool)property.GetValue(connection);
+
+            if (wasOn)
+                property!.SetValue(connection, false);
+
+            try
+            {
+                action(connection);
+            }
+            finally
+            {
+                if (wasOn)
+                    property!.SetValue(connection, true);
+            }
+        }
     }
 }

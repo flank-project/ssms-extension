@@ -19,9 +19,10 @@ namespace Flank.Ssrs
                 using (var reader = command.ExecuteReader(
                     System.Data.CommandBehavior.SchemaOnly))
                 {
+                    // Null when the query returns no result set.
                     var schema = reader.GetSchemaTable();
 
-                    foreach (System.Data.DataRow row in schema.Rows)
+                    foreach (System.Data.DataRow row in schema?.Rows ?? (System.Collections.IEnumerable)Array.Empty<DataRow>())
                     {
                         columns.Add(new ReportColumn
                         {

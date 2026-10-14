@@ -83,13 +83,15 @@ namespace Flank.Ssrs
             IReadOnlyList<ReportColumn> columns,
             string sharedDataSourcePath,
             string reportFolder,
-            string reportName)
+            string reportName,
+            IReadOnlyDictionary<string, object?>? defaultValues = null)
         {
             string rdl = BuildStoredProcedureReportRdl(
                 procedureName,
                 parameters,
                 columns,
-                sharedDataSourcePath);
+                sharedDataSourcePath,
+                defaultValues);
 
             DeployReport(
                 rdl,
@@ -116,21 +118,33 @@ namespace Flank.Ssrs
                 null);
         }
 
+        /// <param name="defaultValues">
+        /// Report parameter defaults by SQL parameter name (with '@'), so the
+        /// report shows data when opened. Missing or null: no default.
+        /// </param>
         internal static string BuildStoredProcedureReportRdl(
             string procedureName,
             IReadOnlyList<SprocParameter> parameters,
             IReadOnlyList<ReportColumn> columns,
-            string sharedDataSourcePath)
+            string sharedDataSourcePath,
+            IReadOnlyDictionary<string, object?>? defaultValues = null)
         {
             string reportParametersXml;
             string queryParametersXml;
 
             BuildStoredProcedureParameters(
                 parameters,
+                defaultValues,
                 out reportParametersXml,
                 out queryParametersXml);
 
-            string queryXml = $@"
+            // SSRS can't supply OUTPUT parameters to a stored procedure call, so
+            // a procedure with any is called from a batch that declares them.
+            string queryXml = parameters.Any(p => p.IsOutput)
+                ? $@"
+        <CommandText>{XmlEscape(ProcedureCall.BuildExec(procedureName, parameters))}</CommandText>
+{queryParametersXml}"
+                : $@"
         <CommandType>StoredProcedure</CommandType>
         <CommandText>{XmlEscape(procedureName)}</CommandText>
 {queryParametersXml}";
@@ -144,6 +158,7 @@ namespace Flank.Ssrs
 
         private static void BuildStoredProcedureParameters(
             IReadOnlyList<SprocParameter> parameters,
+            IReadOnlyDictionary<string, object?>? defaultValues,
             out string reportParametersXml,
             out string queryParametersXml)
         {
@@ -168,10 +183,24 @@ namespace Flank.Ssrs
                     GetRdlParameterType(
                         parameter.SqlType);
 
+                string defaultXml = "";
+
+                if (defaultValues != null &&
+                    defaultValues.TryGetValue(sqlParameterName, out object? defaultValue) &&
+                    defaultValue != null)
+                {
+                    defaultXml = $@"
+      <DefaultValue>
+        <Values>
+          <Value>{XmlEscape(FormatRdlValue(defaultValue, rdlType))}</Value>
+        </Values>
+      </DefaultValue>";
+                }
+
                 reportParameters.Append($@"
     <ReportParameter Name=""{XmlEscape(reportParameterName)}"">
       <DataType>{rdlType}</DataType>
-      <Nullable>true</Nullable>
+      <Nullable>true</Nullable>{defaultXml}
       <Prompt>{XmlEscape(reportParameterName)}</Prompt>
     </ReportParameter>");
 
@@ -540,6 +569,22 @@ namespace Flank.Ssrs
             return System.Security
                 .SecurityElement
                 .Escape(value);
+        }
+
+        // RDL parameter values are invariant text: 2024-01-02T00:00:00, true, 1.5.
+        internal static string FormatRdlValue(object value, string rdlType)
+        {
+            switch (value)
+            {
+                case DateTime date:
+                    return date.ToString("yyyy-MM-ddTHH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
+                case bool flag:
+                    return flag ? "true" : "false";
+                case IFormattable formattable:
+                    return formattable.ToString(null, System.Globalization.CultureInfo.InvariantCulture);
+                default:
+                    return value.ToString() ?? "";
+            }
         }
 
         internal static string GetRdlParameterType(

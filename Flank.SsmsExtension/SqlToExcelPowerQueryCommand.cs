@@ -1,8 +1,12 @@
-﻿using Microsoft.SqlServer.Management.UI.VSIntegration;
+﻿using Flank.Excel;
+using Flank.Ssrs;
+using Microsoft.SqlServer.Management.UI.VSIntegration;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
 using System;
+using System.Collections.Generic;
 using System.ComponentModel.Design;
+using System.Linq;
 using System.Threading.Tasks;
 using Task = System.Threading.Tasks.Task;
 
@@ -119,11 +123,68 @@ namespace Flank.SsmsExtension
                 return;
             }
 
-            await ExcelWorkflow.RunAsync(
-                sql,
+            System.Data.IDbConnection queryConnection;
+            bool isAzure = false;
+            IReadOnlyList<string> tables = Array.Empty<string>();
+            string tablesProblem = null;
+
+            try
+            {
+                queryConnection = SsmsQueryHelper.GetCurrentConnection();
+
+                SsmsQueryHelper.UseBorrowedConnection(queryConnection, connection =>
+                {
+                    isAzure = AccessDiscovery.IsAzureSqlDatabase(connection);
+
+                    // The tables and views the query names, for granting SELECT.
+                    try
+                    {
+                        tables = QueryObjects.Resolve(connection, QueryObjects.Find(sql));
+                        if (tables.Count == 0)
+                            tablesProblem = "none found in this database";
+                    }
+                    catch (Exception ex)
+                    {
+                        tablesProblem = ex.Message;
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                ExcelWorkflow.ShowFailure(
+                    "Reading SQL Server connection",
+                    ex,
+                    server,
+                    database,
+                    null);
+                return;
+            }
+
+            // Who refreshes it, their access, then a run as them: the workbook
+            // starts with that run's rows.
+            WorkbookRequest request;
+            string fileName;
+
+            // The query window's connection is borrowed, never closed.
+            using (var wizard = new ExcelWorkbookWizard(
                 server,
                 database,
-                "report.xlsx");
+                isAzure,
+                procedure: null,
+                procedureParameters: Array.Empty<SprocParameter>(),
+                query: sql,
+                queryTables: tables,
+                queryTablesProblem: tablesProblem,
+                action => SsmsQueryHelper.UseBorrowedConnection(queryConnection, action)))
+            {
+                if (wizard.ShowDialog() != System.Windows.Forms.DialogResult.OK || wizard.Request == null)
+                    return;
+
+                request = wizard.Request;
+                fileName = wizard.DefaultFileName;
+            }
+
+            await ExcelWorkflow.RunAsync(request, fileName);
         }
     }
 }

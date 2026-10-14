@@ -116,16 +116,16 @@ public class ExcelExporterTests : IDisposable
     {
         GenerateWithParameters("League_Id", "Name");
 
+        // Note (1), last refreshed (2), gap (3), parameters (4-5), gap (6), table (7).
         var rows = ReadPart("xl/worksheets/sheet1.xml").Descendants(Sheet + "row").ToList();
-        Assert.Equal(new[] { "1", "2", "4", "5" }, rows.Select(r => (string)r.Attribute("r")!));
-        Assert.Equal("League_Id", (string)rows[0].Descendants(Sheet + "t").Single());
-        Assert.Equal("Name", (string)rows[1].Descendants(Sheet + "t").Single());
-        Assert.Equal("A4", (string)rows[2].Element(Sheet + "c")!.Attribute("r")!);
+        Assert.Equal(new[] { "1", "2", "4", "5", "7" }, rows.Select(r => (string)r.Attribute("r")!));
+        Assert.Equal("League_Id", (string)rows[2].Descendants(Sheet + "t").Single());
+        Assert.Equal("Name", (string)rows[3].Descendants(Sheet + "t").Single());
+        Assert.Equal("A7", (string)rows[4].Element(Sheet + "c")!.Attribute("r")!);
 
-        // Row 3 is the gap; the table starts at row 4.
         var table = ReadPart("xl/tables/table1.xml").Root!;
-        Assert.Equal("A4:A5", (string)table.Attribute("ref")!);
-        Assert.Equal("A4:A5", (string)table.Element(Sheet + "autoFilter")!.Attribute("ref")!);
+        Assert.Equal("A7:A8", (string)table.Attribute("ref")!);
+        Assert.Equal("A7:A8", (string)table.Element(Sheet + "autoFilter")!.Attribute("ref")!);
     }
 
     [Fact]
@@ -135,8 +135,8 @@ public class ExcelExporterTests : IDisposable
 
         var names = ReadPart("xl/workbook.xml").Descendants(Sheet + "definedName")
             .ToDictionary(n => (string)n.Attribute("name")!, n => n.Value);
-        Assert.Equal("Query1!$A$1:$B$2", names["FlankParameters"]);
-        Assert.Equal("Query1!$A$4:$A$5", names["ExternalData_1"]);
+        Assert.Equal("Query1!$A$4:$B$5", names["FlankParameters"]);
+        Assert.Equal("Query1!$A$7:$A$8", names["ExternalData_1"]);
 
         var queryTable = ReadPart("xl/queryTables/queryTable1.xml").Root!;
         Assert.Equal("overwriteClear", (string)queryTable.Attribute("growShrinkType")!);
@@ -150,9 +150,9 @@ public class ExcelExporterTests : IDisposable
             new[] { "League_Id" },
             new[] { "team_name", "team_id", "league_id" });
 
-        // One parameter row, a gap, then the table at row 3.
+        // One parameter row (4), a gap, then the table at row 6.
         var table = ReadPart("xl/tables/table1.xml").Root!;
-        Assert.Equal("A3:C4", (string)table.Attribute("ref")!);
+        Assert.Equal("A6:C7", (string)table.Attribute("ref")!);
         Assert.Equal(
             new[] { "team_name", "team_id", "league_id" },
             table.Descendants(Sheet + "tableColumn").Select(c => (string)c.Attribute("name")!));
@@ -161,13 +161,13 @@ public class ExcelExporterTests : IDisposable
         Assert.Equal(new[] { "team_name", "team_id", "league_id" }, fields.Select(f => (string)f.Attribute("name")!));
         Assert.Equal(new[] { "1", "2", "3" }, fields.Select(f => (string)f.Attribute("tableColumnId")!));
 
-        var header = ReadPart("xl/worksheets/sheet1.xml").Descendants(Sheet + "row").Single(r => (string)r.Attribute("r")! == "3");
+        var header = ReadPart("xl/worksheets/sheet1.xml").Descendants(Sheet + "row").Single(r => (string)r.Attribute("r")! == "6");
         Assert.Equal(new[] { "team_name", "team_id", "league_id" }, header.Descendants(Sheet + "t").Select(t => (string)t));
 
         var names = ReadPart("xl/workbook.xml").Descendants(Sheet + "definedName")
             .ToDictionary(n => (string)n.Attribute("name")!, n => n.Value);
-        Assert.Equal("Query1!$A$3:$C$4", names["ExternalData_1"]);
-        Assert.Equal("Query1!$A$1:$B$1", names["FlankParameters"]);
+        Assert.Equal("Query1!$A$6:$C$7", names["ExternalData_1"]);
+        Assert.Equal("Query1!$A$4:$B$4", names["FlankParameters"]);
     }
 
     [Fact]
@@ -176,7 +176,7 @@ public class ExcelExporterTests : IDisposable
         ExcelExporter.Generate(outputPath, "EXEC x", "s", "d", Array.Empty<string>(), new[] { "id", "ID" });
 
         var table = ReadPart("xl/tables/table1.xml").Root!;
-        Assert.Equal("A1:A2", (string)table.Attribute("ref")!);
+        Assert.Equal("A4:A5", (string)table.Attribute("ref")!);
         Assert.Contains("Refresh All", (string)table.Descendants(Sheet + "tableColumn").Single().Attribute("name")!);
     }
 
@@ -185,11 +185,159 @@ public class ExcelExporterTests : IDisposable
     {
         Generate("SELECT 1");
 
-        Assert.Equal("A1:A2", (string)ReadPart("xl/tables/table1.xml").Root!.Attribute("ref")!);
+        Assert.Equal("A4:A5", (string)ReadPart("xl/tables/table1.xml").Root!.Attribute("ref")!);
         Assert.DoesNotContain(
             ReadPart("xl/workbook.xml").Descendants(Sheet + "definedName"),
             n => (string)n.Attribute("name")! == "FlankParameters");
         Assert.DoesNotContain("Value.NativeQuery", MashupReader.ReadSection1(outputPath));
+    }
+
+    private string Cell(string reference)
+    {
+        var cell = ReadPart("xl/worksheets/sheet1.xml").Descendants(Sheet + "c")
+            .Single(c => (string)c.Attribute("r")! == reference);
+
+        // t="s" cells hold an index into the shared strings.
+        if ((string?)cell.Attribute("t") == "s")
+        {
+            int index = (int)cell.Element(Sheet + "v")!;
+            var item = ReadPart("xl/sharedStrings.xml").Root!.Elements(Sheet + "si").ElementAt(index);
+            return string.Concat(item.Descendants(Sheet + "t").Select(t => (string)t));
+        }
+
+        return string.Concat(cell.Descendants(Sheet + "t").Select(t => (string)t));
+    }
+
+    [Fact]
+    public void Starts_with_a_how_to_refresh_note()
+    {
+        Generate("SELECT 1");
+
+        Assert.StartsWith("To update: Data > Refresh All.", Cell("A1"));
+        Assert.DoesNotContain("privacy", Cell("A1"));
+    }
+
+    [Fact]
+    public void Parameter_workbooks_explain_entering_values_and_the_privacy_prompt()
+    {
+        GenerateWithParameters("League_Id");
+
+        Assert.StartsWith("To update: enter values in column B", Cell("A1"));
+        Assert.Contains("Ignore Privacy Levels", Cell("A1"));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Keeps_the_last_refreshed_query(bool withParameters)
+    {
+        string m = withParameters ? GenerateWithParameters("League_Id") : Generate("SELECT 1");
+
+        Assert.Contains("shared LastRefreshed = let", m);
+        Assert.Contains("DateTime.LocalNow()", m);
+        Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(m, "^shared ", System.Text.RegularExpressions.RegexOptions.Multiline).Count);
+        Assert.Equal("Last refreshed: never", Cell("A2"));
+    }
+
+    private System.Xml.Linq.XElement CellElement(string reference) =>
+        ReadPart("xl/worksheets/sheet1.xml").Descendants(Sheet + "c")
+            .Single(c => (string)c.Attribute("r")! == reference);
+
+    [Fact]
+    public void Parameter_values_fill_column_b()
+    {
+        ExcelExporter.Generate(outputPath, new WorkbookRequest("EXEC x @a = @a, @b = @b, @c = @c", "s", "d")
+        {
+            ParameterNames = new[] { "a", "b", "c" },
+            ParameterValues = new object?[] { 1, "abc", null },
+        });
+
+        Assert.Equal("1", (string)CellElement("B4").Element(Sheet + "v")!);
+        Assert.Equal("abc", Cell("B5"));
+        Assert.DoesNotContain(
+            ReadPart("xl/worksheets/sheet1.xml").Descendants(Sheet + "c"),
+            c => (string)c.Attribute("r")! == "B6");
+    }
+
+    [Fact]
+    public void Preview_rows_fill_the_table_with_typed_cells()
+    {
+        ExcelExporter.Generate(outputPath, new WorkbookRequest("SELECT 1", "s", "d")
+        {
+            ColumnNames = new[] { "id", "name", "played", "active" },
+            Rows = new IReadOnlyList<object?>[]
+            {
+                new object?[] { 1, "NBA", new DateTime(2024, 1, 2, 3, 4, 0), true },
+                new object?[] { 2.5m, null, DBNull.Value, false },
+            },
+        });
+
+        var table = ReadPart("xl/tables/table1.xml").Root!;
+        Assert.Equal("A4:D6", (string)table.Attribute("ref")!);
+
+        var names = ReadPart("xl/workbook.xml").Descendants(Sheet + "definedName")
+            .ToDictionary(n => (string)n.Attribute("name")!, n => n.Value);
+        Assert.Equal("Query1!$A$4:$D$6", names["ExternalData_1"]);
+
+        Assert.Equal("1", (string)CellElement("A5").Element(Sheet + "v")!);
+        Assert.Equal("NBA", Cell("B5"));
+        Assert.Equal("b", (string)CellElement("D5").Attribute("t")!);
+        Assert.Equal("1", (string)CellElement("D5").Element(Sheet + "v")!);
+        Assert.Equal("2.5", (string)CellElement("A6").Element(Sheet + "v")!);
+        Assert.Equal("0", (string)CellElement("D6").Element(Sheet + "v")!);
+
+        // Dates are serial numbers with a date format.
+        var date = CellElement("C5");
+        Assert.Equal(new DateTime(2024, 1, 2, 3, 4, 0).ToOADate(), double.Parse((string)date.Element(Sheet + "v")!, System.Globalization.CultureInfo.InvariantCulture));
+        int style = (int)date.Attribute("s")!;
+        var xf = ReadPart("xl/styles.xml").Root!.Element(Sheet + "cellXfs")!.Elements(Sheet + "xf").ElementAt(style);
+        Assert.Equal("22", (string)xf.Attribute("numFmtId")!);
+
+        // Nulls leave the cell out.
+        Assert.DoesNotContain(
+            ReadPart("xl/worksheets/sheet1.xml").Descendants(Sheet + "c"),
+            c => (string)c.Attribute("r")! == "B6" || (string)c.Attribute("r")! == "C6");
+    }
+
+    [Fact]
+    public void Preview_rows_show_when_they_were_fetched()
+    {
+        ExcelExporter.Generate(outputPath, new WorkbookRequest("SELECT 1", "s", "d")
+        {
+            ColumnNames = new[] { "id" },
+            Rows = new IReadOnlyList<object?>[] { new object?[] { 1 } },
+            RowsFetchedAt = new DateTime(2026, 10, 14, 2, 56, 0),
+        });
+
+        Assert.Equal("Last refreshed: 2026-10-14 02:56", Cell("A2"));
+    }
+
+    [Fact]
+    public void Preview_rows_go_below_the_parameters()
+    {
+        ExcelExporter.Generate(outputPath, new WorkbookRequest("EXEC x @a = @a", "s", "d")
+        {
+            ParameterNames = new[] { "a" },
+            ParameterValues = new object?[] { 7 },
+            ColumnNames = new[] { "id" },
+            Rows = new IReadOnlyList<object?>[] { new object?[] { 1 }, new object?[] { 2 }, new object?[] { 3 } },
+        });
+
+        // Parameter at row 4, gap, header at 6, data 7-9.
+        Assert.Equal("A6:A9", (string)ReadPart("xl/tables/table1.xml").Root!.Attribute("ref")!);
+        Assert.Equal("3", (string)CellElement("A9").Element(Sheet + "v")!);
+        Assert.Equal(
+            new[] { "1", "2", "4", "6", "7", "8", "9" },
+            ReadPart("xl/worksheets/sheet1.xml").Descendants(Sheet + "row").Select(r => (string)r.Attribute("r")!));
+    }
+
+    [Fact]
+    public void Has_a_single_sheet()
+    {
+        Generate("SELECT 1");
+
+        var sheets = ReadPart("xl/workbook.xml").Descendants(Sheet + "sheet").ToList();
+        Assert.Single(sheets);
     }
 
     [Fact]

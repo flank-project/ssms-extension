@@ -42,6 +42,9 @@ same thing:
   (`sproc-excel`) covers it.
 - `verify-ssrs.ps1 -Report <path or portal link> [-Parameters "Name=value;..."]`:
   renders the report as CSV and fails unless it returns rows.
+- `verify-access.ps1 -User <name> -Allowed <sql...> -Denied <sql...>`: signs in
+  as a user created by the Excel wizard's access step (password via -Script)
+  and fails unless exactly the allowed statements succeed.
 
 The console apps (`Flank.TestExcelApp`, `Flank.TestSsrsApp`) are still there
 for manual poking.

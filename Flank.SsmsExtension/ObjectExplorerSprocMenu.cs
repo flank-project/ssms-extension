@@ -1,3 +1,4 @@
+using Flank.Excel;
 using Flank.Ssrs;
 using Microsoft.SqlServer.Management;
 using Microsoft.SqlServer.Management.Common;
@@ -134,7 +135,19 @@ namespace Flank.SsmsExtension
                     return;
                 }
 
-                await action(node, sproc);
+                try
+                {
+                    await action(node, sproc);
+                }
+                catch (Exception ex)
+                {
+                    // Otherwise lost: nothing awaits this task.
+                    await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+                    SsmsUiHelper.ShowMessage(
+                        "Flank hit an error.\n\n" + ex,
+                        OLEMSGICON.OLEMSGICON_CRITICAL,
+                        "Flank Error");
+                }
             });
         }
 
@@ -142,7 +155,7 @@ namespace Flank.SsmsExtension
         {
             string step = "Reading stored procedure";
             IReadOnlyList<SprocParameter> parameters;
-            IReadOnlyList<ReportColumn> columns;
+            bool isAzure;
 
             try
             {
@@ -154,21 +167,7 @@ namespace Flank.SsmsExtension
                     parameters = SqlMetadataDiscovery.DiscoverStoredProcedureParameters(
                         objectId, connection);
 
-                    var outputs = parameters.Where(p => p.IsOutput).ToList();
-
-                    if (outputs.Count > 0)
-                    {
-                        SsmsUiHelper.ShowMessage(
-                            $"{sproc.QualifiedName} has OUTPUT parameters " +
-                            $"({string.Join(", ", outputs.Select(p => p.Name))}).\n\n" +
-                            "Excel workbooks don't support OUTPUT parameters yet.",
-                            OLEMSGICON.OLEMSGICON_INFO);
-                        return;
-                    }
-
-                    // Fails with a clear message if there's no result set to load.
-                    columns = SqlMetadataDiscovery.DiscoverStoredProcedureColumns(
-                        objectId, sproc.QualifiedName, connection);
+                    isAzure = AccessDiscovery.IsAzureSqlDatabase(connection);
                 }
             }
             catch (Exception ex)
@@ -177,53 +176,96 @@ namespace Flank.SsmsExtension
                 return;
             }
 
-            // Parameters become cells the user fills in (names in column A,
-            // values in column B); the query passes them as @name.
-            var names = parameters.Select(p => p.Name.TrimStart('@')).ToList();
+            // Who refreshes it, their access, then a run as them: the workbook
+            // starts with that run's values and rows.
+            WorkbookRequest request;
+            string fileName;
 
-            string sql = names.Count == 0
-                ? $"EXEC {sproc.QualifiedName}"
-                : $"EXEC {sproc.QualifiedName} " +
-                  string.Join(", ", names.Select(n => $"@{n} = @{n}"));
-
-            await ExcelWorkflow.RunAsync(
-                sql,
+            using (var wizard = new ExcelWorkbookWizard(
                 sproc.Server,
                 sproc.Database,
-                sproc.Name + ".xlsx",
-                names,
-                columns.Select(c => c.Name).ToList());
-        }
-
-        private static Task CreateSsrsReportAsync(INodeInformation node, StoredProcedureInfo sproc)
-        {
-            return SsrsWorkflow.RunAsync(
-                sql: null,
-                storedProcedure: sproc.QualifiedName,
-                defaultReportName: sproc.Name,
-                analyzingStatus: "Analyzing stored procedure...",
-                prepare: reportOptions =>
+                isAzure,
+                sproc.QualifiedName,
+                parameters,
+                query: null,
+                queryTables: Array.Empty<string>(),
+                queryTablesProblem: null,
+                action =>
                 {
                     using (var connection = OpenConnection(node, sproc.Database))
                     {
-                        int objectId = SqlMetadataDiscovery.GetStoredProcedureObjectId(
-                            sproc.QualifiedName, connection);
-
-                        var parameters = SqlMetadataDiscovery.DiscoverStoredProcedureParameters(
-                            objectId, connection);
-
-                        var columns = SqlMetadataDiscovery.DiscoverStoredProcedureColumns(
-                            objectId, sproc.QualifiedName, connection);
-
-                        return client => client.CreateReportFromStoredProcedure(
-                            sproc.QualifiedName,
-                            parameters,
-                            columns,
-                            reportOptions.DataSource,
-                            reportOptions.Folder,
-                            reportOptions.ReportName);
+                        action(connection);
                     }
-                });
+                }))
+            {
+                if (wizard.ShowDialog() != DialogResult.OK || wizard.Request == null)
+                    return;
+
+                request = wizard.Request;
+                fileName = wizard.DefaultFileName;
+            }
+
+            await ExcelWorkflow.RunAsync(request, fileName);
+        }
+
+        private static async Task CreateSsrsReportAsync(INodeInformation node, StoredProcedureInfo sproc)
+        {
+            IReadOnlyList<SprocParameter> parameters;
+
+            try
+            {
+                using (var connection = OpenConnection(node, sproc.Database))
+                {
+                    int objectId = SqlMetadataDiscovery.GetStoredProcedureObjectId(
+                        sproc.QualifiedName, connection);
+
+                    parameters = SqlMetadataDiscovery.DiscoverStoredProcedureParameters(
+                        objectId, connection);
+                }
+            }
+            catch (Exception ex)
+            {
+                SsmsUiHelper.ShowMessage(
+                    "Flank couldn't read the stored procedure.\n\n" + ex.Message,
+                    OLEMSGICON.OLEMSGICON_CRITICAL,
+                    "Flank Error");
+                return;
+            }
+
+            // Run it first to preview the results and get the report's columns.
+            // The values entered aren't used as report defaults: parameters
+            // start blank for the viewer to fill in.
+            ResultSet result;
+
+            using (var dialog = new StoredProcedureRunDialog(
+                sproc.QualifiedName,
+                parameters,
+                () => OpenConnection(node, sproc.Database),
+                "Continue",
+                "SSRS"))
+            {
+                if (dialog.ShowDialog() != DialogResult.OK)
+                    return;
+
+                result = dialog.Results[0];
+            }
+
+            var columns = result.Columns
+                .Select(name => new ReportColumn { Name = name })
+                .ToList();
+
+            await SsrsWorkflow.RunAsync(
+                sql: null,
+                storedProcedure: sproc.QualifiedName,
+                defaultReportName: sproc.Name,
+                analyzingStatus: "Preparing report...",
+                prepare: reportOptions => client => client.CreateReportFromStoredProcedure(
+                    sproc.QualifiedName,
+                    parameters,
+                    columns,
+                    reportOptions.DataSource,
+                    reportOptions.Folder,
+                    reportOptions.ReportName));
         }
 
         /// <summary>Opens a connection to the node's server, in the procedure's database.</summary>

@@ -14,13 +14,12 @@ namespace Flank.SsmsExtension
     internal static class ExcelWorkflow
     {
         public static async Task RunAsync(
-            string sql,
-            string server,
-            string database,
-            string defaultFileName,
-            IReadOnlyList<string> parameterNames = null,
-            IReadOnlyList<string> columnNames = null)
+            WorkbookRequest request,
+            string defaultFileName)
         {
+            string server = request.Server;
+            string database = request.Database;
+
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
             string step = "Choosing output file";
@@ -50,13 +49,7 @@ namespace Flank.SsmsExtension
 
                 await Task.Run(() =>
                 {
-                    ExcelExporter.Generate(
-                        outputPath,
-                        sql,
-                        server,
-                        database,
-                        parameterNames ?? Array.Empty<string>(),
-                        columnNames);
+                    ExcelExporter.Generate(outputPath, request);
                 });
 
                 await ThreadHelper.JoinableTaskFactory

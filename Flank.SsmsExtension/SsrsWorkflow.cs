@@ -31,9 +31,14 @@ namespace Flank.SsmsExtension
             await ThreadHelper.JoinableTaskFactory
                 .SwitchToMainThreadAsync();
 
+            // Pre-fill with the choices from the last report created.
+            var settings = SsrsSettings.Load();
+
             SsrsConnectionOptions connectionOptions;
 
-            using (var dialog = new SsrsConnectionDialog())
+            using (var dialog = new SsrsConnectionDialog(
+                settings.ReportServerUrl,
+                settings.ReportPortalUrl))
             {
                 if (dialog.ShowDialog() != DialogResult.OK)
                     return;
@@ -102,7 +107,9 @@ namespace Flank.SsmsExtension
                     folders,
                     dataSources,
                     defaultReportName,
-                    storedProcedure))
+                    storedProcedure,
+                    settings.Folder,
+                    settings.DataSource))
                 {
                     if (dialog.ShowDialog() != DialogResult.OK)
                         return;
@@ -136,6 +143,12 @@ namespace Flank.SsmsExtension
                 progressDialog.Close();
                 progressDialog.Dispose();
                 progressDialog = null;
+
+                settings.ReportServerUrl = connectionOptions.ReportServerUrl;
+                settings.ReportPortalUrl = connectionOptions.ReportPortalUrl;
+                settings.Folder = reportOptions.Folder;
+                settings.DataSource = reportOptions.DataSource;
+                settings.Save();
 
                 //
                 // Step 5: Success
