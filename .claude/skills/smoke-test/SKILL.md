@@ -1,6 +1,6 @@
 ---
 name: smoke-test
-description: Build, install and smoke-test the Flank SSMS extension end to end, driving SSMS with computer use. Scenarios - menus, query-excel, query-ssrs, sproc-excel, sproc-ssrs, or all. Use when asked to smoke-test, run, or check that the extension works in SSMS.
+description: Build, install and smoke-test the Flank SSMS extension end to end, driving SSMS with computer use. Scenarios - menus, query-excel, query-ssrs, sproc-excel, sproc-ssrs, access, or all. Use when asked to smoke-test, run, or check that the extension works in SSMS.
 ---
 
 # Smoke test
@@ -21,6 +21,7 @@ The argument picks the scenario; default `menus`.
 | `query-ssrs` | Query window > SSRS: SSMS creates a report, and it renders with rows |
 | `sproc-excel` | Stored procedure > Excel: workbook for `EXEC` refreshes with rows; with parameters, the user types values above the table and refreshes |
 | `sproc-ssrs` | Stored procedure > SSRS: SSMS creates a report, and it renders with rows |
+| `access` | Give Someone Access creates a SQL user that can run exactly what it was granted, and nothing else |
 | `all` | All of the above, in that order (before a release). One build and install. |
 
 ## 1. Set up (once per run)
@@ -214,6 +215,34 @@ menu should not have it.
    .\tests\verify-ssrs.ps1 -Report (Get-Clipboard)                            # 2 rows (league 2)
    .\tests\verify-ssrs.ps1 -Report (Get-Clipboard) -Parameters "League_Id=3"  # 1 row
    ```
+
+### access
+
+Creates a throwaway SQL user on the sandbox (allowed: it's a test
+database) and drops it at the end.
+
+1. On `dbo.sgm_ListTeamsByLeague`, open the submenu; **Give Someone
+   Access...** is below a separator (Down twice from Excel). Return.
+2. The dialog: "Signs in with" SQL Server username and password, a generated
+   password, and "Only this stored procedure" selected. Mouse clicks in it
+   are unreliable: click its title bar, Tab once to Username,
+   `Set-Clipboard -Value "flank_smoke_user"`, ctrl+v. Zoom: the script shows
+   `CREATE USER [flank_smoke_user] WITH PASSWORD` (Azure SQL: no LOGIN) and
+   `GRANT EXECUTE ON OBJECT::[dbo].[sgm_ListTeamsByLeague]`.
+3. Click **Copy script** (the checker reads the password from it), then
+   **Run script**. Pass: "Done: flank_smoke_user has access."
+4. Check it:
+   ```powershell
+   .\tests\verify-access.ps1 -User flank_smoke_user `
+       -Allowed "EXEC dbo.sgm_ListTeamsByLeague @League_Id = 1" `
+       -Denied "SELECT * FROM dbo.sgm_teams", "SELECT * FROM dbo.leagues"
+   ```
+5. Query editor: with `SELECT id, name FROM leagues` in a query window,
+   **Give Someone Access...** (third submenu item) offers "Only the tables
+   this query reads: [dbo].[leagues]".
+6. Clean up: in a query window run `DROP USER IF EXISTS [flank_smoke_user];`.
+   Keep the clipboard script until then: once the user exists, running the
+   dialog again doesn't change its password.
 
 ## 5. Report
 

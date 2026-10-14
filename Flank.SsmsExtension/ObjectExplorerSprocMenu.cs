@@ -135,7 +135,19 @@ namespace Flank.SsmsExtension
                     return;
                 }
 
-                await action(node, sproc);
+                try
+                {
+                    await action(node, sproc);
+                }
+                catch (Exception ex)
+                {
+                    // Otherwise lost: nothing awaits this task.
+                    await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+                    SsmsUiHelper.ShowMessage(
+                        "Flank hit an error.\n\n" + ex,
+                        OLEMSGICON.OLEMSGICON_CRITICAL,
+                        "Flank Error");
+                }
             });
         }
 
@@ -266,6 +278,46 @@ namespace Flank.SsmsExtension
                     defaults));
         }
 
+        private static Task GiveAccessAsync(INodeInformation node, StoredProcedureInfo sproc)
+        {
+            bool isAzure;
+
+            try
+            {
+                using (var connection = OpenConnection(node, sproc.Database))
+                {
+                    isAzure = AccessDiscovery.IsAzureSqlDatabase(connection);
+                }
+            }
+            catch (Exception ex)
+            {
+                SsmsUiHelper.ShowMessage(
+                    "Flank couldn't connect to the database.\n\n" + ex.Message,
+                    OLEMSGICON.OLEMSGICON_CRITICAL,
+                    "Flank Error");
+                return Task.CompletedTask;
+            }
+
+            using (var dialog = new GiveAccessDialog(
+                sproc.Server,
+                sproc.Database,
+                isAzure,
+                sproc.QualifiedName,
+                Array.Empty<string>(),
+                action =>
+                {
+                    using (var connection = OpenConnection(node, sproc.Database))
+                    {
+                        action(connection);
+                    }
+                }))
+            {
+                dialog.ShowDialog();
+            }
+
+            return Task.CompletedTask;
+        }
+
         /// <summary>Opens a connection to the node's server, in the procedure's database.</summary>
         private static IDbConnection OpenConnection(INodeInformation node, string database)
         {
@@ -317,6 +369,13 @@ namespace Flank.SsmsExtension
                     "SSRS Report",
                     MenuIcons.Ssrs,
                     (s, e) => owner.RunForSelection(CreateSsrsReportAsync));
+
+                submenu.DropDownItems.Add(new ToolStripSeparator());
+
+                submenu.DropDownItems.Add(
+                    "Give Someone Access...",
+                    null,
+                    (s, e) => owner.RunForSelection(GiveAccessAsync));
 
                 // We're first in the menu (see MoveToTop); separate us from SSMS's items.
                 return new ToolStripItem[] { submenu, new ToolStripSeparator() };

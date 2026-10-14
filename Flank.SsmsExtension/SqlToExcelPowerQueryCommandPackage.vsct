@@ -77,6 +77,22 @@
 
 			<Button
 				guid="guidSqlToExcelPowerQueryCommandPackageCmdSet"
+				id="GiveAccessCommandId"
+				priority="0x0120"
+				type="Button">
+
+				<Parent
+					guid="guidSqlToExcelPowerQueryCommandPackageCmdSet"
+					id="MakeSelfServeMenuGroup"/>
+
+				<Strings>
+					<ButtonText>Give Someone Access...</ButtonText>
+				</Strings>
+
+			</Button>
+
+			<Button
+				guid="guidSqlToExcelPowerQueryCommandPackageCmdSet"
 				id="SqlToSsrsCommandId"
 				priority="0x0110"
 				type="Button">
@@ -134,6 +150,10 @@
 			<IDSymbol
 				name="SqlToSsrsCommandId"
 				value="0x0110"/>
+
+			<IDSymbol
+				name="GiveAccessCommandId"
+				value="0x0120"/>
 
 		</GuidSymbol>
 
