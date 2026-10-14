@@ -1,8 +1,11 @@
-﻿using Microsoft.SqlServer.Management.UI.VSIntegration;
+﻿using Flank.Ssrs;
+using Microsoft.SqlServer.Management.UI.VSIntegration;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
 using System;
+using System.Collections.Generic;
 using System.ComponentModel.Design;
+using System.Linq;
 using System.Threading.Tasks;
 using Task = System.Threading.Tasks.Task;
 
@@ -123,7 +126,32 @@ namespace Flank.SsmsExtension
                 sql,
                 server,
                 database,
-                "report.xlsx");
+                "report.xlsx",
+                columnNames: TryDiscoverColumns(sql));
+        }
+
+        /// <summary>
+        /// The query's result columns, so the workbook's table starts with them.
+        /// Null if they can't be described without running the query (e.g. some
+        /// temp-table batches); the first refresh then names them instead.
+        /// </summary>
+        private static List<string> TryDiscoverColumns(string sql)
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+
+            try
+            {
+                var connection = SsmsQueryHelper.GetCurrentConnection();
+
+                return SqlMetadataDiscovery.DiscoverQueryColumns(sql, connection)
+                    .Select(c => c.Name)
+                    .ToList();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Flank: could not discover query columns: {ex.Message}");
+                return null;
+            }
         }
     }
 }

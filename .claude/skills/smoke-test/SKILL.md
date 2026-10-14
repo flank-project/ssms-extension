@@ -117,7 +117,7 @@ menu should not have it.
    ```powershell
    .\tests\verify-excel.ps1 -Path C:\temp\flank-smoke\query-excel.xlsx
    ```
-   Pass: `OK`, with 5 rows and columns `id, name`.
+   Pass: `OK`, with 5 rows and columns `id, name`, and a `Last refreshed:` time.
 
 ### query-ssrs
 
@@ -150,7 +150,7 @@ menu should not have it.
    ```powershell
    .\tests\verify-excel.ps1 -Path C:\temp\flank-smoke\sproc-excel.xlsx
    ```
-   Pass: `OK`, with 5 rows and columns `id, name`.
+   Pass: `OK`, with 5 rows and columns `id, name`, and a `Last refreshed:` time.
 6. Parameters. `Set-Clipboard -Value "C:\temp\flank-smoke\sproc-excel-params.xlsx"`,
    bring SSMS back, and run **Excel (Power Query)** on
    `dbo.sgm_ListTeamsByLeague`; save to that path.

@@ -12,6 +12,20 @@ public static class ExcelExporter
     private static readonly XNamespace Sheet =
         "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
 
+    // Template layout: A1 how-to note, A2:B2 last refreshed, row 3 blank,
+    // the data table from row 4. Parameters go in rows 4.. and push the table
+    // down, with a blank row between.
+    private const int TemplateTableRow = 4;
+    private const int FirstParameterRow = 4;
+
+    private const string RefreshNote =
+        "To update: Data > Refresh All. The first time, Excel asks you to sign in to the database.";
+
+    private const string ParameterRefreshNote =
+        "To update: enter values in column B, then Data > Refresh All. The first time, Excel asks you to " +
+        "sign in to the database and about privacy levels: tick \"Ignore Privacy Levels checks for this " +
+        "file\", click Save, then save the workbook.";
+
     public static void Generate(
         string outputPath,
         string sql,
@@ -22,9 +36,10 @@ public static class ExcelExporter
     }
 
     /// <summary>
-    /// Creates a refreshable workbook. With parameters, the sheet starts with
-    /// one row per parameter (name in column A, value in column B, for the user
-    /// to fill in), then a blank row, then the data table. The query passes the
+    /// Creates a refreshable workbook. The sheet starts with a how-to note and
+    /// a "Last refreshed" time. With parameters, one row per parameter follows
+    /// (name in column A, value in column B, for the user to fill in), then a
+    /// blank row, then the data table. The query passes the
     /// values to <paramref name="sql"/> as SQL parameters (@name), so
     /// <paramref name="sql"/> should reference each one, e.g.
     /// "EXEC [dbo].[proc] @League_Id = @League_Id".
@@ -61,6 +76,15 @@ public static class ExcelExporter
 
         UpdateQuery(workbook, sql, server, database, parameterNames);
 
+        SetNote(workbook, parameterNames.Count > 0 ? ParameterRefreshNote : RefreshNote);
+
+        // By default the table inserts and deletes cells as it grows, which
+        // shifts the cells above it (note, timestamp, parameters). Overwrite.
+        UpdateXml(workbook, "xl/queryTables/queryTable1.xml", queryTable =>
+        {
+            queryTable.Root!.SetAttributeValue("growShrinkType", "overwriteClear");
+        });
+
         if (parameterNames.Count > 0)
         {
             AddParameterCells(workbook, parameterNames);
@@ -71,8 +95,27 @@ public static class ExcelExporter
             SetTableColumns(
                 workbook,
                 columnNames,
-                tableRow: parameterNames.Count > 0 ? parameterNames.Count + 2 : 1);
+                tableRow: TableRow(parameterNames.Count));
         }
+    }
+
+    private static int TableRow(int parameterCount)
+    {
+        return parameterCount > 0
+            ? FirstParameterRow + parameterCount + 1
+            : TemplateTableRow;
+    }
+
+    private static void SetNote(ZipArchive workbook, string note)
+    {
+        UpdateXml(workbook, "xl/worksheets/sheet1.xml", sheet =>
+        {
+            var cell = sheet.Root!.Descendants(Sheet + "c").Single(c => (string)c.Attribute("r")! == "A1");
+
+            cell.RemoveNodes();
+            cell.SetAttributeValue("t", "inlineStr");
+            cell.Add(new XElement(Sheet + "is", new XElement(Sheet + "t", note)));
+        });
     }
 
     // Excel table columns need unique, non-empty names; otherwise leave the
@@ -101,7 +144,14 @@ public static class ExcelExporter
         {
             var rows = sheet.Root!.Element(Sheet + "sheetData")!.Elements(Sheet + "row").ToList();
             var header = rows.Single(r => (int)r.Attribute("r")! == tableRow);
-            var data = rows.Single(r => (int)r.Attribute("r")! == tableRow + 1);
+            // The empty first data row may not exist in the sheet yet.
+            var data = rows.SingleOrDefault(r => (int)r.Attribute("r")! == tableRow + 1);
+
+            if (data == null)
+            {
+                data = new XElement(Sheet + "row", new XAttribute("r", tableRow + 1));
+                header.AddAfterSelf(data);
+            }
 
             // Keep the template's data cell style for the empty first row.
             var dataStyle = data.Element(Sheet + "c")?.Attribute("s")?.Value;
@@ -261,7 +311,7 @@ public static class ExcelExporter
             }
 
             mCode = parameterNames.Count > 0
-                ? BuildParameterizedQuery(sql, server, database)
+                ? ReplaceWithParameterizedQuery(mCode, sql, server, database)
                 : ReplaceTemplateQuery(mCode, sql, server, database);
 
             // ZIP entries can't be overwritten directly.
@@ -352,21 +402,39 @@ public static class ExcelExporter
     /// asks once about privacy levels; separate queries fail outright with a
     /// "rebuild this data combination" error.
     /// </summary>
-    private static string BuildParameterizedQuery(
+    private static string ReplaceWithParameterizedQuery(
+        string mCode,
         string sql,
         string server,
         string database)
     {
-        return
-$@"section Section1;
+        // Replace only Query1; other queries (LastRefreshed) stay as they are.
+        int from = mCode.IndexOf("shared Query1 = ", StringComparison.Ordinal);
 
-shared Query1 = let
+        if (from < 0)
+        {
+            throw new Exception("Could not find the template's Query1.");
+        }
+
+        // Query1 ends where the next "shared" declaration's leading blank lines start.
+        int end = mCode.IndexOf("\nshared ", from, StringComparison.Ordinal);
+
+        while (end > from && char.IsWhiteSpace(mCode[end - 1]))
+        {
+            end--;
+        }
+
+        string rest = end < 0 ? Environment.NewLine : mCode.Substring(end);
+
+        string query =
+$@"shared Query1 = let
     Parameters = Excel.CurrentWorkbook(){{[Name=""{ParametersName}""]}}[Content],
     Values = Record.FromList(Parameters[Column2], Parameters[Column1]),
     Source = Value.NativeQuery(Sql.Database(""{EscapeM(server)}"", ""{EscapeM(database)}""), ""{EscapeM(sql)}"", Values)
 in
-    Source;
-";
+    Source;";
+
+        return mCode.Substring(0, from) + query + rest;
     }
 
     private static string EscapeM(string value)
@@ -375,25 +443,26 @@ in
     }
 
     /// <summary>
-    /// Puts the parameter names in A1:An, leaves row n+1 blank, and moves the
-    /// query table from A1 to row n+2.
+    /// Puts the parameter names in column A from row 4, leaves a blank row, and
+    /// moves the query table below them.
     /// </summary>
     private static void AddParameterCells(
         ZipArchive workbook,
         IReadOnlyList<string> parameterNames)
     {
         int count = parameterNames.Count;
-        int tableRow = count + 2;
+        int lastParameterRow = FirstParameterRow + count - 1;
+        int tableRow = TableRow(count);
 
         UpdateXml(workbook, "xl/worksheets/sheet1.xml", sheet =>
         {
             var sheetData = sheet.Root!.Element(Sheet + "sheetData")
                 ?? throw new Exception("Could not find sheetData");
 
-            // The template's table occupies rows 1-2; shift them down.
-            foreach (var row in sheetData.Elements(Sheet + "row"))
+            // Shift the template's table rows down past the parameters and a gap.
+            foreach (var row in sheetData.Elements(Sheet + "row").Where(r => (int)r.Attribute("r")! >= TemplateTableRow))
             {
-                int r = (int)row.Attribute("r")! + count + 1;
+                int r = (int)row.Attribute("r")! + (tableRow - TemplateTableRow);
                 row.SetAttributeValue("r", r);
 
                 foreach (var cell in row.Elements(Sheet + "c"))
@@ -403,16 +472,25 @@ in
                 }
             }
 
-            for (int i = count; i >= 1; i--)
+            // Rows must stay in order: insert before the (shifted) table rows.
+            var firstTableRow = sheetData.Elements(Sheet + "row")
+                .FirstOrDefault(r => (int)r.Attribute("r")! >= tableRow);
+
+            for (int i = 0; i < count; i++)
             {
-                sheetData.AddFirst(
-                    new XElement(Sheet + "row",
-                        new XAttribute("r", i),
-                        new XElement(Sheet + "c",
-                            new XAttribute("r", "A" + i),
-                            new XAttribute("t", "inlineStr"),
-                            new XElement(Sheet + "is",
-                                new XElement(Sheet + "t", parameterNames[i - 1])))));
+                int r = FirstParameterRow + i;
+                var row = new XElement(Sheet + "row",
+                    new XAttribute("r", r),
+                    new XElement(Sheet + "c",
+                        new XAttribute("r", "A" + r),
+                        new XAttribute("t", "inlineStr"),
+                        new XElement(Sheet + "is",
+                            new XElement(Sheet + "t", parameterNames[i]))));
+
+                if (firstTableRow != null)
+                    firstTableRow.AddBeforeSelf(row);
+                else
+                    sheetData.Add(row);
             }
 
             sheet.Root.Element(Sheet + "dimension")?
@@ -424,13 +502,6 @@ in
             string tableRef = $"A{tableRow}:A{tableRow + 1}";
             table.Root!.SetAttributeValue("ref", tableRef);
             table.Root.Element(Sheet + "autoFilter")?.SetAttributeValue("ref", tableRef);
-        });
-
-        UpdateXml(workbook, "xl/queryTables/queryTable1.xml", queryTable =>
-        {
-            // By default the table inserts and deletes cells as it grows,
-            // which shifts the parameter cells sideways. Overwrite instead.
-            queryTable.Root!.SetAttributeValue("growShrinkType", "overwriteClear");
         });
 
         UpdateXml(workbook, "xl/workbook.xml", book =>
@@ -449,7 +520,7 @@ in
             definedNames.AddFirst(
                 new XElement(Sheet + "definedName",
                     new XAttribute("name", ParametersName),
-                    $"Query1!$A$1:$B${count}"));
+                    $"Query1!$A${FirstParameterRow}:$B${lastParameterRow}"));
         });
     }
 

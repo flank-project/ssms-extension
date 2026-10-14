@@ -2,7 +2,7 @@
 
 Flank is an SSMS extension that turns SQL queries into self-serve reports.
 
-Right-click a query and choose:
+Right-click a query (or a stored procedure in Object Explorer) and choose:
 
 - **SSRS Report** — deploy the query as a report to an existing SSRS server.
 - **Excel (Power Query)** — create an .xlsx workbook that users can refresh themselves.
@@ -23,7 +23,7 @@ Download [Flank-SSMS-Setup-0.2.5.exe](https://github.com/flank-project/ssms-exte
 
 Close SSMS, run the installer, then reopen SSMS.
 
-Right-click inside a SQL query and you should see **Make Self-Serve**, with options for **SSRS Report** and **Excel (Power Query)**.
+Right-click inside a SQL query, or on a stored procedure in Object Explorer, and you should see **Make Self-Serve**, with options for **SSRS Report** and **Excel (Power Query)**.
 
 ## SSRS Reports
 
@@ -36,17 +36,17 @@ Flank currently supports:
 - SSRS with Windows Authentication
 - Existing shared data sources
 - Selected SQL, or the entire query if nothing is selected
+- Stored procedures, from Object Explorer. The report calls the procedure directly, and its parameters become report parameters that the viewer fills in
 - Basic tabular reports using the columns returned by the query
 
 Not supported yet:
 
-- Stored procedure parameters / user inputs
 - Report formatting and customization
 - Creating or configuring SSRS data sources
 
 ### Create a report
 
-Right-click a query and choose **Make Self-Serve → SSRS Report**.
+Right-click a query and choose **Make Self-Serve → SSRS Report**. For a stored procedure, right-click it in Object Explorer (**Programmability → Stored Procedures**) instead.
 
 Flank will ask for two URLs:
 
@@ -70,15 +70,25 @@ Flank currently supports:
 - **Native SQL queries**
   - Uses Power Query's "native SQL query" support
   - Includes `SELECT` queries, CTEs, temp tables, variables, and stored procedures that return a result set
+- **Stored procedures with parameters**, from Object Explorer
+  - The workbook lists the parameters at the top (names in column A, values in column B). End users type values and refresh
+- Every workbook starts with a short "how to update" note and a **Last refreshed** time
 
 Not supported yet:
 
 - SQL
-  - Query parameters / user inputs
+  - Parameters for queries from the query editor (stored procedures only)
+  - `OUTPUT` parameters
   - Multiple result sets
 - Excel
   - Excel for the web
  
+### The privacy levels prompt (workbooks with parameters)
+
+The first time someone refreshes a workbook with parameters, Excel asks about **privacy levels**, because the query combines values from the workbook with data from the database. Tick **Ignore Privacy Levels checks for this file**, click **Save**, then save the workbook. Excel remembers the choice for that file, for that Windows user, so each person sees it once.
+
+Flank can't make that choice in advance: Excel stores it encrypted per Windows user.
+
 ### How do I give an end user access?
 
 The workbook connects directly to your database through Power Query, so the person refreshing it needs their own credentials. Flank does not put your credentials in the workbook.

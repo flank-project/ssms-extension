@@ -74,7 +74,8 @@ $job = Start-Job -ArgumentList $Path, $values -ScriptBlock {
                     $columns = @()
                     foreach ($c in $table.ListColumns) { $columns += $c.Name }
                     $rows = if ($table.DataBodyRange) { $table.DataBodyRange.Rows.Count } else { 0 }
-                    $tables += [pscustomobject]@{ Sheet = $sheet.Name; Table = $table.Name; Columns = $columns; Rows = $rows; Error = $refreshError }
+                    $first = if ($table.DataBodyRange) { $table.DataBodyRange.Cells.Item(1, 1).Text } else { "" }
+                    $tables += [pscustomobject]@{ Sheet = $sheet.Name; Table = $table.Name; Columns = $columns; Rows = $rows; First = $first; Error = $refreshError }
                 }
             }
             $tables
@@ -105,8 +106,16 @@ if ($tables.Count -eq 0) {
     throw "The workbook has no tables after refresh."
 }
 
+# The 1-cell "Last refreshed" table isn't data; report it separately.
+$stamp = $tables | Where-Object Table -eq "LastRefreshed"
+$tables = @($tables | Where-Object Table -ne "LastRefreshed")
+
 foreach ($t in $tables) {
     Write-Host "$($t.Sheet)/$($t.Table): $($t.Rows) rows; columns: $($t.Columns -join ', ')"
+}
+if ($stamp) {
+    Write-Host "Last refreshed: $($stamp.First)"
+    if (-not $stamp.First) { throw "The Last refreshed cell is empty after refresh." }
 }
 
 if ($tables[0].Error) {
