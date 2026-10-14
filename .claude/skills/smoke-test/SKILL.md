@@ -202,8 +202,8 @@ menu should not have it.
    parameter's default. Check it renders without passing a value, and that
    a value can still be passed:
    ```powershell
-   .	estserify-ssrs.ps1 -Report (Get-Clipboard)                            # 2 rows (league 2)
-   .	estserify-ssrs.ps1 -Report (Get-Clipboard) -Parameters "League_Id=3"  # 1 row
+   .\tests\verify-ssrs.ps1 -Report (Get-Clipboard)                            # 2 rows (league 2)
+   .\tests\verify-ssrs.ps1 -Report (Get-Clipboard) -Parameters "League_Id=3"  # 1 row
    ```
 
 ## 5. Report
