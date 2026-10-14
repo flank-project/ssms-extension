@@ -155,6 +155,7 @@ namespace Flank.SsmsExtension
         {
             string step = "Reading stored procedure";
             IReadOnlyList<SprocParameter> parameters;
+            bool isAzure;
 
             try
             {
@@ -165,6 +166,8 @@ namespace Flank.SsmsExtension
 
                     parameters = SqlMetadataDiscovery.DiscoverStoredProcedureParameters(
                         objectId, connection);
+
+                    isAzure = AccessDiscovery.IsAzureSqlDatabase(connection);
                 }
             }
             catch (Exception ex)
@@ -173,46 +176,36 @@ namespace Flank.SsmsExtension
                 return;
             }
 
-            // Run it first: the workbook starts with these values and rows.
-            IReadOnlyList<object?> values;
-            ResultSet result;
-            DateTime ranAt;
+            // Who refreshes it, their access, then a run as them: the workbook
+            // starts with that run's values and rows.
+            WorkbookRequest request;
+            string fileName;
 
-            using (var dialog = new StoredProcedureRunDialog(
+            using (var wizard = new ExcelWorkbookWizard(
+                sproc.Server,
+                sproc.Database,
+                isAzure,
                 sproc.QualifiedName,
                 parameters,
-                () => OpenConnection(node, sproc.Database),
-                "Create workbook",
-                "Excel (Power Query)"))
+                query: null,
+                queryTables: Array.Empty<string>(),
+                queryTablesProblem: null,
+                action =>
+                {
+                    using (var connection = OpenConnection(node, sproc.Database))
+                    {
+                        action(connection);
+                    }
+                }))
             {
-                if (dialog.ShowDialog() != DialogResult.OK)
+                if (wizard.ShowDialog() != DialogResult.OK || wizard.Request == null)
                     return;
 
-                values = dialog.ParameterValues;
-                result = dialog.Results[0];
-                ranAt = dialog.RanAt;
+                request = wizard.Request;
+                fileName = wizard.DefaultFileName;
             }
 
-            // Input parameters become cells the user fills in (names in
-            // column A, values in column B); the query passes them as @name.
-            // OUTPUT parameters are bound to variables declared in the batch.
-            var names = parameters
-                .Where(p => !p.IsOutput)
-                .Select(p => p.Name.TrimStart('@'))
-                .ToList();
-
-            string sql = ProcedureCall.BuildExec(sproc.QualifiedName, parameters);
-
-            var request = new WorkbookRequest(sql, sproc.Server, sproc.Database)
-            {
-                ParameterNames = names,
-                ParameterValues = values,
-                ColumnNames = result.Columns,
-                Rows = result.Rows,
-                RowsFetchedAt = ranAt,
-            };
-
-            await ExcelWorkflow.RunAsync(request, sproc.Name + ".xlsx");
+            await ExcelWorkflow.RunAsync(request, fileName);
         }
 
         private static async Task CreateSsrsReportAsync(INodeInformation node, StoredProcedureInfo sproc)
@@ -239,10 +232,9 @@ namespace Flank.SsmsExtension
                 return;
             }
 
-            // Run it first: the values become the report parameters' defaults,
-            // so the report shows data when opened.
-            var inputs = parameters.Where(p => !p.IsOutput).ToList();
-            var defaults = new Dictionary<string, object?>();
+            // Run it first to preview the results and get the report's columns.
+            // The values entered aren't used as report defaults: parameters
+            // start blank for the viewer to fill in.
             ResultSet result;
 
             using (var dialog = new StoredProcedureRunDialog(
@@ -254,9 +246,6 @@ namespace Flank.SsmsExtension
             {
                 if (dialog.ShowDialog() != DialogResult.OK)
                     return;
-
-                for (int i = 0; i < inputs.Count; i++)
-                    defaults[inputs[i].Name] = dialog.ParameterValues[i];
 
                 result = dialog.Results[0];
             }
@@ -276,48 +265,7 @@ namespace Flank.SsmsExtension
                     columns,
                     reportOptions.DataSource,
                     reportOptions.Folder,
-                    reportOptions.ReportName,
-                    defaults));
-        }
-
-        private static Task GiveAccessAsync(INodeInformation node, StoredProcedureInfo sproc)
-        {
-            bool isAzure;
-
-            try
-            {
-                using (var connection = OpenConnection(node, sproc.Database))
-                {
-                    isAzure = AccessDiscovery.IsAzureSqlDatabase(connection);
-                }
-            }
-            catch (Exception ex)
-            {
-                SsmsUiHelper.ShowMessage(
-                    "Flank couldn't connect to the database.\n\n" + ex.Message,
-                    OLEMSGICON.OLEMSGICON_CRITICAL,
-                    "Flank Error");
-                return Task.CompletedTask;
-            }
-
-            using (var dialog = new GiveAccessDialog(
-                sproc.Server,
-                sproc.Database,
-                isAzure,
-                sproc.QualifiedName,
-                Array.Empty<string>(),
-                action =>
-                {
-                    using (var connection = OpenConnection(node, sproc.Database))
-                    {
-                        action(connection);
-                    }
-                }))
-            {
-                dialog.ShowDialog();
-            }
-
-            return Task.CompletedTask;
+                    reportOptions.ReportName));
         }
 
         /// <summary>Opens a connection to the node's server, in the procedure's database.</summary>
@@ -371,13 +319,6 @@ namespace Flank.SsmsExtension
                     "SSRS Report",
                     MenuIcons.Ssrs,
                     (s, e) => owner.RunForSelection(CreateSsrsReportAsync));
-
-                submenu.DropDownItems.Add(new ToolStripSeparator());
-
-                submenu.DropDownItems.Add(
-                    "Give Someone Access...",
-                    null,
-                    (s, e) => owner.RunForSelection(GiveAccessAsync));
 
                 // We're first in the menu (see MoveToTop); separate us from SSMS's items.
                 return new ToolStripItem[] { submenu, new ToolStripSeparator() };

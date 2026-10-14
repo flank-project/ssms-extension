@@ -60,6 +60,25 @@ namespace Flank.Ssrs
             }
         }
 
+        /// <summary>
+        /// Runs <paramref name="action"/> as <paramref name="userName"/> (EXECUTE AS
+        /// USER), then reverts, even if the action fails. Needs IMPERSONATE on
+        /// that user (e.g. db_owner).
+        /// </summary>
+        public static T RunAs<T>(IDbConnection connection, string userName, Func<T> action)
+        {
+            Execute(connection, $"EXECUTE AS USER = {AccessScript.QuoteString(userName)};");
+
+            try
+            {
+                return action();
+            }
+            finally
+            {
+                Execute(connection, "REVERT;");
+            }
+        }
+
         /// <summary>Whether a user with this name exists in the database.</summary>
         public static bool UserExists(IDbConnection connection, string userName)
         {

@@ -21,58 +21,37 @@ namespace Flank.Ssrs
         }
 
         /// <summary>
-        /// The tables and views in this database that a query's result columns
-        /// come from, as [schema].[name], without running the query. Tables used
-        /// only in WHERE or JOIN conditions aren't listed.
+        /// Database users who sign in the given way, for granting access to
+        /// someone who already has a user. Leaves out built-in principals.
         /// </summary>
-        public static IReadOnlyList<string> QueryTables(IDbConnection connection, string sql)
+        public static IReadOnlyList<string> ListUsers(IDbConnection connection, AccessSignIn signIn)
         {
-            var tables = new List<string>();
+            // S = SQL user, E/X = Entra user/group, U/G = Windows user/group.
+            string types = signIn == AccessSignIn.Entra ? "'E', 'X'"
+                         : signIn == AccessSignIn.Windows ? "'U', 'G'"
+                         : "'S'";
+
+            var users = new List<string>();
 
             using (var command = connection.CreateCommand())
             {
-                command.CommandText = @"
-EXEC sp_describe_first_result_set
-    @tsql = @Sql,
-    @params = NULL,
-    @browse_information_mode = 1;";
-
-                var parameter = command.CreateParameter();
-                parameter.ParameterName = "@Sql";
-                parameter.Value = sql;
-                command.Parameters.Add(parameter);
+                command.CommandText = $@"
+SELECT name
+FROM sys.database_principals
+WHERE type IN ({types})
+  AND principal_id > 4
+  AND name NOT IN ('dbo', 'guest', 'INFORMATION_SCHEMA', 'sys')
+  AND is_fixed_role = 0
+ORDER BY name;";
 
                 using (var reader = command.ExecuteReader())
                 {
-                    int database = reader.GetOrdinal("source_database");
-                    int schema = reader.GetOrdinal("source_schema");
-                    int table = reader.GetOrdinal("source_table");
-                    int hidden = reader.GetOrdinal("is_hidden");
-
                     while (reader.Read())
-                    {
-                        if (reader.IsDBNull(table) || reader.IsDBNull(schema))
-                            continue;
-
-                        // Hidden columns are browse-mode keys, not part of the result.
-                        if (!reader.IsDBNull(hidden) && reader.GetBoolean(hidden))
-                            continue;
-
-                        // Grants only apply in this database.
-                        if (!reader.IsDBNull(database) &&
-                            !string.Equals(reader.GetString(database), connection.Database, StringComparison.OrdinalIgnoreCase))
-                            continue;
-
-                        string name = AccessScript.QuoteName(reader.GetString(schema)) + "." +
-                                      AccessScript.QuoteName(reader.GetString(table));
-
-                        if (!tables.Contains(name))
-                            tables.Add(name);
-                    }
+                        users.Add(reader.GetString(0));
                 }
             }
 
-            return tables;
+            return users;
         }
     }
 }

@@ -36,7 +36,7 @@ Flank currently supports:
 - SSRS with Windows Authentication
 - Existing shared data sources
 - Selected SQL, or the entire query if nothing is selected
-- Stored procedures, from Object Explorer. Flank asks for parameter values and runs the procedure so you can preview the results; the report calls the procedure directly, and its parameters become report parameters, defaulting to the values you ran it with
+- Stored procedures, from Object Explorer. Flank asks for parameter values and runs the procedure so you can preview the results; the report calls the procedure directly, and its parameters become report parameters with no defaults, so people enter values when they run the report
 - Basic tabular reports using the columns returned by the query
 
 Not supported yet:
@@ -74,10 +74,11 @@ Flank currently supports:
   - Uses Power Query's "native SQL query" support
   - Includes `SELECT` queries, CTEs, temp tables, variables, and stored procedures that return a result set
 - **Stored procedures with parameters**, from Object Explorer
-  - Flank asks for parameter values and runs the procedure so you can preview the results
-  - The workbook starts with those values and rows, so end users see data straight away
   - The parameters are listed at the top (names in column A, values in column B). End users change the values and refresh
-- Every workbook starts with a short "how to update" note and a **Last refreshed** time
+- A short wizard: who will refresh the workbook and what they can do (see [Giving end users access](#giving-end-users-access)), then a run as that person to preview the results
+- The workbook starts with the previewed values and rows, so end users see data straight away
+  - Over 50,000 rows, the preview shows the first 50,000 and the workbook starts with just the column headings; the first **Refresh All** loads everything
+- Every workbook has one sheet, with a short "how to update" note and a **Last refreshed** time
 
 Not supported yet:
 
@@ -99,15 +100,18 @@ For a stored procedure with `OUTPUT` parameters, Excel also asks once to approve
 
 The workbook connects directly to your database through Power Query, so the person refreshing it needs their own database access. Flank never puts your credentials in the workbook. End users don't need Flank installed.
 
-Right-click the query (or the stored procedure in Object Explorer) and choose **Make Self-Serve → Give Someone Access...**. Flank:
+This is part of **Make Self-Serve → Excel (Power Query)**, before anything runs:
 
-- creates the user, signing in with:
-  - a **SQL Server username and password** (Flank generates the password), or
-  - their **Microsoft Entra** account (Azure SQL), or
-  - their **Windows / Active Directory** account (SQL Server)
-- grants only what's needed: `EXECUTE` on the stored procedure, or `SELECT` on the tables the query reads, or, if you choose, every table (`db_datareader`)
-- shows the exact T-SQL, which you can copy or run, and tells you what to send the person and which sign-in option to pick when Excel asks
-- **Test as this user** checks, before you send anything, that the person can run the procedure or read the query's tables. It impersonates them (`EXECUTE AS USER`), so you need `IMPERSONATE` permission on them (db_owner has it)
+1. **Who will refresh this workbook?** Choose **Skip this if end user already has access**, or how they sign in, then an existing database user or a new one:
+   - a **SQL Server username and password** (Flank generates the password), or
+   - their **Microsoft Entra** account (Azure SQL), or
+   - their **Windows / Active Directory** account (SQL Server)
+2. **What can they do?** Only what's needed:
+   - a stored procedure: `EXECUTE` on it
+   - a query: either turn it into a stored procedure and grant `EXECUTE` (the workbook then calls the procedure), or grant `SELECT` on the tables and views it reads. Flank finds those by parsing the query; table names built at run time (dynamic SQL) aren't found
+
+   Flank shows the exact T-SQL, which you can copy or **Apply**, and tells you what to send the person and which sign-in option to pick when Excel asks.
+3. **Run as them.** Flank runs the query or procedure as that user (`EXECUTE AS USER`), so you see what they'll see before sending anything. That needs `IMPERSONATE` permission on them (db_owner has it; granting access alone doesn't give it). If you can't impersonate them, choose **Run as me instead**.
 
 Prefer an identity people already have: Entra on Azure SQL, Windows / Active Directory on SQL Server. Use SQL usernames when those aren't available.
 

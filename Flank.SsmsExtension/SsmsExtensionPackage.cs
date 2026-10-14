@@ -72,7 +72,6 @@ namespace Flank.SsmsExtension
             await this.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
             await SqlToExcelPowerQueryCommand.InitializeAsync(this);
             await SqlToSsrsCommand.InitializeAsync(this);
-            await GiveAccessCommand.InitializeAsync(this);
             await ObjectExplorerSprocMenu.InitializeAsync(this);
         }
 

@@ -123,36 +123,64 @@ namespace Flank.SsmsExtension
                 return;
             }
 
-            var request = new WorkbookRequest(sql, server, database)
-            {
-                ColumnNames = TryDiscoverColumns(sql),
-            };
-
-            await ExcelWorkflow.RunAsync(request, "report.xlsx");
-        }
-
-        /// <summary>
-        /// The query's result columns, so the workbook's table starts with them.
-        /// Null if they can't be described without running the query (e.g. some
-        /// temp-table batches); the first refresh then names them instead.
-        /// </summary>
-        private static List<string> TryDiscoverColumns(string sql)
-        {
-            ThreadHelper.ThrowIfNotOnUIThread();
+            System.Data.IDbConnection queryConnection;
+            bool isAzure;
+            IReadOnlyList<string> tables = Array.Empty<string>();
+            string tablesProblem = null;
 
             try
             {
-                var connection = SsmsQueryHelper.GetCurrentConnection();
+                queryConnection = SsmsQueryHelper.GetCurrentConnection();
+                isAzure = AccessDiscovery.IsAzureSqlDatabase(queryConnection);
 
-                return SqlMetadataDiscovery.DiscoverQueryColumns(sql, connection)
-                    .Select(c => c.Name)
-                    .ToList();
+                // The tables and views the query names, for granting SELECT.
+                try
+                {
+                    tables = QueryObjects.Resolve(queryConnection, QueryObjects.Find(sql));
+                    if (tables.Count == 0)
+                        tablesProblem = "none found in this database";
+                }
+                catch (Exception ex)
+                {
+                    tablesProblem = ex.Message;
+                }
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Flank: could not discover query columns: {ex.Message}");
-                return null;
+                ExcelWorkflow.ShowFailure(
+                    "Reading SQL Server connection",
+                    ex,
+                    server,
+                    database,
+                    null);
+                return;
             }
+
+            // Who refreshes it, their access, then a run as them: the workbook
+            // starts with that run's rows.
+            WorkbookRequest request;
+            string fileName;
+
+            // The query window's connection is borrowed, never closed.
+            using (var wizard = new ExcelWorkbookWizard(
+                server,
+                database,
+                isAzure,
+                procedure: null,
+                procedureParameters: Array.Empty<SprocParameter>(),
+                query: sql,
+                queryTables: tables,
+                queryTablesProblem: tablesProblem,
+                action => action(queryConnection)))
+            {
+                if (wizard.ShowDialog() != System.Windows.Forms.DialogResult.OK || wizard.Request == null)
+                    return;
+
+                request = wizard.Request;
+                fileName = wizard.DefaultFileName;
+            }
+
+            await ExcelWorkflow.RunAsync(request, fileName);
         }
     }
 }

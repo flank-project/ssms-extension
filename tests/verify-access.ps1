@@ -1,4 +1,4 @@
-# Signs in as a user created by Make Self-Serve > Give Someone Access and
+# Signs in as a user created by the Excel wizard's access step and
 # checks what it can and can't do. The password is read from the script that
 # the dialog's "Copy script" put on the clipboard (or -Script), and is never
 # printed.

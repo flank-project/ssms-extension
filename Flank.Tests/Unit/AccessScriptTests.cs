@@ -79,9 +79,43 @@ public class AccessScriptTests
     }
 
     [Fact]
-    public void All_tables_scope_uses_db_datareader()
+    public void Existing_user_only_gets_the_grant()
     {
-        Assert.Equal("ALTER ROLE db_datareader ADD MEMBER [report_user];", AccessScript.Build(Request(scope: AccessScope.AllTables)).Last());
+        var request = Request();
+        request.ExistingUser = true;
+        request.Password = "";
+
+        Assert.Equal(
+            new[] { "GRANT EXECUTE ON OBJECT::[dbo].[get_orders] TO [report_user];" },
+            AccessScript.Build(request));
+    }
+
+    [Fact]
+    public void Query_can_become_a_procedure_first()
+    {
+        var request = Request();
+        request.ProcedureBody = "SELECT id FROM dbo.orders;  ";
+
+        var script = AccessScript.Build(request);
+
+        Assert.Equal(
+            "CREATE PROCEDURE [dbo].[get_orders]\nAS\nBEGIN\n    SET NOCOUNT ON;\n\nSELECT id FROM dbo.orders;\nEND;",
+            script[0]);
+        Assert.Equal("GRANT EXECUTE ON OBJECT::[dbo].[get_orders] TO [report_user];", script.Last());
+    }
+
+    [Fact]
+    public void Script_text_separates_batches_with_go()
+    {
+        var request = Request();
+        request.ProcedureBody = "SELECT 1";
+
+        string text = AccessScript.ToText(request);
+
+        Assert.Contains("END;" + Environment.NewLine + "GO", text);
+        // One GO per statement: create procedure, create user, grant.
+        var lines = text.Split(new[] { Environment.NewLine }, StringSplitOptions.None);
+        Assert.Equal(3, lines.Count(l => l == "GO"));
     }
 
     [Fact]

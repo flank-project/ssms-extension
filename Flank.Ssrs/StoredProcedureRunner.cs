@@ -75,45 +75,73 @@ namespace Flank.Ssrs
 
                 using (var reader = command.ExecuteReader())
                 {
-                    do
-                    {
-                        // Statements that don't return rows (e.g. SET, UPDATE) still
-                        // produce a "result" with no columns; skip those.
-                        if (reader.FieldCount == 0)
-                            continue;
-
-                        var columns = new List<string>();
-                        for (int i = 0; i < reader.FieldCount; i++)
-                            columns.Add(reader.GetName(i));
-
-                        var rows = new List<object?[]>();
-                        bool truncated = false;
-
-                        while (reader.Read())
-                        {
-                            if (rows.Count >= maxRows)
-                            {
-                                truncated = true;
-                                break;
-                            }
-
-                            var values = new object?[reader.FieldCount];
-                            reader.GetValues(values!);
-
-                            for (int i = 0; i < values.Length; i++)
-                            {
-                                if (values[i] == DBNull.Value)
-                                    values[i] = null;
-                            }
-
-                            rows.Add(values);
-                        }
-
-                        results.Add(new ResultSet(columns, rows, truncated));
-                    }
-                    while (reader.NextResult());
+                    results.AddRange(ReadResults(reader, maxRows));
                 }
             }
+
+            return results;
+        }
+
+        /// <summary>Runs a query (any batch) and reads every result set it returns.</summary>
+        public static IReadOnlyList<ResultSet> RunQuery(
+            IDbConnection connection,
+            string sql,
+            int maxRows,
+            int timeoutSeconds = 120)
+        {
+            using (var command = connection.CreateCommand())
+            {
+                command.CommandText = sql;
+                command.CommandTimeout = timeoutSeconds;
+
+                using (var reader = command.ExecuteReader())
+                {
+                    return ReadResults(reader, maxRows);
+                }
+            }
+        }
+
+        private static List<ResultSet> ReadResults(IDataReader reader, int maxRows)
+        {
+            var results = new List<ResultSet>();
+
+            do
+            {
+                // Statements that don't return rows (e.g. SET, UPDATE) still
+                // produce a "result" with no columns; skip those.
+                if (reader.FieldCount == 0)
+                    continue;
+
+                var columns = new List<string>();
+                for (int i = 0; i < reader.FieldCount; i++)
+                    columns.Add(reader.GetName(i));
+
+                var rows = new List<object?[]>();
+                bool truncated = false;
+
+                while (reader.Read())
+                {
+                    if (rows.Count >= maxRows)
+                    {
+                        truncated = true;
+                        break;
+                    }
+
+                    var values = new object?[reader.FieldCount];
+                    reader.GetValues(values!);
+
+                    for (int i = 0; i < values.Length; i++)
+                    {
+                        if (values[i] == DBNull.Value)
+                            values[i] = null;
+                    }
+
+                    rows.Add(values);
+                }
+
+                results.Add(new ResultSet(columns, rows, truncated));
+            }
+            while (reader.NextResult());
 
             return results;
         }

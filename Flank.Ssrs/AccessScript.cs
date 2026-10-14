@@ -28,9 +28,6 @@ namespace Flank.Ssrs
 
         /// <summary>SELECT on specific tables and views.</summary>
         Objects,
-
-        /// <summary>The db_datareader role: read every table and view.</summary>
-        AllTables,
     }
 
     /// <summary>A request to give someone access, and the T-SQL that does it.</summary>
@@ -40,6 +37,9 @@ namespace Flank.Ssrs
 
         /// <summary>Login/user name: a SQL login name, an Entra UPN, or DOMAIN\user.</summary>
         public string Name { get; set; } = "";
+
+        /// <summary>The user already exists: only grant access.</summary>
+        public bool ExistingUser { get; set; }
 
         /// <summary>For <see cref="AccessSignIn.SqlLogin"/>.</summary>
         public string Password { get; set; } = "";
@@ -57,6 +57,12 @@ namespace Flank.Ssrs
 
         /// <summary>For <see cref="AccessScope.Procedure"/>: [schema].[name].</summary>
         public string Procedure { get; set; } = "";
+
+        /// <summary>
+        /// Create <see cref="Procedure"/> from this query first (turning a query
+        /// into a procedure). Null when the procedure already exists.
+        /// </summary>
+        public string? ProcedureBody { get; set; }
 
         /// <summary>For <see cref="AccessScope.Objects"/>: [schema].[name] of each table or view.</summary>
         public IReadOnlyList<string> Objects { get; set; } = Array.Empty<string>();
@@ -78,7 +84,15 @@ namespace Flank.Ssrs
             string userLiteral = QuoteString(request.Name);
             var statements = new List<string>();
 
-            switch (request.SignIn)
+            if (request.Scope == AccessScope.Procedure && request.ProcedureBody != null)
+            {
+                // Must be the only statement in its batch.
+                statements.Add(
+                    $"CREATE PROCEDURE {request.Procedure}\nAS\nBEGIN\n    SET NOCOUNT ON;\n\n" +
+                    request.ProcedureBody.Trim().TrimEnd(';') + ";\nEND;");
+            }
+
+            switch (request.ExistingUser ? (AccessSignIn?)null : request.SignIn)
             {
                 case AccessSignIn.SqlLogin:
                     if (string.IsNullOrEmpty(request.Password))
@@ -131,9 +145,6 @@ namespace Flank.Ssrs
                         statements.Add($"GRANT SELECT ON OBJECT::{name} TO {user};");
                     break;
 
-                case AccessScope.AllTables:
-                    statements.Add($"ALTER ROLE db_datareader ADD MEMBER {user};");
-                    break;
             }
 
             return statements;
@@ -148,8 +159,10 @@ namespace Flank.Ssrs
                 text.AppendLine($"USE {QuoteName(request.Database)};").AppendLine();
 
             // Statements break lines with \n; text boxes and editors want CRLF.
+            // GO separates batches, so the script can be pasted and run as is
+            // (CREATE PROCEDURE must be alone in its batch).
             foreach (var statement in Build(request))
-                text.AppendLine(statement.Replace("\n", Environment.NewLine)).AppendLine();
+                text.AppendLine(statement.Replace("\n", Environment.NewLine)).AppendLine("GO").AppendLine();
 
             return text.ToString().TrimEnd() + Environment.NewLine;
         }

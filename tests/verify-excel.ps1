@@ -65,6 +65,16 @@ $job = Start-Job -ArgumentList $Path, $values -ScriptBlock {
                 try { $connection.OLEDBConnection.BackgroundQuery = $false } catch { }
             }
 
+            # Workbooks start with the preview's rows. Clear them so rows can
+            # only come from this refresh (a failed one leaves the table empty).
+            foreach ($sheet in $workbook.Worksheets) {
+                foreach ($table in $sheet.ListObjects) {
+                    if ($table.Name -ne "LastRefreshed" -and $table.DataBodyRange) {
+                        [void]$table.DataBodyRange.ClearContents()
+                    }
+                }
+            }
+
             $refreshError = $null
             try { $workbook.RefreshAll() } catch { $refreshError = $_.Exception.Message }
 
@@ -73,7 +83,10 @@ $job = Start-Job -ArgumentList $Path, $values -ScriptBlock {
                 foreach ($table in $sheet.ListObjects) {
                     $columns = @()
                     foreach ($c in $table.ListColumns) { $columns += $c.Name }
-                    $rows = if ($table.DataBodyRange) { $table.DataBodyRange.Rows.Count } else { 0 }
+                    # Non-empty rows: cleared rows that didn't reload don't count.
+                    $rows = if ($table.DataBodyRange) {
+                        [int]$excel.WorksheetFunction.CountA($table.DataBodyRange.Columns.Item(1))
+                    } else { 0 }
                     $first = if ($table.DataBodyRange) { $table.DataBodyRange.Cells.Item(1, 1).Text } else { "" }
                     $tables += [pscustomobject]@{ Sheet = $sheet.Name; Table = $table.Name; Columns = $columns; Rows = $rows; First = $first; Error = $refreshError }
                 }
@@ -101,6 +114,11 @@ if (-not (Wait-Job $job -Timeout $Timeout)) {
 
 $tables = @(Receive-Job $job)
 Remove-Job $job
+
+# Quit doesn't always end the hidden instance; stop any new, windowless one.
+Get-Process EXCEL -ErrorAction SilentlyContinue |
+    Where-Object { $before -notcontains $_.Id -and -not $_.MainWindowTitle } |
+    Stop-Process -Force -ErrorAction SilentlyContinue
 
 if ($tables.Count -eq 0) {
     throw "The workbook has no tables after refresh."
@@ -130,7 +148,10 @@ if ($tables | Where-Object { $_.Columns -match 'Refresh All' }) {
 
 $loaded = ($tables | Measure-Object -Property Rows -Sum).Sum
 if ($loaded -lt $MinRows) {
-    throw "Expected at least $MinRows row(s) after refresh, got $loaded."
+    $hint = if ($values.Count -gt 0) {
+        " Workbooks with parameters can't refresh hidden (Power Query asks about privacy levels first); check them in Excel."
+    } else { "" }
+    throw "Expected at least $MinRows row(s) after refresh, got $loaded.$hint"
 }
 
 Write-Host "OK"
