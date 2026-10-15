@@ -161,6 +161,8 @@ namespace Flank.SsmsExtension
                 {
                     successDialog.ShowDialog();
                 }
+
+                Feedback.RecordSuccess();
             }
             catch (Exception ex)
             {
