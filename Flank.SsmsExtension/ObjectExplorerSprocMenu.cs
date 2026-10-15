@@ -320,6 +320,12 @@ namespace Flank.SsmsExtension
                     MenuIcons.Ssrs,
                     (s, e) => owner.RunForSelection(CreateSsrsReportAsync));
 
+                submenu.DropDownItems.Add(new ToolStripSeparator());
+                submenu.DropDownItems.Add(
+                    "Feedback...",
+                    null,
+                    (s, e) => Feedback.ShowDialog());
+
                 // We're first in the menu (see MoveToTop); separate us from SSMS's items.
                 return new ToolStripItem[] { submenu, new ToolStripSeparator() };
             }

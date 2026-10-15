@@ -53,6 +53,18 @@
 
 			</Group>
 
+			<!-- Feedback, below a separator in the submenu -->
+			<Group
+				guid="guidSqlToExcelPowerQueryCommandPackageCmdSet"
+				id="FeedbackMenuGroup"
+				priority="0x0200">
+
+				<Parent
+					guid="guidSqlToExcelPowerQueryCommandPackageCmdSet"
+					id="MakeSelfServeMenu"/>
+
+			</Group>
+
 		</Groups>
 
 		<Buttons>
@@ -89,6 +101,22 @@
 
 				<Strings>
 					<ButtonText>SSRS Report</ButtonText>
+				</Strings>
+
+			</Button>
+
+			<Button
+				guid="guidSqlToExcelPowerQueryCommandPackageCmdSet"
+				id="FeedbackCommandId"
+				priority="0x0100"
+				type="Button">
+
+				<Parent
+					guid="guidSqlToExcelPowerQueryCommandPackageCmdSet"
+					id="FeedbackMenuGroup"/>
+
+				<Strings>
+					<ButtonText>Feedback...</ButtonText>
 				</Strings>
 
 			</Button>
@@ -134,6 +162,14 @@
 			<IDSymbol
 				name="SqlToSsrsCommandId"
 				value="0x0110"/>
+
+			<IDSymbol
+				name="FeedbackMenuGroup"
+				value="0x1024"/>
+
+			<IDSymbol
+				name="FeedbackCommandId"
+				value="0x0120"/>
 
 		</GuidSymbol>
 
