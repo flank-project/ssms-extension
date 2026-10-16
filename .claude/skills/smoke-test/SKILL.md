@@ -260,7 +260,7 @@ Right to expand, and type-ahead (`dbo.flank_t`) to select.
    Return with League blank: "Enter a value for League: it's required." Then
    `1`, Return: Team 3 and Team 5, with name_like `%` and since 2000-01-01.
    Create workbook, save as `C:\temp\flank-smoke\review-excel.xlsx`.
-3. In Excel: A4 `League`, C4 `Required. 1 = NBA, ...`, B7 `TRUE`, B8 a date
+3. In Excel: A4 `League`, C4 `Required. 1 = NBA, ...`, B7 a ticked checkbox, B8 a date
    without a time. Go to B4: the note shows as a tooltip. Delete: B4 turns red.
    Type `abc`, Return: "Enter a whole number between ..." (Escape).
 4. Paste past validation: type `abc` in D20, copy it, paste into B4. Refresh
@@ -269,7 +269,8 @@ Right to expand, and type-ahead (`dbo.flank_t`) to select.
 5. B4 = `2`, refresh: a **Native Database Query** prompt (Run), then Privacy
    levels. Clicks don't reach that dialog: Tab twice (focus ring on the
    checkbox), Space, Return. Pass: Team 1 and Team 2; the date in B8 still
-   shows (columns aren't re-fitted). Clear B5 and refresh: still `%` (the
+   shows (columns aren't re-fitted). Go to B7, Space (unticks), refresh:
+   `active` is FALSE. Clear B5 and refresh: still `%` (the
    procedure's default). Close without saving (ctrl+w, alt+n).
 
 ### dropdown
