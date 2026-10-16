@@ -24,6 +24,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Flank.Excel\Flank.Excel.csproj" />
+    <ProjectReference Include="..\Flank.PowerBi\Flank.PowerBi.csproj" />
     <ProjectReference Include="..\Flank.Ssrs\Flank.Ssrs.csproj" />
   </ItemGroup>
 

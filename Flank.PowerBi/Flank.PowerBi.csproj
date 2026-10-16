@@ -14,6 +14,11 @@
     -->
     <PackageReference Include="Microsoft.Identity.Client" Version="[4.84.1]" />
     <PackageReference Include="Microsoft.Identity.Client.Extensions.Msal" Version="[4.84.1]" />
+    <!-- Assembly version 13.0.0.0, the one SSMS 22 ships in PrivateAssemblies. -->
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Flank.Ssrs\Flank.Ssrs.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="System.Net.Http" />

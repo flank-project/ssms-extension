@@ -23,11 +23,18 @@ namespace Flank.PowerBi
 
         private const string CacheFileName = "powerbi.msalcache";
 
-        private static readonly string[] Scopes =
+        /// <summary>The Power BI REST API: workspaces, reports, imports, data sources.</summary>
+        public static readonly string[] PowerBiScopes =
         {
             "https://analysis.windows.net/powerbi/api/Report.ReadWrite.All",
             "https://analysis.windows.net/powerbi/api/Dataset.ReadWrite.All",
             "https://analysis.windows.net/powerbi/api/Workspace.Read.All"
+        };
+
+        /// <summary>The Fabric REST API's shareable cloud connections.</summary>
+        public static readonly string[] ConnectionScopes =
+        {
+            "https://api.fabric.microsoft.com/Connection.ReadWrite.All"
         };
 
         private readonly IPublicClientApplication app;
@@ -58,7 +65,9 @@ namespace Flank.PowerBi
         }
 
         /// <summary>A token from the cache, or null if the user has to sign in.</summary>
-        public async Task<PowerBiToken?> GetTokenSilentAsync(CancellationToken cancellationToken = default)
+        public async Task<PowerBiToken?> GetTokenSilentAsync(
+            string[]? scopes = null,
+            CancellationToken cancellationToken = default)
         {
             var account = (await app.GetAccountsAsync().ConfigureAwait(false)).FirstOrDefault();
             if (account == null)
@@ -66,7 +75,7 @@ namespace Flank.PowerBi
 
             try
             {
-                var result = await app.AcquireTokenSilent(Scopes, account)
+                var result = await app.AcquireTokenSilent(scopes ?? PowerBiScopes, account)
                     .ExecuteAsync(cancellationToken)
                     .ConfigureAwait(false);
 
@@ -86,7 +95,7 @@ namespace Flank.PowerBi
             IntPtr parentWindow,
             CancellationToken cancellationToken = default)
         {
-            var request = app.AcquireTokenInteractive(Scopes)
+            var request = app.AcquireTokenInteractive(PowerBiScopes)
                 .WithPrompt(Prompt.SelectAccount);
 
             if (parentWindow != IntPtr.Zero)
@@ -106,7 +115,7 @@ namespace Flank.PowerBi
             Action<string> showCode,
             CancellationToken cancellationToken = default)
         {
-            var result = await app.AcquireTokenWithDeviceCode(Scopes, code =>
+            var result = await app.AcquireTokenWithDeviceCode(PowerBiScopes, code =>
                 {
                     showCode(code.Message);
                     return Task.CompletedTask;
@@ -122,7 +131,7 @@ namespace Flank.PowerBi
             IntPtr parentWindow,
             CancellationToken cancellationToken = default)
         {
-            return await GetTokenSilentAsync(cancellationToken).ConfigureAwait(false)
+            return await GetTokenSilentAsync(null, cancellationToken).ConfigureAwait(false)
                 ?? await SignInInteractiveAsync(parentWindow, cancellationToken).ConfigureAwait(false);
         }
     }

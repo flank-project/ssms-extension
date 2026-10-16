@@ -106,27 +106,46 @@ namespace Flank.Ssrs
         internal static string BuildTextReportRdl(
             string sql,
             IReadOnlyList<ReportColumn> columns,
-            string sharedDataSourcePath)
+            string sharedDataSourcePath) =>
+            BuildTextReportRdl(sql, columns, RdlDataSource.Shared(sharedDataSourcePath));
+
+        public static string BuildTextReportRdl(
+            string sql,
+            IReadOnlyList<ReportColumn> columns,
+            RdlDataSource dataSource)
         {
             string queryXml = $@"
         <CommandText>{XmlEscape(sql)}</CommandText>";
 
             return BuildReportRdl(
                 columns,
-                sharedDataSourcePath,
+                dataSource,
                 queryXml,
-                null);
+                "");
         }
 
-        /// <param name="defaultValues">
-        /// Report parameter defaults by SQL parameter name (with '@'), so the
-        /// report shows data when opened. Missing or null: no default.
-        /// </param>
         internal static string BuildStoredProcedureReportRdl(
             string procedureName,
             IReadOnlyList<SprocParameter> parameters,
             IReadOnlyList<ReportColumn> columns,
             string sharedDataSourcePath,
+            IReadOnlyDictionary<string, object?>? defaultValues = null) =>
+            BuildStoredProcedureReportRdl(
+                procedureName,
+                parameters,
+                columns,
+                RdlDataSource.Shared(sharedDataSourcePath),
+                defaultValues);
+
+        /// <param name="defaultValues">
+        /// Report parameter defaults by SQL parameter name (with '@'), so the
+        /// report shows data when opened. Missing or null: no default.
+        /// </param>
+        public static string BuildStoredProcedureReportRdl(
+            string procedureName,
+            IReadOnlyList<SprocParameter> parameters,
+            IReadOnlyList<ReportColumn> columns,
+            RdlDataSource dataSource,
             IReadOnlyDictionary<string, object?>? defaultValues = null)
         {
             string reportParametersXml;
@@ -151,7 +170,7 @@ namespace Flank.Ssrs
 
             return BuildReportRdl(
                 columns,
-                sharedDataSourcePath,
+                dataSource,
                 queryXml,
                 reportParametersXml);
         }
@@ -237,7 +256,7 @@ namespace Flank.Ssrs
 
         private static string BuildReportRdl(
             IReadOnlyList<ReportColumn> columns,
-            string sharedDataSourcePath,
+            RdlDataSource dataSource,
             string queryXml,
             string reportParametersXml)
         {
@@ -254,16 +273,13 @@ namespace Flank.Ssrs
     xmlns=""http://schemas.microsoft.com/sqlserver/reporting/2016/01/reportdefinition""
     xmlns:rd=""http://schemas.microsoft.com/SQLServer/reporting/reportdesigner"">
 
-  <DataSources>
-    <DataSource Name=""SharedDataSource"">
-      <DataSourceReference>{XmlEscape(sharedDataSourcePath)}</DataSourceReference>
-    </DataSource>
+  <DataSources>{dataSource.ToXml()}
   </DataSources>
 
   <DataSets>
     <DataSet Name=""MainDataSet"">
       <Query>
-        <DataSourceName>SharedDataSource</DataSourceName>
+        <DataSourceName>{XmlEscape(dataSource.Name)}</DataSourceName>
 {queryXml}
       </Query>
 

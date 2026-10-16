@@ -51,6 +51,18 @@ namespace Flank.TestPbiApp
                 // The next sign-in (here, or Flank in SSMS) must come from the cache.
                 var again = await signIn.GetTokenSilentAsync();
                 Console.WriteLine(again != null ? "Silent sign-in: OK" : "Silent sign-in: FAILED");
+
+                string connections;
+                try
+                {
+                    connections = await signIn.GetTokenSilentAsync(PowerBiSignIn.ConnectionScopes) != null
+                        ? "OK" : "needs sign-in";
+                }
+                catch (Exception ex)
+                {
+                    connections = ex.Message;
+                }
+                Console.WriteLine($"Connections API (silent): {connections}");
                 Console.WriteLine($"Token cache: {PowerBiSignIn.CacheDirectory}");
                 return again != null ? 0 : 1;
             }
