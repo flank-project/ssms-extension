@@ -1,6 +1,7 @@
 using Flank.Ssrs;
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
@@ -18,12 +19,19 @@ namespace Flank.SsmsExtension
         private const string NullText = "Pass NULL";
 
         private readonly IReadOnlyList<ParameterSettings> settings;
+        private readonly Func<IDbConnection> openConnection;
         private readonly DataGridView grid;
 
         /// <param name="outputName">What's being created, e.g. "Excel workbook".</param>
-        public ParameterReviewDialog(string procedureName, IReadOnlyList<ParameterSettings> settings, string outputName)
+        /// <param name="openConnection">Opens a connection to the database, to check list procedures.</param>
+        public ParameterReviewDialog(
+            string procedureName,
+            IReadOnlyList<ParameterSettings> settings,
+            string outputName,
+            Func<IDbConnection> openConnection)
         {
             this.settings = settings;
+            this.openConnection = openConnection;
 
             Text = "Review parameters: " + procedureName;
             FormBorderStyle = FormBorderStyle.Sizable;
@@ -37,7 +45,8 @@ namespace Flank.SsmsExtension
                 Text =
                     $"How people using the {outputName} see and fill in each parameter. Defaults come from the " +
                     "procedure where it declares them. \"Use procedure default\" leaves the parameter out of the call " +
-                    "when it's blank, so the procedure's own default applies.",
+                    "when it's blank, so the procedure's own default applies. \"Choices from\" makes it a dropdown: " +
+                    "name a procedure whose first column is the value and second (optional) the label.",
                 Location = new Point(16, 12),
                 Size = new Size(868, 48),
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
@@ -58,9 +67,10 @@ namespace Flank.SsmsExtension
             };
 
             grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Parameter", HeaderText = "Parameter", ReadOnly = true, FillWeight = 22 });
-            grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "DisplayName", HeaderText = "Shown as", FillWeight = 20 });
-            grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Note", HeaderText = "Note for the user", FillWeight = 30 });
-            grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Default", HeaderText = "Starts with", FillWeight = 13 });
+            grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "DisplayName", HeaderText = "Shown as", FillWeight = 18 });
+            grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Note", HeaderText = "Note for the user", FillWeight = 24 });
+            grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Default", HeaderText = "Starts with", FillWeight = 12 });
+            grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "List", HeaderText = "Choices from (procedure)", FillWeight = 20 });
             grid.Columns.Add(new DataGridViewComboBoxColumn
             {
                 Name = "IfBlank",
@@ -79,6 +89,7 @@ namespace Flank.SsmsExtension
                     setting.DisplayName,
                     setting.Note,
                     setting.DefaultValue ?? "",
+                    setting.ListProcedure ?? "",
                     null);
 
                 var choice = (DataGridViewComboBoxCell)grid.Rows[row].Cells["IfBlank"];
@@ -149,6 +160,40 @@ namespace Flank.SsmsExtension
                 }
             }
 
+            // Check list procedures (and read their choices) before changing anything.
+            var lists = new Dictionary<int, ParameterSettings>();
+
+            for (int i = 0; i < settings.Count; i++)
+            {
+                string listText = (grid.Rows[i].Cells["List"].Value as string ?? "").Trim();
+
+                if (listText.Length == 0)
+                    continue;
+
+                var probe = new ParameterSettings(settings[i].Parameter);
+
+                try
+                {
+                    Cursor = Cursors.WaitCursor;
+
+                    using (var connection = openConnection())
+                    {
+                        ProcedureList.Apply(probe, listText, connection);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Problem(i, "List", $"Choices for {settings[i].SqlName}: {ex.Message}");
+                    return;
+                }
+                finally
+                {
+                    Cursor = Cursors.Default;
+                }
+
+                lists[i] = probe;
+            }
+
             for (int i = 0; i < settings.Count; i++)
             {
                 var setting = settings[i];
@@ -162,6 +207,18 @@ namespace Flank.SsmsExtension
                 setting.IfBlank = choice == RequiredText ? BlankValue.Required
                     : choice == NullText ? BlankValue.PassNull
                     : BlankValue.UseProcedureDefault;
+
+                if (lists.TryGetValue(i, out var list))
+                {
+                    setting.ListProcedure = list.ListProcedure;
+                    setting.ListValueColumn = list.ListValueColumn;
+                    setting.ListLabelColumn = list.ListLabelColumn;
+                    setting.ListRows = list.ListRows;
+                }
+                else
+                {
+                    ProcedureList.Clear(setting);
+                }
             }
 
             DialogResult = DialogResult.OK;

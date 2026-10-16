@@ -21,6 +21,14 @@ namespace Flank.SsmsExtension
                 Required = setting.IfBlank == BlankValue.Required,
             };
 
+            if (setting.HasList)
+            {
+                cell.List = new WorkbookList("EXEC " + setting.ListProcedure, setting.ListValueColumn!, setting.ListLabelColumn!)
+                {
+                    Rows = setting.ListRows.Select(row => (row.Key, row.Value)).ToList(),
+                };
+            }
+
             switch ((parameter.SqlType ?? "").ToLowerInvariant())
             {
                 case "tinyint":

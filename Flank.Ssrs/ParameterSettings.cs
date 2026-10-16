@@ -46,6 +46,22 @@ namespace Flank.Ssrs
 
         public BlankValue IfBlank { get; set; }
 
+        /// <summary>
+        /// A stored procedure ([schema].[name]) whose first result set gives the
+        /// choices, as a dropdown; null for free entry. Its first column is the
+        /// value passed, its second (if any) the label shown.
+        /// </summary>
+        public string? ListProcedure { get; set; }
+
+        public string? ListValueColumn { get; set; }
+
+        public string? ListLabelColumn { get; set; }
+
+        /// <summary>The choices from a preview run of the list procedure: value, then label.</summary>
+        public IReadOnlyList<KeyValuePair<object?, object?>> ListRows { get; set; } = new KeyValuePair<object?, object?>[0];
+
+        public bool HasList => ListProcedure != null && ListValueColumn != null && ListLabelColumn != null;
+
         /// <summary>Settings as the procedure declares the parameters, before any review.</summary>
         public static IReadOnlyList<ParameterSettings> FromProcedure(IReadOnlyList<SprocParameter> parameters) =>
             parameters.Where(p => !p.IsOutput).Select(p => new ParameterSettings(p)).ToList();
