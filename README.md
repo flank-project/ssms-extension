@@ -189,6 +189,15 @@ Flank shows them for review. For each one:
   - **Use procedure default**: the parameter is left out of the call, so the
     procedure's own default applies (only for parameters that have one)
   - **Pass NULL**
+- **Choices from (procedure)**: makes the parameter a dropdown. Name a stored
+  procedure that takes no parameters (or only ones with defaults): its first
+  column is the value passed, its second (optional) the label shown, e.g.
+  `dbo.get_leagues` returning `id, name`
+  - **SSRS and Power BI**: the report parameter's available values come from the procedure
+  - **Excel**: the choices load to a table on a hidden **Lists** sheet, and the
+    cell becomes a dropdown of the labels. **Refresh All** reloads the choices,
+    and the workbook looks up the value for the label chosen, always from the
+    freshly loaded choices
 
 ## Uninstall
 

@@ -176,7 +176,7 @@ namespace Flank.SsmsExtension
                 return;
             }
 
-            var settings = ReviewParameters(sproc, parameters, "workbook");
+            var settings = ReviewParameters(node, sproc, parameters, "workbook");
             if (settings == null)
                 return;
 
@@ -237,7 +237,7 @@ namespace Flank.SsmsExtension
                 return;
             }
 
-            var settings = ReviewParameters(sproc, parameters, "report");
+            var settings = ReviewParameters(node, sproc, parameters, "report");
             if (settings == null)
                 return;
 
@@ -303,7 +303,7 @@ namespace Flank.SsmsExtension
                 return;
             }
 
-            var settings = ReviewParameters(sproc, parameters, "report");
+            var settings = ReviewParameters(node, sproc, parameters, "report");
             if (settings == null)
                 return;
 
@@ -353,6 +353,7 @@ namespace Flank.SsmsExtension
         /// Null if the user cancels; empty (no page) without parameters.
         /// </summary>
         private static IReadOnlyList<ParameterSettings>? ReviewParameters(
+            INodeInformation node,
             StoredProcedureInfo sproc,
             IReadOnlyList<SprocParameter> parameters,
             string outputName)
@@ -362,7 +363,11 @@ namespace Flank.SsmsExtension
             if (settings.Count == 0)
                 return settings;
 
-            using (var dialog = new ParameterReviewDialog(sproc.QualifiedName, settings, outputName))
+            using (var dialog = new ParameterReviewDialog(
+                sproc.QualifiedName,
+                settings,
+                outputName,
+                () => OpenConnection(node, sproc.Database)))
             {
                 return dialog.ShowDialog() == DialogResult.OK ? settings : null;
             }

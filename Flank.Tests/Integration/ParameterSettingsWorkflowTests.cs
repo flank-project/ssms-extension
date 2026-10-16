@@ -96,6 +96,72 @@ public class ParameterSettingsWorkflowTests
     }
 
     [Fact]
+    public void A_list_procedure_gives_values_labels_and_choices()
+    {
+        var settings = ParameterSettings.FromProcedure(Discover(out _))[0];
+
+        using (var connection = TestSettings.OpenSqlConnection())
+            ProcedureList.Apply(settings, "dbo.get_leagues", connection);
+
+        Assert.Equal("[dbo].[get_leagues]", settings.ListProcedure);
+        Assert.Equal("id", settings.ListValueColumn);
+        Assert.Equal("name", settings.ListLabelColumn);
+        Assert.Contains(settings.ListRows, row => Equals(row.Key, 1) && Equals(row.Value, "NBA"));
+    }
+
+    [Fact]
+    public void A_procedure_that_needs_values_cant_supply_a_list()
+    {
+        var settings = ParameterSettings.FromProcedure(Discover(out _))[0];
+
+        using var connection = TestSettings.OpenSqlConnection();
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            ProcedureList.Apply(settings, "dbo.sgm_ListTeamsByLeague", connection));
+
+        Assert.Contains("@League_Id", ex.Message);
+        Assert.Null(settings.ListProcedure);
+    }
+
+    [Fact]
+    public void Ssrs_report_with_a_dropdown_renders()
+    {
+        var parameters = Discover(out var columns);
+        var settings = ParameterSettings.FromProcedure(parameters);
+
+        using (var connection = TestSettings.OpenSqlConnection())
+            ProcedureList.Apply(settings[0], "dbo.get_leagues", connection);
+
+        folder.EnsureClean();
+        new SsrsClient(TestSettings.ReportServer, TestSettings.ReportPortal).CreateReportFromStoredProcedure(
+            "[dbo].[flank_test_params]", parameters, columns, TestSettings.ReportDataSource,
+            folder.Path, "Dropdown", settings: settings);
+
+        Verifier.VerifySsrs(folder.Path + "/Dropdown", "League_Id=1");
+    }
+
+    [Fact]
+    public async Task Power_bi_report_with_a_dropdown_exports()
+    {
+        await workspace.EnsureReadyAsync();
+        var parameters = Discover(out var columns);
+        var settings = ParameterSettings.FromProcedure(parameters);
+
+        using (var connection = TestSettings.OpenSqlConnection())
+            ProcedureList.Apply(settings[0], "dbo.get_leagues", connection);
+
+        string rdl = SsrsClient.BuildStoredProcedureReportRdl(
+            "[dbo].[flank_test_params]", parameters, columns,
+            RdlDataSource.AzureSql(TestSettings.Server, TestSettings.Database), settings: settings);
+
+        var (username, password) = PowerBiTestWorkspace.SqlLogin;
+        var report = await PowerBiPublisher.PublishAsync(
+            workspace.Client, workspace.WorkspaceId, PowerBiTestWorkspace.ReportPrefix + "Dropdown", rdl,
+            TestSettings.Server, TestSettings.Database, new PowerBiDataAccess.ReportLogin(username, password));
+
+        Verifier.VerifyPowerBi(report.Url, "League_Id=1");
+    }
+
+    [Fact]
     public async Task Power_bi_report_with_reviewed_parameters_exports_with_only_the_required_one()
     {
         await workspace.EnsureReadyAsync();

@@ -49,4 +49,7 @@ public sealed class WorkbookParameter
 
     /// <summary>Must be filled in: highlighted while empty, and refreshing fails without it.</summary>
     public bool Required { get; set; }
+
+    /// <summary>A dropdown of choices from a query, instead of free entry; null for none.</summary>
+    public WorkbookList? List { get; set; }
 }
