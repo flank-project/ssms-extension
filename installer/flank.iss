@@ -38,6 +38,8 @@ Source: "..\Flank.SsmsExtension\bin\Release\net472\Flank.SsmsExtension.dll"; Des
 Source: "..\Flank.SsmsExtension\bin\Release\net472\Flank.SsmsExtension.pkgdef"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\Flank.SsmsExtension\bin\Release\net472\Flank.Excel.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\Flank.SsmsExtension\bin\Release\net472\Flank.Ssrs.dll"; DestDir: "{app}"; Flags: ignoreversion
+; MSAL and Newtonsoft.Json come with SSMS (Common7\IDE\PrivateAssemblies).
+Source: "..\Flank.SsmsExtension\bin\Release\net472\Flank.PowerBi.dll"; DestDir: "{app}"; Flags: ignoreversion
 
 
 [Run]

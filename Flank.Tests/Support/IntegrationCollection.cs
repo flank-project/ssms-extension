@@ -8,7 +8,7 @@ namespace Flank.Tests.Support;
 /// a clean SSRS test folder.
 /// </summary>
 [CollectionDefinition(Name, DisableParallelization = true)]
-public class IntegrationCollection : ICollectionFixture<SsrsTestFolder>
+public class IntegrationCollection : ICollectionFixture<SsrsTestFolder>, ICollectionFixture<PowerBiTestWorkspace>
 {
     public const string Name = "Integration";
 }

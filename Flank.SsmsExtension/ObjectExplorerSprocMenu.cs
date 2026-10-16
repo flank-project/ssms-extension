@@ -1,4 +1,4 @@
-using Flank.Excel;
+﻿using Flank.Excel;
 using Flank.Ssrs;
 using Microsoft.SqlServer.Management;
 using Microsoft.SqlServer.Management.Common;
@@ -268,6 +268,70 @@ namespace Flank.SsmsExtension
                     reportOptions.ReportName));
         }
 
+        private static async Task CreatePowerBiReportAsync(INodeInformation node, StoredProcedureInfo sproc)
+        {
+            IReadOnlyList<SprocParameter> parameters;
+
+            try
+            {
+                using (var connection = OpenConnection(node, sproc.Database))
+                {
+                    int objectId = SqlMetadataDiscovery.GetStoredProcedureObjectId(
+                        sproc.QualifiedName, connection);
+
+                    parameters = SqlMetadataDiscovery.DiscoverStoredProcedureParameters(
+                        objectId, connection);
+                }
+            }
+            catch (Exception ex)
+            {
+                SsmsUiHelper.ShowMessage(
+                    "Flank couldn't read the stored procedure.\n\n" + ex.Message,
+                    OLEMSGICON.OLEMSGICON_CRITICAL,
+                    "Flank Error");
+                return;
+            }
+
+            // As for SSRS: run it to preview the results and get the report's
+            // columns; parameters start blank for the viewer to fill in.
+            ResultSet result;
+
+            using (var dialog = new StoredProcedureRunDialog(
+                sproc.QualifiedName,
+                parameters,
+                () => OpenConnection(node, sproc.Database),
+                "Continue",
+                "Power BI"))
+            {
+                if (dialog.ShowDialog() != DialogResult.OK)
+                    return;
+
+                result = dialog.Results[0];
+            }
+
+            var columns = result.Columns
+                .Select(name => new ReportColumn { Name = name })
+                .ToList();
+
+            var login = node.Connection is SqlConnectionInfo info
+                ? SsmsSqlLogin.FromConnectionInfo(info)
+                : null;
+
+            await PowerBiWorkflow.RunAsync(
+                sproc.Server,
+                sproc.Database,
+                login,
+                sql: null,
+                storedProcedure: sproc.QualifiedName,
+                defaultReportName: sproc.Name,
+                preparingStatus: "Preparing report...",
+                buildRdl: (options, dataSource) => SsrsClient.BuildStoredProcedureReportRdl(
+                    sproc.QualifiedName,
+                    parameters,
+                    columns,
+                    dataSource));
+        }
+
         /// <summary>Opens a connection to the node's server, in the procedure's database.</summary>
         private static IDbConnection OpenConnection(INodeInformation node, string database)
         {
@@ -319,6 +383,11 @@ namespace Flank.SsmsExtension
                     "SSRS Report",
                     MenuIcons.Ssrs,
                     (s, e) => owner.RunForSelection(CreateSsrsReportAsync));
+
+                submenu.DropDownItems.Add(
+                    "Power BI Paginated Report",
+                    MenuIcons.Ssrs,
+                    (s, e) => owner.RunForSelection(CreatePowerBiReportAsync));
 
                 submenu.DropDownItems.Add(new ToolStripSeparator());
                 submenu.DropDownItems.Add(

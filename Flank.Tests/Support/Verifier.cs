@@ -19,6 +19,14 @@ internal static class Verifier
             "-ReportServer", TestSettings.ReportServer,
             "-MinRows", minRows.ToString());
 
+    /// <param name="report">Report name in the test workspace, or the link Flank shows.</param>
+    /// <param name="parameters">Report parameters as "name=value;name2=value2".</param>
+    public static string VerifyPowerBi(string report, string parameters = "", int minRows = 1) =>
+        Run("verify-pbi.ps1",
+            "-Report", report,
+            "-Parameters", parameters,
+            "-MinRows", minRows.ToString());
+
     private static string Run(string script, params string[] args)
     {
         string scriptPath = Path.Combine(RepoRoot.Path, "tests", script);
