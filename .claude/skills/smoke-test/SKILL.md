@@ -21,6 +21,7 @@ The argument picks the scenario; default `menus`.
 | `query-ssrs` | Query window > SSRS: SSMS creates a report, and it renders with rows |
 | `sproc-excel` | Stored procedure > Excel: workbook for `EXEC` refreshes with rows; with parameters, the user types values above the table and refreshes |
 | `sproc-ssrs` | Stored procedure > SSRS: SSMS creates a report with blank parameters, and it renders with rows |
+| `review-excel` | Parameter review page, then Excel guardrails: labels/notes, type validation, required highlight, refresh catches a pasted bad value, blank uses the procedure default |
 | `query-pbi` | Query window > Power BI: signed in silently, SQL login pre-filled from SSMS, report publishes and exports with rows |
 | `sproc-pbi` | Stored procedure > Power BI: report with a blank parameter publishes; exports with a value |
 | `access` | The Excel wizard's access steps: a new SQL user gets SELECT on a query's tables, an existing one EXECUTE on a query turned into a procedure, and each runs exactly what it was granted |
@@ -240,6 +241,35 @@ menu should not have it.
    .\tests\verify-ssrs.ps1 -Report (Get-Clipboard)                            # fails: 0 rows
    .\tests\verify-ssrs.ps1 -Report (Get-Clipboard) -Parameters "League_Id=3"  # 1 row
    ```
+
+### review-excel
+
+Uses `dbo.flank_test_params` (the integration tests create it): `@League_Id
+int` (no default), `@Name_Like nvarchar(50) = N'%'`, `@Max_Id int = NULL`,
+`@Active bit = 1`, `@Since date = '2000-01-01'`. It echoes the values it got.
+Object Explorer clicks often don't land: F8 focuses it, then arrow keys,
+Right to expand, and type-ahead (`dbo.flank_t`) to select.
+
+1. **Excel (Power Query)** on it. **Review parameters**: the defaults `%`, `1`,
+   `2000-01-01` are filled in from the definition; League_Id is Required, the
+   others "Use procedure default". Tab to "Shown as", ctrl+a, paste `League`;
+   Tab to the note, paste `1 = NBA, 2 = NFL, 3 = MLB`; Tab; click **Next**
+   (Return stays in the grid).
+2. Wizard: Return (Skip). The run page shows `League (int) *` and the defaults.
+   Return with League blank: "Enter a value for League: it's required." Then
+   `1`, Return: Team 3 and Team 5, with name_like `%` and since 2000-01-01.
+   Create workbook, save as `C:\temp\flank-smoke\review-excel.xlsx`.
+3. In Excel: A4 `League`, C4 `Required. 1 = NBA, ...`, B7 `TRUE`, B8 a date
+   without a time. Go to B4: the note shows as a tooltip. Delete: B4 turns red.
+   Type `abc`, Return: "Enter a whole number between ..." (Escape).
+4. Paste past validation: type `abc` in D20, copy it, paste into B4. Refresh
+   All (ctrl+alt+F5), security notice **OK**: "[Flank] League (cell B4) must
+   be a whole number ...".
+5. B4 = `2`, refresh: a **Native Database Query** prompt (Run), then Privacy
+   levels. Clicks don't reach that dialog: Tab twice (focus ring on the
+   checkbox), Space, Return. Pass: Team 1 and Team 2; the date in B8 still
+   shows (columns aren't re-fitted). Clear B5 and refresh: still `%` (the
+   procedure's default). Close without saving (ctrl+w, alt+n).
 
 ### query-pbi
 

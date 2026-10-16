@@ -65,6 +65,9 @@ namespace Flank.SsmsExtension
         private readonly Button backButton;
         private readonly Button nextButton;
 
+        // From the parameter review page, for the procedure's own parameters.
+        private readonly IReadOnlyList<ParameterSettings>? parameterSettings;
+
         /// <param name="procedure">[schema].[name] when creating from a stored procedure.</param>
         /// <param name="query">The query, when creating from the query editor.</param>
         /// <param name="queryTables">Tables/views the query reads, resolved as [schema].[name].</param>
@@ -82,8 +85,10 @@ namespace Flank.SsmsExtension
             string? query,
             IReadOnlyList<string> queryTables,
             string? queryTablesProblem,
-            Action<Action<IDbConnection>> useConnection)
+            Action<Action<IDbConnection>> useConnection,
+            IReadOnlyList<ParameterSettings>? parameterSettings = null)
         {
+            this.parameterSettings = parameterSettings;
             this.server = server;
             this.database = database;
             this.isAzureSqlDatabase = isAzureSqlDatabase;
@@ -549,7 +554,10 @@ namespace Flank.SsmsExtension
                 : "";
             runNote.Visible = runNote.Text.Length > 0;
 
-            preview = new PreviewPanel(inputs, new Size(PageWidth, runPage.Height - 60))
+            preview = new PreviewPanel(
+                inputs,
+                new Size(PageWidth, runPage.Height - 60),
+                effective == procedure ? parameterSettings : null)
             {
                 Location = new Point(0, 58),
                 Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
@@ -650,14 +658,17 @@ namespace Flank.SsmsExtension
             }
 
             bool fromProcedure = effective != null;
-            var parameters = effective == procedure && procedure != null ? procedureParameters : new List<SprocParameter>();
+            bool ownParameters = effective == procedure && procedure != null;
+            var parameters = ownParameters ? procedureParameters : new List<SprocParameter>();
+            var settings = ownParameters ? parameterSettings : null;
 
             Request = new WorkbookRequest(
-                fromProcedure ? ProcedureCall.BuildExec(effective!, parameters) : query!,
+                fromProcedure ? ProcedureCall.BuildExec(effective!, parameters, settings) : query!,
                 server,
                 database)
             {
                 ParameterNames = parameters.Where(p => !p.IsOutput).Select(p => p.Name.TrimStart('@')).ToList(),
+                Parameters = settings != null ? WorkbookParameters.From(settings) : null,
                 ParameterValues = preview.ParameterValues,
                 ColumnNames = result.Columns,
                 Rows = result.Truncated ? null : result.Rows,

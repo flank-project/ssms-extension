@@ -176,6 +176,10 @@ namespace Flank.SsmsExtension
                 return;
             }
 
+            var settings = ReviewParameters(sproc, parameters, "workbook");
+            if (settings == null)
+                return;
+
             // Who refreshes it, their access, then a run as them: the workbook
             // starts with that run's values and rows.
             WorkbookRequest request;
@@ -196,7 +200,8 @@ namespace Flank.SsmsExtension
                     {
                         action(connection);
                     }
-                }))
+                },
+                settings))
             {
                 if (wizard.ShowDialog() != DialogResult.OK || wizard.Request == null)
                     return;
@@ -232,9 +237,13 @@ namespace Flank.SsmsExtension
                 return;
             }
 
+            var settings = ReviewParameters(sproc, parameters, "report");
+            if (settings == null)
+                return;
+
             // Run it first to preview the results and get the report's columns.
-            // The values entered aren't used as report defaults: parameters
-            // start blank for the viewer to fill in.
+            // The values entered aren't used as report defaults: those come
+            // from the review page.
             ResultSet result;
 
             using (var dialog = new StoredProcedureRunDialog(
@@ -242,7 +251,8 @@ namespace Flank.SsmsExtension
                 parameters,
                 () => OpenConnection(node, sproc.Database),
                 "Continue",
-                "SSRS"))
+                "SSRS",
+                settings))
             {
                 if (dialog.ShowDialog() != DialogResult.OK)
                     return;
@@ -265,7 +275,8 @@ namespace Flank.SsmsExtension
                     columns,
                     reportOptions.DataSource,
                     reportOptions.Folder,
-                    reportOptions.ReportName));
+                    reportOptions.ReportName,
+                    settings: settings));
         }
 
         private static async Task CreatePowerBiReportAsync(INodeInformation node, StoredProcedureInfo sproc)
@@ -292,8 +303,11 @@ namespace Flank.SsmsExtension
                 return;
             }
 
-            // As for SSRS: run it to preview the results and get the report's
-            // columns; parameters start blank for the viewer to fill in.
+            var settings = ReviewParameters(sproc, parameters, "report");
+            if (settings == null)
+                return;
+
+            // As for SSRS: run it to preview the results and get the report's columns.
             ResultSet result;
 
             using (var dialog = new StoredProcedureRunDialog(
@@ -301,7 +315,8 @@ namespace Flank.SsmsExtension
                 parameters,
                 () => OpenConnection(node, sproc.Database),
                 "Continue",
-                "Power BI"))
+                "Power BI",
+                settings))
             {
                 if (dialog.ShowDialog() != DialogResult.OK)
                     return;
@@ -329,7 +344,28 @@ namespace Flank.SsmsExtension
                     sproc.QualifiedName,
                     parameters,
                     columns,
-                    dataSource));
+                    dataSource,
+                    settings: settings));
+        }
+
+        /// <summary>
+        /// The parameter review page, for a procedure with input parameters.
+        /// Null if the user cancels; empty (no page) without parameters.
+        /// </summary>
+        private static IReadOnlyList<ParameterSettings>? ReviewParameters(
+            StoredProcedureInfo sproc,
+            IReadOnlyList<SprocParameter> parameters,
+            string outputName)
+        {
+            var settings = ParameterSettings.FromProcedure(parameters);
+
+            if (settings.Count == 0)
+                return settings;
+
+            using (var dialog = new ParameterReviewDialog(sproc.QualifiedName, settings, outputName))
+            {
+                return dialog.ShowDialog() == DialogResult.OK ? settings : null;
+            }
         }
 
         /// <summary>Opens a connection to the node's server, in the procedure's database.</summary>

@@ -19,15 +19,23 @@ namespace Flank.SsmsExtension
         public const int MaxRows = 50000;
 
         private readonly IReadOnlyList<SprocParameter> parameters;
+        private readonly IReadOnlyList<ParameterSettings?> settings;
         private readonly List<TextBox> inputs = new List<TextBox>();
         private readonly TabControl results;
         private readonly Label status;
 
         /// <param name="parameters">Input parameters; each gets a box.</param>
         /// <param name="size">Initial size; controls are laid out to it and anchored.</param>
-        public PreviewPanel(IReadOnlyList<SprocParameter> parameters, Size size)
+        /// <param name="reviewed">
+        /// From the parameter review page, if there was one: labels, starting
+        /// values and what a blank value means.
+        /// </param>
+        public PreviewPanel(IReadOnlyList<SprocParameter> parameters, Size size, IReadOnlyList<ParameterSettings>? reviewed = null)
         {
             this.parameters = parameters;
+            settings = parameters
+                .Select(p => reviewed?.FirstOrDefault(s => string.Equals(s.SqlName, p.Name, StringComparison.OrdinalIgnoreCase)))
+                .ToList();
             Size = size;
 
             int inputsHeight = parameters.Count == 0 ? 24 : Math.Min(parameters.Count * 30, 240);
@@ -48,10 +56,13 @@ namespace Flank.SsmsExtension
             for (int i = 0; i < parameters.Count; i++)
             {
                 var parameter = parameters[i];
+                var setting = settings[i];
 
                 inputPanel.Controls.Add(new Label
                 {
-                    Text = $"{parameter.Name} ({parameter.SqlType})",
+                    Text = setting != null
+                        ? $"{setting.DisplayName} ({parameter.SqlType}){(setting.IfBlank == BlankValue.Required ? " *" : "")}"
+                        : $"{parameter.Name} ({parameter.SqlType})",
                     Location = new Point(0, i * 30 + 4),
                     Size = new Size(220, 20),
                     AutoEllipsis = true,
@@ -59,6 +70,7 @@ namespace Flank.SsmsExtension
 
                 var input = new TextBox
                 {
+                    Text = setting?.DefaultValue ?? "",
                     Location = new Point(225, i * 30),
                     Width = 300,
                     Name = "Parameter_" + parameter.Name.TrimStart('@'),
@@ -74,7 +86,9 @@ namespace Flank.SsmsExtension
             {
                 Controls.Add(new Label
                 {
-                    Text = "Leave a value blank to use the procedure's default.",
+                    Text = settings.Any(s => s != null)
+                        ? "* Required. Other blank values are left out (the procedure's default) or NULL, as set on the review page."
+                        : "Leave a value blank to use the procedure's default.",
                     Location = new Point(0, y),
                     AutoSize = true,
                     ForeColor = SystemColors.GrayText,
@@ -169,8 +183,21 @@ namespace Flank.SsmsExtension
             if (Runner == null)
                 return;
 
+            for (int i = 0; i < parameters.Count; i++)
+            {
+                if (settings[i]?.IfBlank == BlankValue.Required && string.IsNullOrWhiteSpace(inputs[i].Text))
+                {
+                    SetStatus($"Enter a value for {settings[i]!.DisplayName}: it's required.", Color.Firebrick);
+                    inputs[i].Select();
+                    return;
+                }
+            }
+
+            // Null leaves a parameter out (the procedure's default); DBNull passes NULL.
             var values = parameters
-                .Select((p, i) => StoredProcedureRunner.ParseValue(p.SqlType, inputs[i].Text))
+                .Select((p, i) =>
+                    StoredProcedureRunner.ParseValue(p.SqlType, inputs[i].Text) ??
+                    (settings[i]?.IfBlank == BlankValue.PassNull ? DBNull.Value : null))
                 .ToList();
 
             var runner = Runner;
