@@ -7,20 +7,37 @@ namespace Flank.Ssrs
 {
     /// <summary>
     /// A stored procedure that supplies a parameter's choices (a dropdown):
-    /// its first column is the value, its second (if any) the label.
+    /// one of its columns is the value passed, another (or the same) the label shown.
     /// </summary>
     public static class ProcedureList
     {
         /// <summary>Choices kept from the preview run, for a workbook to start with.</summary>
         public const int MaxRows = 5000;
 
+        /// <summary>A list procedure's columns and choices, from a run.</summary>
+        public sealed class Description
+        {
+            public Description(string procedure, IReadOnlyList<string> columns, IReadOnlyList<object?[]> rows)
+            {
+                Procedure = procedure;
+                Columns = columns;
+                Rows = rows;
+            }
+
+            /// <summary>[schema].[name].</summary>
+            public string Procedure { get; }
+
+            public IReadOnlyList<string> Columns { get; }
+
+            public IReadOnlyList<object?[]> Rows { get; }
+        }
+
         /// <summary>
         /// Checks the procedure can supply a list (it exists, needs no input
-        /// values, returns at least one column) and sets the list on the
-        /// settings, with its choices from a run now.
+        /// values, returns named columns) and runs it for its columns and choices.
         /// </summary>
         /// <exception cref="InvalidOperationException">With a message for the user if it can't.</exception>
-        public static void Apply(ParameterSettings settings, string procedureName, IDbConnection connection)
+        public static Description Describe(string procedureName, IDbConnection connection)
         {
             int objectId = SqlMetadataDiscovery.GetStoredProcedureObjectId(procedureName, connection);
             string qualified = QualifiedName(objectId, connection);
@@ -44,20 +61,36 @@ namespace Flank.Ssrs
                 MaxRows).FirstOrDefault();
 
             if (result == null || result.Columns.Count == 0 || result.Columns.Any(string.IsNullOrWhiteSpace))
-            {
-                throw new InvalidOperationException(
-                    $"{qualified} must return a result set with named columns: the value, then optionally a label.");
-            }
+                throw new InvalidOperationException($"{qualified} must return a result set with named columns.");
 
-            string valueColumn = result.Columns[0];
-            string labelColumn = result.Columns.Count > 1 ? result.Columns[1] : valueColumn;
+            if (result.Columns.Distinct(StringComparer.OrdinalIgnoreCase).Count() != result.Columns.Count)
+                throw new InvalidOperationException($"{qualified} returns two columns with the same name.");
 
-            settings.ListProcedure = qualified;
-            settings.ListValueColumn = valueColumn;
-            settings.ListLabelColumn = labelColumn;
-            settings.ListRows = result.Rows
-                .Select(row => new KeyValuePair<object?, object?>(row[0], result.Columns.Count > 1 ? row[1] : row[0]))
+            return new Description(qualified, result.Columns, result.Rows);
+        }
+
+        /// <summary>Sets the list on the settings: the procedure, the chosen columns, and their choices.</summary>
+        public static void Apply(ParameterSettings settings, Description list, string valueColumn, string labelColumn)
+        {
+            int value = IndexOf(list, valueColumn);
+            int label = IndexOf(list, labelColumn);
+
+            settings.ListProcedure = list.Procedure;
+            settings.ListValueColumn = list.Columns[value];
+            settings.ListLabelColumn = list.Columns[label];
+            settings.ListRows = list.Rows
+                .Select(row => new KeyValuePair<object?, object?>(row[value], row[label]))
                 .ToList();
+        }
+
+        /// <summary>
+        /// Describe and Apply in one, with the first column as the value and the
+        /// second (if any) as the label.
+        /// </summary>
+        public static void Apply(ParameterSettings settings, string procedureName, IDbConnection connection)
+        {
+            var list = Describe(procedureName, connection);
+            Apply(settings, list, list.Columns[0], list.Columns[list.Columns.Count > 1 ? 1 : 0]);
         }
 
         /// <summary>Removes the list from the settings.</summary>
@@ -67,6 +100,17 @@ namespace Flank.Ssrs
             settings.ListValueColumn = null;
             settings.ListLabelColumn = null;
             settings.ListRows = new KeyValuePair<object?, object?>[0];
+        }
+
+        private static int IndexOf(Description list, string column)
+        {
+            for (int i = 0; i < list.Columns.Count; i++)
+            {
+                if (string.Equals(list.Columns[i], column, StringComparison.OrdinalIgnoreCase))
+                    return i;
+            }
+
+            throw new InvalidOperationException($"{list.Procedure} has no column {column}.");
         }
 
         private static string QualifiedName(int objectId, IDbConnection connection)
