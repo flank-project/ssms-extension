@@ -78,7 +78,7 @@ Flank currently supports:
   - Includes `SELECT` queries, CTEs, temp tables, variables, and stored procedures that return a result set
 - **Stored procedures with parameters**, from Object Explorer
   - The parameters are listed at the top (labels in column A, values in column B, notes in column C). End users change the values and refresh
-  - Each value cell only accepts its type: whole numbers in the SQL type's range, numbers, dates, text up to its length, and TRUE/FALSE (a dropdown) for `bit`. Selecting a cell shows its note, and required cells are highlighted while empty
+  - Each value cell only accepts its type: whole numbers in the SQL type's range, numbers, dates, text up to its length, and a checkbox for `bit` (a TRUE/FALSE dropdown in Excel versions before Microsoft 365's checkboxes; left blank, it shows greyed out and counts as blank). Selecting a cell shows its note, and required cells are highlighted while empty
   - Refreshing checks the values again, since pasting gets past Excel's checks, and says which cell is wrong
   - See [Reviewing parameters](#reviewing-parameters)
 - A short wizard: who will refresh the workbook and what they can do (see [Giving end users access](#giving-end-users-access)), then a run as that person to preview the results

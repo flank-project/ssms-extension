@@ -116,6 +116,9 @@ public static partial class ExcelExporter
             AddParameterCells(workbook, parameters, request.ParameterValues, cells);
             AddParameterChecks(workbook, parameters, cells);
 
+            if (parameters.Any(IsCheckbox))
+                AddCheckboxFeature(workbook);
+
             var lists = Lists(parameters);
             if (lists.Count > 0)
                 AddListParts(workbook, lists, cells);
@@ -651,13 +654,23 @@ in
                         new XElement(Sheet + "is",
                             new XElement(Sheet + "t", parameters[i].DisplayName))));
 
+                XElement? value = null;
+
                 if (parameterValues != null && i < parameterValues.Count)
                 {
                     // A list shows labels, so start with the label for the value.
-                    var value = cells.Cell("B" + r, ListLabelFor(parameters[i], parameterValues[i]), dateOnly: parameters[i].Kind == WorkbookParameterKind.Date);
-                    if (value != null)
-                        row.Add(value);
+                    value = cells.Cell("B" + r, ListLabelFor(parameters[i], parameterValues[i]), dateOnly: parameters[i].Kind == WorkbookParameterKind.Date);
                 }
+
+                if (IsCheckbox(parameters[i]))
+                {
+                    // A blank checkbox shows greyed out: not set, so the blank rule applies.
+                    value ??= new XElement(Sheet + "c", new XAttribute("r", "B" + r));
+                    value.SetAttributeValue("s", cells.CheckboxStyle());
+                }
+
+                if (value != null)
+                    row.Add(value);
 
                 string note = NoteText(parameters[i]);
                 if (note.Length > 0)
@@ -703,7 +716,7 @@ in
 
     /// <summary>
     /// Data validation on the value cells (type, range, length; TRUE/FALSE as a
-    /// dropdown), with the note as the message shown when a cell is selected,
+    /// dropdown, for Excel without checkboxes), with the note as the message shown when a cell is selected,
     /// and required cells highlighted while they're empty.
     /// </summary>
     private static void AddParameterChecks(
@@ -856,6 +869,49 @@ in
     private static string Limit(string text, int length) =>
         text.Length <= length ? text : text.Substring(0, length - 1) + "…";
 
+    // A list's dropdown shows labels, so a bit with choices stays a dropdown.
+    private static bool IsCheckbox(WorkbookParameter parameter) =>
+        parameter.Kind == WorkbookParameterKind.TrueFalse && parameter.List == null;
+
+    private static readonly XNamespace FeaturePropertyBag =
+        "http://schemas.microsoft.com/office/spreadsheetml/2022/featurepropertybag";
+
+    /// <summary>
+    /// The part that defines Microsoft 365's in-cell checkbox, as Excel saves it:
+    /// a checkbox control, used by cell format complement 0 (see
+    /// <see cref="CellWriter.CheckboxStyle"/>). Older Excel ignores it and shows
+    /// TRUE/FALSE, with the dropdown from data validation.
+    /// </summary>
+    private static void AddCheckboxFeature(ZipArchive workbook)
+    {
+        const string path = "xl/featurePropertyBag/featurePropertyBag.xml";
+
+        CreateXml(workbook, path, new XElement(FeaturePropertyBag + "FeaturePropertyBags",
+            new XElement(FeaturePropertyBag + "bag", new XAttribute("type", "Checkbox")),
+            new XElement(FeaturePropertyBag + "bag", new XAttribute("type", "XFControls"),
+                new XElement(FeaturePropertyBag + "bagId", new XAttribute("k", "CellControl"), "0")),
+            new XElement(FeaturePropertyBag + "bag", new XAttribute("type", "XFComplement"),
+                new XElement(FeaturePropertyBag + "bagId", new XAttribute("k", "XFControls"), "1")),
+            new XElement(FeaturePropertyBag + "bag", new XAttribute("type", "XFComplements"), new XAttribute("extRef", "XFComplementsMapperExtRef"),
+                new XElement(FeaturePropertyBag + "a", new XAttribute("k", "MappedFeaturePropertyBags"),
+                    new XElement(FeaturePropertyBag + "bagId", "2")))));
+
+        UpdateXml(workbook, "xl/_rels/workbook.xml.rels", rels =>
+        {
+            rels.Root!.Add(new XElement(PackageRelationships + "Relationship",
+                new XAttribute("Id", "rIdFlankCheckboxes"),
+                new XAttribute("Type", "http://schemas.microsoft.com/office/2022/11/relationships/FeaturePropertyBag"),
+                new XAttribute("Target", "featurePropertyBag/featurePropertyBag.xml")));
+        });
+
+        UpdateXml(workbook, "[Content_Types].xml", types =>
+        {
+            types.Root!.Add(new XElement(ContentTypes + "Override",
+                new XAttribute("PartName", "/" + path),
+                new XAttribute("ContentType", "application/vnd.ms-excel.featurepropertybag+xml")));
+        });
+    }
+
     private static void UpdateXml(
         ZipArchive workbook,
         string path,
@@ -991,6 +1047,39 @@ in
             }
 
             return styles;
+        }
+
+        private int? checkboxStyle;
+
+        /// <summary>
+        /// A cell format that shows TRUE/FALSE as a checkbox in Microsoft 365:
+        /// complement 0 from the feature property bag (<see cref="AddCheckboxFeature"/>).
+        /// </summary>
+        public int CheckboxStyle()
+        {
+            if (checkboxStyle != null)
+                return checkboxStyle.Value;
+
+            var cellXfs = Styles().Root!.Element(Sheet + "cellXfs")
+                ?? throw new Exception("Could not find cellXfs");
+
+            cellXfs.Add(new XElement(Sheet + "xf",
+                new XAttribute("numFmtId", 0),
+                new XAttribute("fontId", 0),
+                new XAttribute("fillId", 0),
+                new XAttribute("borderId", 0),
+                new XAttribute("xfId", 0),
+                new XElement(Sheet + "extLst",
+                    new XElement(Sheet + "ext",
+                        new XAttribute("uri", "{C7286773-470A-42A8-94C5-96B5CB345126}"),
+                        new XAttribute(XNamespace.Xmlns + "xfpb", FeaturePropertyBag.NamespaceName),
+                        new XElement(FeaturePropertyBag + "xfComplement", new XAttribute("i", 0))))));
+
+            int index = cellXfs.Elements(Sheet + "xf").Count() - 1;
+            cellXfs.SetAttributeValue("count", index + 1);
+
+            checkboxStyle = index;
+            return index;
         }
 
         private int? dateOnlyStyle;
