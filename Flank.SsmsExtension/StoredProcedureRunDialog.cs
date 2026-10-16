@@ -22,12 +22,14 @@ namespace Flank.SsmsExtension
         /// <param name="parameters">All of the procedure's parameters; OUTPUT ones get no input.</param>
         /// <param name="openConnection">Opens a connection to the procedure's database.</param>
         /// <param name="outputName">What's being created, for messages, e.g. "SSRS".</param>
+        /// <param name="reviewed">From the parameter review page, if there was one.</param>
         public StoredProcedureRunDialog(
             string procedureName,
             IReadOnlyList<SprocParameter> parameters,
             Func<IDbConnection> openConnection,
             string createText,
-            string outputName)
+            string outputName,
+            IReadOnlyList<ParameterSettings>? reviewed = null)
         {
             this.procedureName = procedureName;
             this.outputName = outputName;
@@ -50,7 +52,7 @@ namespace Flank.SsmsExtension
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
             });
 
-            preview = new PreviewPanel(inputs, new Size(748, ClientSize.Height - 40 - 52))
+            preview = new PreviewPanel(inputs, new Size(748, ClientSize.Height - 40 - 52), reviewed)
             {
                 Location = new Point(16, 40),
                 Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,

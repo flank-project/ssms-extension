@@ -103,12 +103,92 @@ public class ExcelExporterTests : IDisposable
     {
         string m = GenerateWithParameters("League_Id", "Name");
 
-        Assert.Contains("Excel.CurrentWorkbook(){[Name=\"FlankParameters\"]}[Content]", m);
-        Assert.Contains("Record.FromList(Parameters[Column2], Parameters[Column1])", m);
+        Assert.Contains("Excel.CurrentWorkbook(){[Name=\"FlankParameters\"]}[Content][Column2]", m);
+        // By position, so the labels in column A can be anything.
+        Assert.Contains("Record.FromList({Value0, Value1}, {\"League_Id\", \"Name\"})", m);
         Assert.Contains(
             "Value.NativeQuery(Sql.Database(\"my-server\", \"my-db\"), " +
             "\"EXEC [dbo].[get_things] @League_Id = @League_Id, @Name = @Name\", Values)",
             m);
+    }
+
+    private WorkbookRequest ReviewedRequest() =>
+        new WorkbookRequest("EXEC [dbo].[p] @League_Id = @League_Id, @Name = @Name, @Active = @Active", "my-server", "my-db")
+        {
+            Parameters = new[]
+            {
+                new WorkbookParameter("League_Id", "League")
+                {
+                    Kind = WorkbookParameterKind.WholeNumber, Minimum = -2147483648, Maximum = 2147483647,
+                    Required = true, Note = "1 = NBA, 2 = NFL",
+                },
+                new WorkbookParameter("Name", "Team name") { Kind = WorkbookParameterKind.Text, MaxLength = 50 },
+                new WorkbookParameter("Active", "Active only") { Kind = WorkbookParameterKind.TrueFalse },
+            },
+            ParameterValues = new object?[] { 2L, null, true },
+        };
+
+    [Fact]
+    public void Reviewed_parameters_show_their_display_names_and_notes()
+    {
+        ExcelExporter.Generate(outputPath, ReviewedRequest());
+
+        var rows = ReadPart("xl/worksheets/sheet1.xml").Descendants(Sheet + "row").ToList();
+        string Text(int row, string column) =>
+            rows.Single(r => (string)r.Attribute("r")! == row.ToString())
+                .Elements(Sheet + "c").SingleOrDefault(c => (string)c.Attribute("r")! == column + row)?
+                .Descendants(Sheet + "t").SingleOrDefault()?.Value ?? "";
+
+        Assert.Equal("League", Text(4, "A"));
+        Assert.Equal("Required. 1 = NBA, 2 = NFL", Text(4, "C"));
+        Assert.Equal("Team name", Text(5, "A"));
+        Assert.Equal("", Text(5, "C"));
+
+        string m = MashupReader.ReadSection1(outputPath);
+        Assert.Contains("{\"League_Id\", \"Name\", \"Active\"}", m);
+    }
+
+    [Fact]
+    public void Reviewed_parameters_get_data_validation_and_required_highlighting()
+    {
+        ExcelExporter.Generate(outputPath, ReviewedRequest());
+
+        var sheet = ReadPart("xl/worksheets/sheet1.xml").Root!;
+        var validations = sheet.Descendants(Sheet + "dataValidation").ToDictionary(v => (string)v.Attribute("sqref")!);
+
+        Assert.Equal("whole", (string)validations["B4"].Attribute("type")!);
+        Assert.Equal("2147483647", (string)validations["B4"].Element(Sheet + "formula2")!);
+        Assert.Equal("1 = NBA, 2 = NFL", (string)validations["B4"].Attribute("prompt")!);
+        Assert.Equal("textLength", (string)validations["B5"].Attribute("type")!);
+        Assert.Equal("50", (string)validations["B5"].Element(Sheet + "formula1")!);
+        Assert.Equal("list", (string)validations["B6"].Attribute("type")!);
+        Assert.Equal("\"TRUE,FALSE\"", (string)validations["B6"].Element(Sheet + "formula1")!);
+
+        // Only the required cell is highlighted while empty.
+        var format = sheet.Elements(Sheet + "conditionalFormatting").Single();
+        Assert.Equal("B4", (string)format.Attribute("sqref")!);
+        Assert.Equal("LEN(TRIM(B4))=0", (string)format.Descendants(Sheet + "formula").Single());
+
+        // Schema order: right after sheetData, validations after formatting, before pageMargins.
+        var order = sheet.Elements().Select(e => e.Name.LocalName).ToList();
+        Assert.True(order.IndexOf("sheetData") < order.IndexOf("conditionalFormatting"));
+        Assert.True(order.IndexOf("conditionalFormatting") < order.IndexOf("dataValidations"));
+        Assert.True(order.IndexOf("dataValidations") < order.IndexOf("pageMargins"));
+
+        var dxfs = ReadPart("xl/styles.xml").Root!.Element(Sheet + "dxfs")!;
+        Assert.Equal(dxfs.Elements(Sheet + "dxf").Count().ToString(), (string)dxfs.Attribute("count")!);
+    }
+
+    [Fact]
+    public void The_query_checks_values_again_since_pasting_skips_validation()
+    {
+        ExcelExporter.Generate(outputPath, ReviewedRequest());
+        string m = MashupReader.ReadSection1(outputPath);
+
+        Assert.Contains("League (cell B4) is required. Enter a value, then refresh.", m);
+        Assert.Contains("League (cell B4) must be a whole number between -2,147,483,648 and 2,147,483,647.", m);
+        Assert.Contains("Team name (cell B5) can be at most 50 characters.", m);
+        Assert.Contains("Active only (cell B6) must be TRUE or FALSE.", m);
     }
 
     [Fact]

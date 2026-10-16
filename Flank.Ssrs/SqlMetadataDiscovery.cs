@@ -113,6 +113,31 @@ ORDER BY p.parameter_id;";
                 }
             }
 
+            if (parameters.Count > 0)
+            {
+                // T-SQL defaults aren't in sys.parameters; read them from the definition.
+                using (var command = connection.CreateCommand())
+                {
+                    command.CommandText = "SELECT OBJECT_DEFINITION(@ObjectId);";
+
+                    var parameter = command.CreateParameter();
+                    parameter.ParameterName = "@ObjectId";
+                    parameter.Value = objectId;
+                    command.Parameters.Add(parameter);
+
+                    var defaults = ProcedureDefaults.Parse(command.ExecuteScalar() as string);
+
+                    foreach (var p in parameters)
+                    {
+                        if (defaults.TryGetValue(p.Name, out var declared))
+                        {
+                            p.HasDefault = true;
+                            p.DefaultValue = declared.Value;
+                        }
+                    }
+                }
+            }
+
             return parameters;
         }
 

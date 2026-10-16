@@ -69,7 +69,7 @@ public static class ExcelExporter
 
     public static void Generate(string outputPath, WorkbookRequest request)
     {
-        var parameterNames = request.ParameterNames;
+        var parameters = request.EffectiveParameters;
         var columnNames = request.ColumnNames;
 
         var assembly = typeof(ExcelExporter).Assembly;
@@ -87,9 +87,9 @@ public static class ExcelExporter
             outputPath,
             ZipArchiveMode.Update);
 
-        UpdateQuery(workbook, request.Sql, request.Server, request.Database, parameterNames);
+        UpdateQuery(workbook, request.Sql, request.Server, request.Database, parameters);
 
-        SetNote(workbook, parameterNames.Count > 0 ? ParameterRefreshNote : RefreshNote);
+        SetNote(workbook, parameters.Count > 0 ? ParameterRefreshNote : RefreshNote);
 
         if (request.RowsFetchedAt is DateTime fetched)
         {
@@ -106,9 +106,10 @@ public static class ExcelExporter
 
         var cells = new CellWriter(workbook);
 
-        if (parameterNames.Count > 0)
+        if (parameters.Count > 0)
         {
-            AddParameterCells(workbook, parameterNames, request.ParameterValues, cells);
+            AddParameterCells(workbook, parameters, request.ParameterValues, cells);
+            AddParameterChecks(workbook, parameters, cells);
         }
 
         if (columnNames != null && CanUseAsTableColumns(columnNames))
@@ -117,7 +118,7 @@ public static class ExcelExporter
                 workbook,
                 columnNames,
                 request.Rows ?? Array.Empty<IReadOnlyList<object?>>(),
-                tableRow: TableRow(parameterNames.Count),
+                tableRow: TableRow(parameters.Count),
                 cells);
         }
 
@@ -317,7 +318,7 @@ public static class ExcelExporter
         string sql,
         string server,
         string database,
-        IReadOnlyList<string> parameterNames)
+        IReadOnlyList<WorkbookParameter> parameters)
     {
         var item = workbook.GetEntry("customXml/item1.xml")
             ?? throw new Exception("Could not find customXml/item1.xml");
@@ -370,8 +371,8 @@ public static class ExcelExporter
                 mCode = reader.ReadToEnd();
             }
 
-            mCode = parameterNames.Count > 0
-                ? ReplaceWithParameterizedQuery(mCode, sql, server, database)
+            mCode = parameters.Count > 0
+                ? ReplaceWithParameterizedQuery(mCode, sql, server, database, parameters)
                 : ReplaceTemplateQuery(mCode, sql, server, database);
 
             // ZIP entries can't be overwritten directly.
@@ -456,7 +457,8 @@ public static class ExcelExporter
     }
 
     /// <summary>
-    /// Reads the parameter cells into a record (name -> value) and passes it to
+    /// Reads the parameter cells (column B, in order), checks each value, and
+    /// passes them as a record (SQL parameter name -> value) to
     /// Value.NativeQuery, so values are sent as SQL parameters, never spliced
     /// into the SQL. Reading cells and the database in one query means Excel
     /// asks once about privacy levels; separate queries fail outright with a
@@ -466,7 +468,8 @@ public static class ExcelExporter
         string mCode,
         string sql,
         string server,
-        string database)
+        string database,
+        IReadOnlyList<WorkbookParameter> parameters)
     {
         // Replace only Query1; other queries (LastRefreshed) stay as they are.
         int from = mCode.IndexOf("shared Query1 = ", StringComparison.Ordinal);
@@ -486,10 +489,20 @@ public static class ExcelExporter
 
         string rest = end < 0 ? Environment.NewLine : mCode.Substring(end);
 
+        var checks = new StringBuilder();
+
+        for (int i = 0; i < parameters.Count; i++)
+        {
+            checks.Append($"    Value{i} = {CheckedValueM(parameters[i], i)},{Environment.NewLine}");
+        }
+
+        string values = string.Join(", ", Enumerable.Range(0, parameters.Count).Select(i => "Value" + i));
+        string names = string.Join(", ", parameters.Select(p => "\"" + EscapeM(p.SqlName) + "\""));
+
         string query =
 $@"shared Query1 = let
-    Parameters = Excel.CurrentWorkbook(){{[Name=""{ParametersName}""]}}[Content],
-    Values = Record.FromList(Parameters[Column2], Parameters[Column1]),
+    Cells = Excel.CurrentWorkbook(){{[Name=""{ParametersName}""]}}[Content][Column2],
+{checks}    Values = Record.FromList({{{values}}}, {{{names}}}),
     Source = Value.NativeQuery(Sql.Database(""{EscapeM(server)}"", ""{EscapeM(database)}""), ""{EscapeM(sql)}"", Values)
 in
     Source;";
@@ -503,16 +516,83 @@ in
     }
 
     /// <summary>
+    /// M for one parameter's value: blank is null (or an error if it's
+    /// required); otherwise converted to its kind, with a message naming the
+    /// cell if it can't be. Data validation stops most bad values as they're
+    /// typed, but not pasted ones.
+    /// </summary>
+    internal static string CheckedValueM(WorkbookParameter parameter, int index)
+    {
+        string cell = "B" + (FirstParameterRow + index);
+        string label = $"{parameter.DisplayName} (cell {cell})";
+
+        string Fail(string message) => $"error Error.Record(\"Flank\", \"{EscapeM(message)}\")";
+
+        string ifBlank = parameter.Required
+            ? Fail($"{label} is required. Enter a value, then refresh.")
+            : "null";
+
+        bool hasRange = parameter.Minimum != null && parameter.Maximum != null;
+        string convert;
+
+        switch (parameter.Kind)
+        {
+            case WorkbookParameterKind.WholeNumber:
+                string range = hasRange ? $" and n >= {parameter.Minimum} and n <= {parameter.Maximum}" : "";
+                string between = hasRange
+                    ? string.Format(CultureInfo.InvariantCulture, " between {0:N0} and {1:N0}", parameter.Minimum, parameter.Maximum)
+                    : "";
+                convert = $"try (let n = Number.From(v) in if n = Number.Round(n){range} then n else error \"\") " +
+                          $"otherwise {Fail($"{label} must be a whole number{between}.")}";
+                break;
+
+            case WorkbookParameterKind.Decimal:
+                convert = $"try Number.From(v) otherwise {Fail($"{label} must be a number.")}";
+                break;
+
+            case WorkbookParameterKind.Date:
+                convert = $"try Date.From(v) otherwise {Fail($"{label} must be a date.")}";
+                break;
+
+            case WorkbookParameterKind.DateTime:
+                convert = $"try DateTime.From(v) otherwise {Fail($"{label} must be a date and time.")}";
+                break;
+
+            case WorkbookParameterKind.TrueFalse:
+                convert = $"try (if v is logical then v else Logical.From(v)) otherwise {Fail($"{label} must be TRUE or FALSE.")}";
+                break;
+
+            case WorkbookParameterKind.Text when parameter.MaxLength != null:
+                convert = $"let t = Text.From(v) in if Text.Length(t) <= {parameter.MaxLength} then t " +
+                          $"else {Fail($"{label} can be at most {parameter.MaxLength} characters.")}";
+                break;
+
+            default:
+                convert = "v";
+                break;
+        }
+
+        return $"let v = Cells{{{index}}} in if v = null or (v is text and Text.Trim(v) = \"\") then {ifBlank} else {convert}";
+    }
+
+    /// <summary>Column C: "Required." and the note, if there's anything to say.</summary>
+    private static string NoteText(WorkbookParameter parameter)
+    {
+        string note = parameter.Note.Trim();
+        return parameter.Required ? ("Required. " + note).Trim() : note;
+    }
+
+    /// <summary>
     /// Puts the parameter names in column A from row 4, leaves a blank row, and
     /// moves the query table below them.
     /// </summary>
     private static void AddParameterCells(
         ZipArchive workbook,
-        IReadOnlyList<string> parameterNames,
+        IReadOnlyList<WorkbookParameter> parameters,
         IReadOnlyList<object?>? parameterValues,
         CellWriter cells)
     {
-        int count = parameterNames.Count;
+        int count = parameters.Count;
         int lastParameterRow = FirstParameterRow + count - 1;
         int tableRow = TableRow(count);
 
@@ -547,7 +627,7 @@ in
                         new XAttribute("r", "A" + r),
                         new XAttribute("t", "inlineStr"),
                         new XElement(Sheet + "is",
-                            new XElement(Sheet + "t", parameterNames[i]))));
+                            new XElement(Sheet + "t", parameters[i].DisplayName))));
 
                 if (parameterValues != null && i < parameterValues.Count)
                 {
@@ -556,14 +636,19 @@ in
                         row.Add(value);
                 }
 
+                string note = NoteText(parameters[i]);
+                if (note.Length > 0)
+                    row.Add(cells.Cell("C" + r, note));
+
                 if (firstTableRow != null)
                     firstTableRow.AddBeforeSelf(row);
                 else
                     sheetData.Add(row);
             }
 
+            string lastColumn = parameters.Any(p => NoteText(p).Length > 0) ? "C" : "B";
             sheet.Root.Element(Sheet + "dimension")?
-                .SetAttributeValue("ref", $"A1:B{tableRow + 1}");
+                .SetAttributeValue("ref", $"A1:{lastColumn}{tableRow + 1}");
         });
 
         UpdateXml(workbook, "xl/tables/table1.xml", table =>
@@ -592,6 +677,153 @@ in
                     $"Query1!$A${FirstParameterRow}:$B${lastParameterRow}"));
         });
     }
+
+    /// <summary>
+    /// Data validation on the value cells (type, range, length; TRUE/FALSE as a
+    /// dropdown), with the note as the message shown when a cell is selected,
+    /// and required cells highlighted while they're empty.
+    /// </summary>
+    private static void AddParameterChecks(
+        ZipArchive workbook,
+        IReadOnlyList<WorkbookParameter> parameters,
+        CellWriter cells)
+    {
+        var validations = new XElement(Sheet + "dataValidations");
+        var formats = new List<XElement>();
+        int priority = 1;
+
+        for (int i = 0; i < parameters.Count; i++)
+        {
+            var parameter = parameters[i];
+            string cell = "B" + (FirstParameterRow + i);
+
+            var validation = DataValidation(parameter, cell);
+            if (validation != null)
+                validations.Add(validation);
+
+            if (parameter.Required)
+            {
+                formats.Add(new XElement(Sheet + "conditionalFormatting",
+                    new XAttribute("sqref", cell),
+                    new XElement(Sheet + "cfRule",
+                        new XAttribute("type", "expression"),
+                        new XAttribute("dxfId", cells.MissingValueFormat()),
+                        new XAttribute("priority", priority++),
+                        new XElement(Sheet + "formula", $"LEN(TRIM({cell}))=0"))));
+            }
+        }
+
+        if (!validations.HasElements && formats.Count == 0)
+            return;
+
+        validations.SetAttributeValue("count", validations.Elements().Count());
+
+        UpdateXml(workbook, "xl/worksheets/sheet1.xml", sheet =>
+        {
+            // Schema order: sheetData, ..., mergeCells, phoneticPr, conditionalFormatting, dataValidations, ..., pageMargins.
+            var sheetData = sheet.Root!.Element(Sheet + "sheetData")!;
+            var after = sheetData.ElementsAfterSelf()
+                .LastOrDefault(e => e.Name == Sheet + "mergeCells" || e.Name == Sheet + "phoneticPr")
+                ?? sheetData;
+
+            var added = new List<XElement>(formats);
+            if (validations.HasElements)
+                added.Add(validations);
+
+            after.AddAfterSelf(added.ToArray());
+        });
+    }
+
+    private static XElement? DataValidation(WorkbookParameter parameter, string cell)
+    {
+        string? type = null;
+        string? comparison = null;
+        string? formula1 = null;
+        string? formula2 = null;
+        string error = "";
+        bool hasRange = parameter.Minimum != null && parameter.Maximum != null;
+
+        switch (parameter.Kind)
+        {
+            case WorkbookParameterKind.WholeNumber:
+                type = "whole";
+                comparison = "between";
+                formula1 = (parameter.Minimum ?? -9007199254740991L).ToString(CultureInfo.InvariantCulture);
+                formula2 = (parameter.Maximum ?? 9007199254740991L).ToString(CultureInfo.InvariantCulture);
+                error = hasRange
+                    ? string.Format(CultureInfo.InvariantCulture, "Enter a whole number between {0:N0} and {1:N0}.", parameter.Minimum, parameter.Maximum)
+                    : "Enter a whole number.";
+                break;
+
+            case WorkbookParameterKind.Decimal:
+                type = "decimal";
+                comparison = "between";
+                formula1 = "-1E+300";
+                formula2 = "1E+300";
+                error = "Enter a number.";
+                break;
+
+            case WorkbookParameterKind.Date:
+            case WorkbookParameterKind.DateTime:
+                type = "date";
+                comparison = "greaterThanOrEqual";
+                formula1 = "1";
+                error = parameter.Kind == WorkbookParameterKind.Date ? "Enter a date." : "Enter a date and time.";
+                break;
+
+            case WorkbookParameterKind.TrueFalse:
+                type = "list";
+                formula1 = "\"TRUE,FALSE\"";
+                error = "Choose TRUE or FALSE.";
+                break;
+
+            case WorkbookParameterKind.Text when parameter.MaxLength != null:
+                type = "textLength";
+                comparison = "lessThanOrEqual";
+                formula1 = parameter.MaxLength.Value.ToString(CultureInfo.InvariantCulture);
+                error = $"Enter at most {parameter.MaxLength} characters.";
+                break;
+        }
+
+        string note = parameter.Note.Trim();
+
+        if (type == null && note.Length == 0)
+            return null;
+
+        var validation = new XElement(Sheet + "dataValidation");
+
+        if (type != null)
+        {
+            validation.SetAttributeValue("type", type);
+            if (comparison != null)
+                validation.SetAttributeValue("operator", comparison);
+            validation.SetAttributeValue("allowBlank", "1");
+            validation.SetAttributeValue("showErrorMessage", "1");
+            validation.SetAttributeValue("errorTitle", Limit(parameter.DisplayName, 32));
+            validation.SetAttributeValue("error", Limit(error, 255));
+        }
+
+        if (note.Length > 0)
+        {
+            // Shown when the cell is selected.
+            validation.SetAttributeValue("showInputMessage", "1");
+            validation.SetAttributeValue("promptTitle", Limit(parameter.DisplayName, 32));
+            validation.SetAttributeValue("prompt", Limit(note, 255));
+        }
+
+        validation.SetAttributeValue("sqref", cell);
+
+        if (formula1 != null)
+            validation.Add(new XElement(Sheet + "formula1", formula1));
+        if (formula2 != null)
+            validation.Add(new XElement(Sheet + "formula2", formula2));
+
+        return validation;
+    }
+
+    // Excel's limits: 32 characters for titles, 255 for messages.
+    private static string Limit(string text, int length) =>
+        text.Length <= length ? text : text.Substring(0, length - 1) + "…";
 
     private static void UpdateXml(
         ZipArchive workbook,
@@ -684,11 +916,39 @@ in
             return cell;
         }
 
-        // A cell format using built-in number format 22 (m/d/yyyy h:mm).
-        private int DateStyle()
+        private int? missingValueFormat;
+
+        /// <summary>A differential format (for conditional formatting): a light red fill.</summary>
+        public int MissingValueFormat()
         {
-            if (dateStyle != null)
-                return dateStyle.Value;
+            if (missingValueFormat != null)
+                return missingValueFormat.Value;
+
+            var root = Styles().Root!;
+            var dxfs = root.Element(Sheet + "dxfs");
+
+            if (dxfs == null)
+            {
+                dxfs = new XElement(Sheet + "dxfs");
+                (root.Element(Sheet + "cellStyles") ?? root.Element(Sheet + "cellXfs")!).AddAfterSelf(dxfs);
+            }
+
+            dxfs.Add(new XElement(Sheet + "dxf",
+                new XElement(Sheet + "fill",
+                    new XElement(Sheet + "patternFill",
+                        new XElement(Sheet + "bgColor", new XAttribute("rgb", "FFFFC7CE"))))));
+
+            int index = dxfs.Elements(Sheet + "dxf").Count() - 1;
+            dxfs.SetAttributeValue("count", index + 1);
+
+            missingValueFormat = index;
+            return index;
+        }
+
+        private XDocument Styles()
+        {
+            if (styles != null)
+                return styles;
 
             var entry = workbook.GetEntry("xl/styles.xml")
                 ?? throw new Exception("Could not find xl/styles.xml");
@@ -698,7 +958,16 @@ in
                 styles = XDocument.Load(stream);
             }
 
-            var cellXfs = styles.Root!.Element(Sheet + "cellXfs")
+            return styles;
+        }
+
+        // A cell format using built-in number format 22 (m/d/yyyy h:mm).
+        private int DateStyle()
+        {
+            if (dateStyle != null)
+                return dateStyle.Value;
+
+            var cellXfs = Styles().Root!.Element(Sheet + "cellXfs")
                 ?? throw new Exception("Could not find cellXfs");
 
             cellXfs.Add(new XElement(Sheet + "xf",

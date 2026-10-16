@@ -84,14 +84,16 @@ namespace Flank.Ssrs
             string sharedDataSourcePath,
             string reportFolder,
             string reportName,
-            IReadOnlyDictionary<string, object?>? defaultValues = null)
+            IReadOnlyDictionary<string, object?>? defaultValues = null,
+            IReadOnlyList<ParameterSettings>? settings = null)
         {
             string rdl = BuildStoredProcedureReportRdl(
                 procedureName,
                 parameters,
                 columns,
-                sharedDataSourcePath,
-                defaultValues);
+                RdlDataSource.Shared(sharedDataSourcePath),
+                defaultValues,
+                settings);
 
             DeployReport(
                 rdl,
@@ -139,14 +141,20 @@ namespace Flank.Ssrs
 
         /// <param name="defaultValues">
         /// Report parameter defaults by SQL parameter name (with '@'), so the
-        /// report shows data when opened. Missing or null: no default.
+        /// report shows data when opened. Missing or null: no default. Takes
+        /// precedence over the settings' defaults.
+        /// </param>
+        /// <param name="settings">
+        /// From the parameter review page: prompts, defaults and what a blank
+        /// value means. Null: as the procedure declares them.
         /// </param>
         public static string BuildStoredProcedureReportRdl(
             string procedureName,
             IReadOnlyList<SprocParameter> parameters,
             IReadOnlyList<ReportColumn> columns,
             RdlDataSource dataSource,
-            IReadOnlyDictionary<string, object?>? defaultValues = null)
+            IReadOnlyDictionary<string, object?>? defaultValues = null,
+            IReadOnlyList<ParameterSettings>? settings = null)
         {
             string reportParametersXml;
             string queryParametersXml;
@@ -154,14 +162,19 @@ namespace Flank.Ssrs
             BuildStoredProcedureParameters(
                 parameters,
                 defaultValues,
+                settings,
                 out reportParametersXml,
                 out queryParametersXml);
 
-            // SSRS can't supply OUTPUT parameters to a stored procedure call, so
-            // a procedure with any is called from a batch that declares them.
-            string queryXml = parameters.Any(p => p.IsOutput)
+            // SSRS can't supply OUTPUT parameters to a stored procedure call, or
+            // leave a parameter out when it's blank, so then the procedure is
+            // called from a batch.
+            string call = ProcedureCall.BuildExec(procedureName, parameters, settings);
+            bool needsBatch = parameters.Any(p => p.IsOutput) || call.StartsWith("DECLARE @flank_arguments");
+
+            string queryXml = needsBatch
                 ? $@"
-        <CommandText>{XmlEscape(ProcedureCall.BuildExec(procedureName, parameters))}</CommandText>
+        <CommandText>{XmlEscape(call)}</CommandText>
 {queryParametersXml}"
                 : $@"
         <CommandType>StoredProcedure</CommandType>
@@ -178,6 +191,7 @@ namespace Flank.Ssrs
         private static void BuildStoredProcedureParameters(
             IReadOnlyList<SprocParameter> parameters,
             IReadOnlyDictionary<string, object?>? defaultValues,
+            IReadOnlyList<ParameterSettings>? settings,
             out string reportParametersXml,
             out string queryParametersXml)
         {
@@ -202,11 +216,30 @@ namespace Flank.Ssrs
                     GetRdlParameterType(
                         parameter.SqlType);
 
-                string defaultXml = "";
+                var setting = settings?.FirstOrDefault(s =>
+                    string.Equals(s.SqlName, sqlParameterName, StringComparison.OrdinalIgnoreCase));
+
+                bool required = setting?.IfBlank == BlankValue.Required;
+                string prompt = string.IsNullOrWhiteSpace(setting?.DisplayName)
+                    ? reportParameterName
+                    : setting!.DisplayName.Trim();
+
+                object? defaultValue = null;
 
                 if (defaultValues != null &&
-                    defaultValues.TryGetValue(sqlParameterName, out object? defaultValue) &&
-                    defaultValue != null)
+                    defaultValues.TryGetValue(sqlParameterName, out object? given) &&
+                    given != null)
+                {
+                    defaultValue = given;
+                }
+                else if (setting?.DefaultValue != null)
+                {
+                    defaultValue = StoredProcedureRunner.ParseValue(parameter.SqlType, setting.DefaultValue);
+                }
+
+                string defaultXml = "";
+
+                if (defaultValue != null)
                 {
                     defaultXml = $@"
       <DefaultValue>
@@ -215,12 +248,22 @@ namespace Flank.Ssrs
         </Values>
       </DefaultValue>";
                 }
+                else if (setting != null && !required)
+                {
+                    // Starts as NULL (blank), so the report opens with data.
+                    defaultXml = @"
+      <DefaultValue>
+        <Values>
+          <Value>=Nothing</Value>
+        </Values>
+      </DefaultValue>";
+                }
 
                 reportParameters.Append($@"
     <ReportParameter Name=""{XmlEscape(reportParameterName)}"">
       <DataType>{rdlType}</DataType>
-      <Nullable>true</Nullable>{defaultXml}
-      <Prompt>{XmlEscape(reportParameterName)}</Prompt>
+      <Nullable>{(required ? "false" : "true")}</Nullable>{defaultXml}
+      <Prompt>{XmlEscape(prompt)}</Prompt>
     </ReportParameter>");
 
                 queryParameters.Append($@"
