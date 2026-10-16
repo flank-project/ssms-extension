@@ -22,6 +22,7 @@ The argument picks the scenario; default `menus`.
 | `sproc-excel` | Stored procedure > Excel: workbook for `EXEC` refreshes with rows; with parameters, the user types values above the table and refreshes |
 | `sproc-ssrs` | Stored procedure > SSRS: SSMS creates a report with blank parameters, and it renders with rows |
 | `review-excel` | Parameter review page, then Excel guardrails: labels/notes, type validation, required highlight, refresh catches a pasted bad value, blank uses the procedure default |
+| `dropdown` | "Choices from" a procedure: Excel dropdown from the hidden Lists sheet, refresh looks up the value; Power BI report with valid values |
 | `query-pbi` | Query window > Power BI: signed in silently, SQL login pre-filled from SSMS, report publishes and exports with rows |
 | `sproc-pbi` | Stored procedure > Power BI: report with a blank parameter publishes; exports with a value |
 | `access` | The Excel wizard's access steps: a new SQL user gets SELECT on a query's tables, an existing one EXECUTE on a query turned into a procedure, and each runs exactly what it was granted |
@@ -270,6 +271,18 @@ Right to expand, and type-ahead (`dbo.flank_t`) to select.
    checkbox), Space, Return. Pass: Team 1 and Team 2; the date in B8 still
    shows (columns aren't re-fitted). Clear B5 and refresh: still `%` (the
    procedure's default). Close without saving (ctrl+w, alt+n).
+
+### dropdown
+
+`review-excel` with a list: on the review page, Tab past "Shown as", "Note"
+and "Starts with" to **Choices from**, paste `dbo.get_leagues`, Tab, Next
+(Flank checks the procedure: one that needs values, e.g.
+`dbo.sgm_ListTeamsByLeague`, is refused with a message). Run with League `2`,
+create `C:\temp\flank-smoke\dropdown-excel.xlsx`. In Excel, B4 shows `NFL`
+(the label for 2); Alt+Down in B4 lists the five leagues. Pick MLB, refresh
+(security OK, privacy levels as in `review-excel`): Team 4, league_id 3.
+Then Power BI on the same procedure with the same list, publish, and
+`verify-pbi.ps1 -Report (Get-Clipboard) -Parameters "League_Id=3"`: 1 row.
 
 ### query-pbi
 
