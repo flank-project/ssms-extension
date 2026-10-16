@@ -177,6 +177,9 @@ public class ExcelExporterTests : IDisposable
 
         var dxfs = ReadPart("xl/styles.xml").Root!.Element(Sheet + "dxfs")!;
         Assert.Equal(dxfs.Elements(Sheet + "dxf").Count().ToString(), (string)dxfs.Attribute("count")!);
+
+        // Refreshing mustn't narrow the parameter column.
+        Assert.Equal("0", (string)ReadPart("xl/queryTables/queryTable1.xml").Root!.Attribute("adjustColumnWidth")!);
     }
 
     [Fact]

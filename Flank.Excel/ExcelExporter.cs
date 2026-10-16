@@ -102,6 +102,11 @@ public static class ExcelExporter
         UpdateXml(workbook, "xl/queryTables/queryTable1.xml", queryTable =>
         {
             queryTable.Root!.SetAttributeValue("growShrinkType", "overwriteClear");
+
+            // Fitting the table's columns on refresh also narrows the parameter
+            // cells above it (dates turn into ####).
+            if (parameters.Count > 0)
+                queryTable.Root.SetAttributeValue("adjustColumnWidth", "0");
         });
 
         var cells = new CellWriter(workbook);
@@ -631,7 +636,7 @@ in
 
                 if (parameterValues != null && i < parameterValues.Count)
                 {
-                    var value = cells.Cell("B" + r, parameterValues[i]);
+                    var value = cells.Cell("B" + r, parameterValues[i], dateOnly: parameters[i].Kind == WorkbookParameterKind.Date);
                     if (value != null)
                         row.Add(value);
                 }
@@ -863,7 +868,8 @@ in
             this.workbook = workbook;
         }
 
-        public XElement? Cell(string reference, object? value)
+        /// <param name="dateOnly">Show dates without a time (for date parameters).</param>
+        public XElement? Cell(string reference, object? value, bool dateOnly = false)
         {
             var cell = new XElement(Sheet + "c", new XAttribute("r", reference));
 
@@ -883,10 +889,10 @@ in
                     return cell;
 
                 case DateTime date:
-                    return DateCell(cell, date);
+                    return DateCell(cell, date, dateOnly);
 
                 case DateTimeOffset offset:
-                    return DateCell(cell, offset.DateTime);
+                    return DateCell(cell, offset.DateTime, dateOnly);
 
                 case byte[] bytes:
                     return TextCell(cell, "0x" + BitConverter.ToString(bytes).Replace("-", ""));
@@ -909,9 +915,9 @@ in
             return cell;
         }
 
-        private XElement DateCell(XElement cell, DateTime date)
+        private XElement DateCell(XElement cell, DateTime date, bool dateOnly)
         {
-            cell.SetAttributeValue("s", DateStyle());
+            cell.SetAttributeValue("s", dateOnly ? DateOnlyStyle() : DateStyle());
             cell.Add(new XElement(Sheet + "v", date.ToOADate().ToString("R", CultureInfo.InvariantCulture)));
             return cell;
         }
@@ -961,17 +967,22 @@ in
             return styles;
         }
 
-        // A cell format using built-in number format 22 (m/d/yyyy h:mm).
-        private int DateStyle()
-        {
-            if (dateStyle != null)
-                return dateStyle.Value;
+        private int? dateOnlyStyle;
 
+        // Built-in number format 22 (m/d/yyyy h:mm).
+        private int DateStyle() => dateStyle ??= NumberFormatStyle(22);
+
+        // Built-in number format 14 (m/d/yyyy).
+        private int DateOnlyStyle() => dateOnlyStyle ??= NumberFormatStyle(14);
+
+        // A cell format using a built-in number format.
+        private int NumberFormatStyle(int numberFormat)
+        {
             var cellXfs = Styles().Root!.Element(Sheet + "cellXfs")
                 ?? throw new Exception("Could not find cellXfs");
 
             cellXfs.Add(new XElement(Sheet + "xf",
-                new XAttribute("numFmtId", 22),
+                new XAttribute("numFmtId", numberFormat),
                 new XAttribute("fontId", 0),
                 new XAttribute("fillId", 0),
                 new XAttribute("borderId", 0),
@@ -980,8 +991,6 @@ in
 
             int index = cellXfs.Elements(Sheet + "xf").Count() - 1;
             cellXfs.SetAttributeValue("count", index + 1);
-
-            dateStyle = index;
             return index;
         }
 
