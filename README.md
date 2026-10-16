@@ -6,6 +6,7 @@ Right-click a query (or a stored procedure in Object Explorer) and choose:
 
 - **SSRS Report** — deploy the query as a report to an existing SSRS server.
 - **Excel (Power Query)** — create an .xlsx workbook that users can refresh themselves.
+- **Power BI Paginated Report** — publish the query as a paginated report to a Power BI workspace.
 
 Using Flank? I'd love to hear how — email [anguspmitchell@gmail.com](mailto:anguspmitchell@gmail.com), or use **Make Self-Serve → Feedback...** in SSMS.
 
@@ -13,7 +14,7 @@ Using Flank? I'd love to hear how — email [anguspmitchell@gmail.com](mailto:an
 
 ---
 
-**Jump to:** [Install](#install) · [SSRS Reports](#ssrs-reports) · [Excel (Power Query)](#excel-power-query) · [Uninstall](#uninstall)
+**Jump to:** [Install](#install) · [SSRS Reports](#ssrs-reports) · [Excel (Power Query)](#excel-power-query) · [Power BI Paginated Reports](#power-bi-paginated-reports) · [Uninstall](#uninstall)
 
 ---
 
@@ -125,6 +126,50 @@ One-time setup Flank doesn't do for you:
 - **Microsoft Entra:** the Azure SQL server needs a Microsoft Entra admin (Azure Portal → the SQL server → Microsoft Entra ID), and you must be connected with Entra to create Entra users. The person must already be in your Entra tenant; use their User Principal Name (often, but not always, their email address).
 
 If end users aren't allowed to connect to the database at all, Flank's refreshable Excel output isn't a fit: there's no Flank server or service account between Excel and the database.
+
+## Power BI Paginated Reports
+
+Flank can publish a SQL query or stored procedure as a paginated report in a
+Power BI workspace. Paginated reports are SSRS reports hosted in Power BI, so
+you get the same basic tabular report as **SSRS Report**, without an SSRS server.
+
+### Current support
+
+Flank currently supports:
+
+- **Azure SQL Database** (servers ending in `.database.windows.net`). Power BI
+  reaches other servers only through an on-premises data gateway, which Flank
+  doesn't set up yet
+- Selected SQL, or the entire query if nothing is selected
+- Stored procedures, from Object Explorer, with their parameters as report
+  parameters (no defaults; people enter values when they run the report)
+- Signing in to Power BI with your work or school account, in the browser or
+  with a code you enter in any browser. Flank remembers the sign-in (per
+  Windows user), so you sign in once
+- How the report reads the database, chosen when you publish:
+  - **A SQL login saved on the report.** Flank fills it in from your SSMS
+    connection when that uses SQL Server authentication
+  - **A shared connection** (Power BI's equivalent of an SSRS shared data
+    source): pick an existing one for the database, or create one with a SQL
+    login. Flank asks you to sign in once more to allow this
+
+Publishing again with the same name in the same workspace replaces the report.
+
+Not supported yet:
+
+- On-premises SQL Server (needs a data gateway)
+- Viewers reading the database as themselves (single sign-on)
+- Multiple result sets, report formatting, parameter defaults
+
+### Create a report
+
+Right-click a query and choose **Make Self-Serve → Power BI Paginated Report**,
+or right-click a stored procedure in Object Explorer. Sign in if Flank asks,
+then choose the workspace, name the report, choose how it reads the database,
+and click **Publish**.
+
+The workspace needs a Power BI Pro or Premium Per User licence, or Premium/Fabric
+capacity, to hold paginated reports.
 
 ## Uninstall
 

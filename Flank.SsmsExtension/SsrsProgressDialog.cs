@@ -7,9 +7,9 @@ namespace Flank.SsmsExtension
     {
         private readonly Label statusLabel;
 
-        public SsrsProgressDialog()
+        public SsrsProgressDialog(string title = "Creating SSRS Report")
         {
-            Text = "Creating SSRS Report";
+            Text = title;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             StartPosition = FormStartPosition.CenterScreen;
             MaximizeBox = false;

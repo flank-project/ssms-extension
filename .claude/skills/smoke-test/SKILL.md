@@ -21,6 +21,8 @@ The argument picks the scenario; default `menus`.
 | `query-ssrs` | Query window > SSRS: SSMS creates a report, and it renders with rows |
 | `sproc-excel` | Stored procedure > Excel: workbook for `EXEC` refreshes with rows; with parameters, the user types values above the table and refreshes |
 | `sproc-ssrs` | Stored procedure > SSRS: SSMS creates a report with blank parameters, and it renders with rows |
+| `query-pbi` | Query window > Power BI: signed in silently, SQL login pre-filled from SSMS, report publishes and exports with rows |
+| `sproc-pbi` | Stored procedure > Power BI: report with a blank parameter publishes; exports with a value |
 | `access` | The Excel wizard's access steps: a new SQL user gets SELECT on a query's tables, an existing one EXECUTE on a query turned into a procedure, and each runs exactly what it was granted |
 | `large` | Over 50,000 rows: the preview is capped, the workbook starts with headers only and the first refresh loads everything |
 | `all` | All of the above, in that order (before a release). One build and install. |
@@ -237,6 +239,45 @@ menu should not have it.
    ```powershell
    .\tests\verify-ssrs.ps1 -Report (Get-Clipboard)                            # fails: 0 rows
    .\tests\verify-ssrs.ps1 -Report (Get-Clipboard) -Parameters "League_Id=3"  # 1 row
+   ```
+
+### query-pbi
+
+Needs a cached Power BI sign-in, or Flank shows its sign-in dialog, which
+only the user can complete. Check first:
+`.\Flank.TestPbiApp\bin\Debug\net472\Flank.TestPbiApp.exe --check` (build
+it with `dotnet build Flank.TestPbiApp`). If it says a sign-in is needed, ask
+the user to run it without `--check` (`--device` on this server: its own
+browser can't run the sign-in page). Never sign out: that drops the cache.
+
+1. In the query window's submenu, highlight **Power BI Paginated Report**
+   (third item), Return.
+2. **Create Power BI Paginated Report**: "Signed in to Power BI as ...",
+   Workspace `FlankSmoke`, the SQL, and "A SQL login saved on this report"
+   with SQL login `fomf-user` and a filled password ("From your SSMS
+   connection"). The shared-connection option is greyed out with a "Let
+   Flank list and create shared connections" link until the Flank app has the
+   connections permission (don't click it: it needs an interactive sign-in).
+3. `Set-Clipboard -Value "Smoke - Query"`; Tab (to Report Name), ctrl+a,
+   ctrl+v, zoom, Return (Publish).
+4. **Power BI Report Created**: ctrl+c copies the link; Escape.
+5. Check it:
+   ```powershell
+   .\tests\verify-pbi.ps1 -Report (Get-Clipboard)
+   ```
+   Pass: `OK`, with 5 rows and columns `Value_id, Value_name`.
+
+### sproc-pbi
+
+1. On `dbo.sgm_ListTeamsByLeague`, open the submenu, highlight **Power BI
+   Paginated Report**, Return. Run dialog: `2`, Return (Run: Team 1 and
+   Team 2), Return (Continue).
+2. The Power BI dialog shows the procedure read-only and the login
+   pre-filled from the Object Explorer connection. `Set-Clipboard -Value
+   "Smoke - Sproc"`, Tab, ctrl+a, ctrl+v, Return (Publish); ctrl+c, Escape.
+3. Check it (the parameter has no default, so without a value it's empty):
+   ```powershell
+   .\tests\verify-pbi.ps1 -Report (Get-Clipboard) -Parameters "League_Id=3"   # 1 row
    ```
 
 ### access

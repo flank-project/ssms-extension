@@ -88,14 +88,18 @@ namespace Flank.PowerBi
         }
 
         /// <summary>
-        /// Opens the system browser for the user to sign in.
+        /// Opens the system browser for the user to sign in. (On .NET Framework
+        /// MSAL would otherwise use the old embedded Internet Explorer control.)
         /// </summary>
         /// <param name="parentWindow">The window to centre the sign-in on, or IntPtr.Zero.</param>
+        /// <param name="scopes">What to ask for; Power BI by default.</param>
         public async Task<PowerBiToken> SignInInteractiveAsync(
             IntPtr parentWindow,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            string[]? scopes = null)
         {
-            var request = app.AcquireTokenInteractive(PowerBiScopes)
+            var request = app.AcquireTokenInteractive(scopes ?? PowerBiScopes)
+                .WithUseEmbeddedWebView(false)
                 .WithPrompt(Prompt.SelectAccount);
 
             if (parentWindow != IntPtr.Zero)
@@ -113,9 +117,10 @@ namespace Flank.PowerBi
         /// <param name="showCode">Receives the message to show the user (URL and code).</param>
         public async Task<PowerBiToken> SignInWithDeviceCodeAsync(
             Action<string> showCode,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            string[]? scopes = null)
         {
-            var result = await app.AcquireTokenWithDeviceCode(PowerBiScopes, code =>
+            var result = await app.AcquireTokenWithDeviceCode(scopes ?? PowerBiScopes, code =>
                 {
                     showCode(code.Message);
                     return Task.CompletedTask;
@@ -124,6 +129,13 @@ namespace Flank.PowerBi
                 .ConfigureAwait(false);
 
             return new PowerBiToken(result.AccessToken, result.Account.Username);
+        }
+
+        /// <summary>Forgets the cached sign-in (e.g. to switch account).</summary>
+        public async Task SignOutAsync()
+        {
+            foreach (var account in await app.GetAccountsAsync().ConfigureAwait(false))
+                await app.RemoveAsync(account).ConfigureAwait(false);
         }
 
         /// <summary>Silent if possible, otherwise asks the user to sign in.</summary>
