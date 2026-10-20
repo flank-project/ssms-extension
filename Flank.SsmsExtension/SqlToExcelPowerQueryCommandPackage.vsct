@@ -115,11 +115,10 @@
 					guid="guidSqlToExcelPowerQueryCommandPackageCmdSet"
 					id="MakeSelfServeMenuGroup"/>
 
-				<!-- Paginated reports are SSRS reports hosted in Power BI. -->
-				<Icon guid="guidImages" id="bmpSsrs"/>
+				<Icon guid="guidImages" id="bmpPowerBi"/>
 
 				<Strings>
-					<ButtonText>Power BI Paginated Report</ButtonText>
+					<ButtonText>Power BI (Paginated Report) (Beta)</ButtonText>
 				</Strings>
 
 			</Button>
@@ -145,7 +144,7 @@
 			<Bitmap
 				guid="guidImages"
 				href="Resources\SqlToExcelPowerQueryCommand.png"
-				usedList="bmpPic1,bmpSsrs"/>
+				usedList="bmpPic1,bmpSsrs,bmpPowerBi"/>
 		</Bitmaps>
 
 	</Commands>
@@ -215,6 +214,8 @@
 			<IDSymbol name="bmpPic1" value="1"/>
 
 			<IDSymbol name="bmpSsrs" value="2" />
+
+			<IDSymbol name="bmpPowerBi" value="3" />
 
 		</GuidSymbol>
 

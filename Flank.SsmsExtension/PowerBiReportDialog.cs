@@ -1,6 +1,7 @@
 using Flank.PowerBi;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.Linq;
 using System.Threading.Tasks;
@@ -10,12 +11,12 @@ namespace Flank.SsmsExtension
 {
     internal sealed class PowerBiReportOptions
     {
-        public PowerBiReportOptions(PowerBiWorkspace workspace, string reportName, string? sql, PowerBiDataAccess access)
+        public PowerBiReportOptions(PowerBiWorkspace workspace, string reportName, string? sql, PowerBiConnection connection)
         {
             Workspace = workspace;
             ReportName = reportName;
             Sql = sql;
-            Access = access;
+            Connection = connection;
         }
 
         public PowerBiWorkspace Workspace { get; }
@@ -25,39 +26,37 @@ namespace Flank.SsmsExtension
         /// <summary>The query, edited by the user. Null for a stored procedure.</summary>
         public string? Sql { get; }
 
-        public PowerBiDataAccess Access { get; }
+        /// <summary>The Gateway / Cloud Connection the report reads the database through.</summary>
+        public PowerBiConnection Connection { get; }
     }
 
     /// <summary>
-    /// Where to publish the paginated report, its name, and how the people
-    /// who run it read the database: a SQL login saved on the report, or a
-    /// shared connection (Power BI's equivalent of an SSRS shared data source).
+    /// Where to publish the paginated report, its name, and the Gateway /
+    /// Cloud Connection it reads the database through. As with SSRS shared
+    /// data sources, connections are set up in Power BI beforehand.
     /// </summary>
     internal sealed class PowerBiReportDialog : Form
     {
-        private sealed class NewConnectionItem
-        {
-            public override string ToString() => "New shared connection (with the login below)";
-        }
+        private const string ManageConnectionsUrl = "https://app.powerbi.com/groups/me/gateways";
 
         private readonly string server;
         private readonly string database;
+        private readonly string? preferredConnectionId;
         private readonly Func<Task<IReadOnlyList<PowerBiConnection>?>> allowConnections;
         private readonly ComboBox workspaceComboBox;
         private readonly TextBox reportNameTextBox;
         private readonly TextBox? sqlTextBox;
-        private readonly RadioButton reportLoginRadio;
-        private readonly RadioButton connectionRadio;
         private readonly ComboBox connectionComboBox;
-        private readonly LinkLabel allowConnectionsLink;
-        private readonly TextBox usernameTextBox;
-        private readonly TextBox passwordTextBox;
+        private readonly Label connectionHint;
+        private readonly LinkLabel connectionLink;
+        private readonly Button publishButton;
+        private bool connectionsAllowed;
 
         public PowerBiReportOptions? Options { get; private set; }
 
-        /// <param name="connections">Shared connections to this database, or null if Flank may not list them.</param>
-        /// <param name="allowConnections">Signs in for shared connections; returns them, or null if that failed.</param>
-        /// <param name="login">The SQL login of the SSMS connection, if it uses one.</param>
+        /// <param name="server">The server SSMS is connected to, to pick a connection to it by default.</param>
+        /// <param name="connections">The Gateway / Cloud Connections, or null if Flank may not list them.</param>
+        /// <param name="allowConnections">Signs in for listing connections; returns them, or null if that failed.</param>
         public PowerBiReportDialog(
             string signedInAs,
             string server,
@@ -65,7 +64,6 @@ namespace Flank.SsmsExtension
             IReadOnlyList<PowerBiWorkspace> workspaces,
             IReadOnlyList<PowerBiConnection>? connections,
             Func<Task<IReadOnlyList<PowerBiConnection>?>> allowConnections,
-            SsmsSqlLogin? login,
             string? sql,
             string? storedProcedure,
             string defaultReportName,
@@ -74,8 +72,9 @@ namespace Flank.SsmsExtension
             this.server = server;
             this.database = database;
             this.allowConnections = allowConnections;
+            preferredConnectionId = settings.ConnectionId;
 
-            Text = "Create Power BI Paginated Report";
+            Text = "Create Power BI Paginated Report (Beta)";
             FormBorderStyle = FormBorderStyle.FixedDialog;
             StartPosition = FormStartPosition.CenterScreen;
             MaximizeBox = false;
@@ -84,16 +83,17 @@ namespace Flank.SsmsExtension
             Controls.Add(new Label
             {
                 Text = $"Signed in to Power BI as {signedInAs}.",
-                Location = new Point(20, 20),
-                Width = 500
+                ForeColor = SystemColors.GrayText,
+                Location = new Point(20, 16),
+                Width = 600
             });
 
-            Controls.Add(new Label { Text = "Workspace:", Location = new Point(20, 54), Width = 130 });
+            Controls.Add(new Label { Text = "Workspace:", Location = new Point(20, 48), Width = 160 });
 
             workspaceComboBox = new ComboBox
             {
-                Location = new Point(155, 50),
-                Width = 365,
+                Location = new Point(185, 44),
+                Width = 435,
                 DropDownStyle = ComboBoxStyle.DropDownList
             };
 
@@ -104,18 +104,45 @@ namespace Flank.SsmsExtension
 
             Controls.Add(workspaceComboBox);
 
-            reportNameTextBox = AddField("Report Name:", defaultReportName, 90);
+            reportNameTextBox = AddField("Report Name:", defaultReportName, 82);
+
+            Controls.Add(new Label { Text = "Gateway / Cloud Connection:", Location = new Point(20, 120), Width = 165 });
+
+            connectionComboBox = new ComboBox
+            {
+                Location = new Point(185, 116),
+                Width = 435,
+                DropDownStyle = ComboBoxStyle.DropDownList
+            };
+
+            connectionHint = new Label
+            {
+                ForeColor = SystemColors.GrayText,
+                Location = new Point(185, 142),
+                Size = new Size(435, 32)
+            };
+
+            connectionLink = new LinkLabel
+            {
+                Location = new Point(185, 174),
+                Width = 435
+            };
+            connectionLink.LinkClicked += async (s, e) => await ConnectionLinkClickedAsync();
+
+            Controls.Add(connectionComboBox);
+            Controls.Add(connectionHint);
+            Controls.Add(connectionLink);
 
             int y;
 
             if (storedProcedure != null)
             {
-                AddField("Stored Procedure:", storedProcedure, 130).ReadOnly = true;
-                y = 175;
+                AddField("Stored Procedure:", storedProcedure, 204).ReadOnly = true;
+                y = 248;
             }
             else
             {
-                Controls.Add(new Label { Text = "SQL:", Location = new Point(20, 130), Width = 130 });
+                Controls.Add(new Label { Text = "SQL:", Location = new Point(20, 204), Width = 160 });
 
                 sqlTextBox = new TextBox
                 {
@@ -126,115 +153,28 @@ namespace Flank.SsmsExtension
                     AcceptsReturn = true,
                     AcceptsTab = true,
                     Font = new Font("Consolas", 9),
-                    Location = new Point(20, 150),
-                    Size = new Size(500, 130)
+                    Location = new Point(20, 224),
+                    Size = new Size(600, 140)
                 };
 
                 Controls.Add(sqlTextBox);
-                y = 295;
+                y = 378;
             }
 
-            Controls.Add(new Label
-            {
-                Text = "When people run the report, it reads the database using:",
-                Location = new Point(20, y),
-                Width = 500
-            });
-
-            reportLoginRadio = new RadioButton
-            {
-                Text = "A SQL login saved on this report",
-                Location = new Point(30, y + 25),
-                Width = 400,
-                Checked = true
-            };
-
-            connectionRadio = new RadioButton
-            {
-                Text = "A shared connection:",
-                Location = new Point(30, y + 52),
-                Width = 150
-            };
-
-            connectionComboBox = new ComboBox
-            {
-                Location = new Point(185, y + 51),
-                Width = 335,
-                DropDownStyle = ComboBoxStyle.DropDownList
-            };
-
-            allowConnectionsLink = new LinkLabel
-            {
-                Text = "Let Flank list and create shared connections (sign in again)",
-                Location = new Point(48, y + 80),
-                Width = 470
-            };
-
-            allowConnectionsLink.LinkClicked += async (sender, e) =>
-            {
-                allowConnectionsLink.Enabled = false;
-                var allowed = await this.allowConnections();
-                allowConnectionsLink.Enabled = true;
-
-                if (allowed != null)
-                    ShowConnections(allowed, null);
-            };
-
-            Controls.Add(new Label { Text = "SQL login:", Location = new Point(30, y + 114), Width = 120 });
-
-            usernameTextBox = new TextBox
-            {
-                Text = login?.Username ?? "",
-                Location = new Point(155, y + 110),
-                Width = 365
-            };
-
-            Controls.Add(new Label { Text = "Password:", Location = new Point(30, y + 144), Width = 120 });
-
-            passwordTextBox = new TextBox
-            {
-                Text = login?.Password ?? "",
-                UseSystemPasswordChar = true,
-                Location = new Point(155, y + 140),
-                Width = 365
-            };
-
-            var loginHint = new Label
-            {
-                Text = login != null
-                    ? "From your SSMS connection. Power BI keeps it encrypted; it's never put in the report."
-                    : "Your SSMS connection doesn't use a SQL login, so enter one for the report to use.",
-                Location = new Point(155, y + 166),
-                Size = new Size(365, 32),
-                ForeColor = SystemColors.GrayText
-            };
-
-            Controls.Add(reportLoginRadio);
-            Controls.Add(connectionRadio);
-            Controls.Add(connectionComboBox);
-            Controls.Add(allowConnectionsLink);
-            Controls.Add(usernameTextBox);
-            Controls.Add(passwordTextBox);
-            Controls.Add(loginHint);
-
-            reportLoginRadio.CheckedChanged += (sender, e) => UpdateEnabled();
-            connectionComboBox.SelectedIndexChanged += (sender, e) => UpdateEnabled();
-
-            int buttonsY = y + 210;
-            ClientSize = new Size(540, buttonsY + 40);
+            ClientSize = new Size(640, y + 40);
 
             var cancelButton = new Button
             {
                 Text = "Cancel",
                 DialogResult = DialogResult.Cancel,
-                Location = new Point(350, buttonsY),
+                Location = new Point(450, y),
                 Width = 80
             };
 
-            var publishButton = new Button
+            publishButton = new Button
             {
                 Text = "Publish",
-                Location = new Point(440, buttonsY),
+                Location = new Point(540, y),
                 Width = 80
             };
 
@@ -246,52 +186,82 @@ namespace Flank.SsmsExtension
             AcceptButton = publishButton;
             CancelButton = cancelButton;
 
-            ShowConnections(connections, settings.ConnectionId);
-
-            if (connections != null && settings.UseSharedConnection)
-                connectionRadio.Checked = true;
-
-            UpdateEnabled();
+            ShowConnections(connections);
         }
 
-        private void ShowConnections(IReadOnlyList<PowerBiConnection>? connections, string? preferredId)
+        private void ShowConnections(IReadOnlyList<PowerBiConnection>? connections)
         {
+            connectionsAllowed = connections != null;
             connectionComboBox.Items.Clear();
 
             if (connections == null)
             {
-                connectionRadio.Enabled = false;
                 connectionComboBox.Enabled = false;
-                allowConnectionsLink.Visible = true;
+                connectionHint.Text = "Flank needs permission to list your Power BI connections.";
+                connectionLink.Text = "Allow Flank to list connections (sign in again)";
+                publishButton.Enabled = false;
                 return;
             }
 
             connectionComboBox.Items.AddRange(connections.Cast<object>().ToArray());
-            connectionComboBox.Items.Add(new NewConnectionItem());
-            connectionComboBox.SelectedItem =
-                (object?)connections.FirstOrDefault(c => c.Id == preferredId) ??
-                (object?)connections.FirstOrDefault() ??
-                connectionComboBox.Items[connectionComboBox.Items.Count - 1];
 
-            connectionRadio.Enabled = true;
-            allowConnectionsLink.Visible = false;
-            UpdateEnabled();
+            if (connections.Count == 0)
+            {
+                connectionComboBox.Enabled = false;
+                connectionHint.Text =
+                    "You have no SQL Server connections in Power BI. Add one for this database, then try again.";
+                connectionLink.Text = "Open Manage connections and gateways";
+                publishButton.Enabled = false;
+                return;
+            }
+
+            // The last one used if it's for this database; else the first for it; else the last one used.
+            var forThisDatabase = connections.Where(c => c.IsFor(server, database)).ToList();
+            var previous = connections.FirstOrDefault(c => c.Id == preferredConnectionId);
+
+            connectionComboBox.SelectedItem =
+                (previous != null && previous.IsFor(server, database) ? previous : null) ??
+                forThisDatabase.FirstOrDefault() ??
+                previous ??
+                connections[0];
+
+            connectionComboBox.Enabled = true;
+            publishButton.Enabled = true;
+            connectionHint.Text = forThisDatabase.Count > 0
+                ? "Connections are set up in Power BI, under Manage connections and gateways."
+                : $"None of your connections is for {database} on {server}. Add one, or pick another.";
+            connectionLink.Text = "Open Manage connections and gateways";
         }
 
-        // The login is used for a login on the report, or to create a connection.
-        private void UpdateEnabled()
+        private async Task ConnectionLinkClickedAsync()
         {
-            bool needsLogin = reportLoginRadio.Checked || connectionComboBox.SelectedItem is NewConnectionItem;
-            connectionComboBox.Enabled = connectionRadio.Enabled && connectionRadio.Checked;
-            usernameTextBox.Enabled = needsLogin;
-            passwordTextBox.Enabled = needsLogin;
+            if (connectionsAllowed)
+            {
+                try
+                {
+                    Process.Start(ManageConnectionsUrl);
+                }
+                catch (Exception)
+                {
+                    MessageBox.Show($"Couldn't open a browser. Go to {ManageConnectionsUrl}", "Flank");
+                }
+
+                return;
+            }
+
+            connectionLink.Enabled = false;
+            var allowed = await allowConnections();
+            connectionLink.Enabled = true;
+
+            if (allowed != null)
+                ShowConnections(allowed);
         }
 
         private TextBox AddField(string label, string value, int y)
         {
-            Controls.Add(new Label { Text = label, Location = new Point(20, y + 4), Width = 130 });
+            Controls.Add(new Label { Text = label, Location = new Point(20, y + 4), Width = 160 });
 
-            var textBox = new TextBox { Text = value, Location = new Point(155, y), Width = 365 };
+            var textBox = new TextBox { Text = value, Location = new Point(185, y), Width = 435 };
             Controls.Add(textBox);
             return textBox;
         }
@@ -299,18 +269,15 @@ namespace Flank.SsmsExtension
         private void PublishButton_Click(object sender, EventArgs e)
         {
             string? problem = null;
-            bool needsLogin = reportLoginRadio.Checked || connectionComboBox.SelectedItem is NewConnectionItem;
 
-            if (!(workspaceComboBox.SelectedItem is PowerBiWorkspace workspace))
+            if (!(workspaceComboBox.SelectedItem is PowerBiWorkspace))
                 problem = "Choose a workspace. If the list is empty, create one in Power BI first.";
             else if (string.IsNullOrWhiteSpace(reportNameTextBox.Text))
                 problem = "Enter a report name.";
             else if (sqlTextBox != null && string.IsNullOrWhiteSpace(sqlTextBox.Text))
                 problem = "The SQL is empty.";
-            else if (connectionRadio.Checked && connectionComboBox.SelectedItem == null)
-                problem = "Choose a shared connection.";
-            else if (needsLogin && (string.IsNullOrWhiteSpace(usernameTextBox.Text) || passwordTextBox.Text.Length == 0))
-                problem = "Enter the SQL login and password the report should use.";
+            else if (!(connectionComboBox.SelectedItem is PowerBiConnection))
+                problem = "Choose a Gateway / Cloud Connection.";
 
             if (problem != null)
             {
@@ -318,22 +285,11 @@ namespace Flank.SsmsExtension
                 return;
             }
 
-            string username = usernameTextBox.Text.Trim();
-            string password = passwordTextBox.Text;
-
-            PowerBiDataAccess access =
-                reportLoginRadio.Checked
-                    ? new PowerBiDataAccess.ReportLogin(username, password)
-                    : connectionComboBox.SelectedItem is PowerBiConnection existing
-                        ? new PowerBiDataAccess.ExistingConnection(existing.Id)
-                        : (PowerBiDataAccess)new PowerBiDataAccess.NewConnection(
-                            $"{database} on {server} ({username})", username, password);
-
             Options = new PowerBiReportOptions(
                 (PowerBiWorkspace)workspaceComboBox.SelectedItem!,
                 reportNameTextBox.Text.Trim(),
                 sqlTextBox?.Text,
-                access);
+                (PowerBiConnection)connectionComboBox.SelectedItem!);
 
             DialogResult = DialogResult.OK;
             Close();

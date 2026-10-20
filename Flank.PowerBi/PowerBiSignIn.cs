@@ -34,7 +34,7 @@ namespace Flank.PowerBi
         /// <summary>The Fabric REST API's shareable cloud connections.</summary>
         public static readonly string[] ConnectionScopes =
         {
-            "https://api.fabric.microsoft.com/Connection.ReadWrite.All"
+            "https://api.fabric.microsoft.com/Connection.Read.All"
         };
 
         private readonly IPublicClientApplication app;

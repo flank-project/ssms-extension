@@ -12,6 +12,7 @@ namespace Flank.TestPbiApp
     ///   Flank.TestPbiApp          sign in (browser if needed), then list workspaces
     ///   Flank.TestPbiApp --device sign in with a code entered in any browser
     ///   Flank.TestPbiApp --check  silent only; exit code 1 if a sign-in is needed
+    ///   Flank.TestPbiApp --connections  sign in with a code for listing connections, then list them
     /// </summary>
     internal static class Program
     {
@@ -23,6 +24,25 @@ namespace Flank.TestPbiApp
             try
             {
                 var signIn = await PowerBiSignIn.CreateAsync();
+
+                // Grants the connections permission (listing Gateway / Cloud
+                // Connections) with a code, then lists them.
+                if (args.Length > 0 && args[0] == "--connections")
+                {
+                    var granted = await signIn.SignInWithDeviceCodeAsync(Console.WriteLine, scopes: PowerBiSignIn.ConnectionScopes);
+                    Console.WriteLine($"Signed in for connections: {granted.Username} (object id {ObjectId(granted.AccessToken)})");
+
+                    var client = new PowerBiClient(
+                        async c => (await signIn.GetTokenSilentAsync(null, c))!.AccessToken,
+                        async c => (await signIn.GetTokenSilentAsync(PowerBiSignIn.ConnectionScopes, c))?.AccessToken);
+
+                    foreach (var connection in await client.GetConnectionsAsync())
+                        Console.WriteLine($"  {connection.DisplayName}  [{connection.Kind}] {connection.Server};{connection.Database}");
+
+                    Console.WriteLine("Connections API (silent): " +
+                        (await signIn.GetTokenSilentAsync(PowerBiSignIn.ConnectionScopes) != null ? "OK" : "FAILED"));
+                    return 0;
+                }
                 var token = await signIn.GetTokenSilentAsync();
 
                 if (token != null)
@@ -71,6 +91,16 @@ namespace Flank.TestPbiApp
                 Console.WriteLine($"Failed: {ex.Message}");
                 return 1;
             }
+        }
+
+        /// <summary>The signed-in user's Entra object id (the token's oid claim), e.g. to share a connection with them.</summary>
+        private static string ObjectId(string accessToken)
+        {
+            string payload = accessToken.Split('.')[1].Replace('-', '+').Replace('_', '/');
+            payload = payload.PadRight(payload.Length + (4 - payload.Length % 4) % 4, '=');
+            string json = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(payload));
+            var match = System.Text.RegularExpressions.Regex.Match(json, "\"oid\"\\s*:\\s*\"([^\"]+)\"");
+            return match.Success ? match.Groups[1].Value : "(unknown)";
         }
 
         private static async Task ListWorkspacesAsync(string accessToken)

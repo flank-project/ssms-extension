@@ -29,12 +29,12 @@ namespace Flank.PowerBi
         /// <summary>An existing shared connection (like an SSRS shared data source).</summary>
         public sealed class ExistingConnection : PowerBiDataAccess
         {
-            public ExistingConnection(string connectionId)
+            public ExistingConnection(PowerBiConnection connection)
             {
-                ConnectionId = connectionId;
+                Connection = connection;
             }
 
-            public string ConnectionId { get; }
+            public PowerBiConnection Connection { get; }
         }
 
         /// <summary>A new shared connection with a SQL login, for this and later reports.</summary>
@@ -107,36 +107,18 @@ namespace Flank.PowerBi
                     return new PublishedReport(workspaceId, reportId, null);
 
                 case PowerBiDataAccess.ExistingConnection existing:
-                    await client.BindToConnectionAsync(workspaceId, reportId, dataSource, existing.ConnectionId, cancellationToken).ConfigureAwait(false);
-                    return new PublishedReport(workspaceId, reportId, existing.ConnectionId);
+                    await client.BindToConnectionAsync(workspaceId, reportId, dataSource, existing.Connection, cancellationToken).ConfigureAwait(false);
+                    return new PublishedReport(workspaceId, reportId, existing.Connection.Id);
 
                 case PowerBiDataAccess.NewConnection create:
                     var connection = await client.CreateSqlConnectionAsync(
                         create.DisplayName, server, database, create.Username, create.Password, cancellationToken).ConfigureAwait(false);
-                    await client.BindToConnectionAsync(workspaceId, reportId, dataSource, connection.Id, cancellationToken).ConfigureAwait(false);
+                    await client.BindToConnectionAsync(workspaceId, reportId, dataSource, connection, cancellationToken).ConfigureAwait(false);
                     return new PublishedReport(workspaceId, reportId, connection.Id);
 
                 default:
                     throw new ArgumentOutOfRangeException(nameof(access));
             }
-        }
-
-        /// <summary>
-        /// Power BI reaches Azure SQL directly; other servers need an on-premises
-        /// data gateway, which Flank doesn't set up (yet).
-        /// </summary>
-        public static bool IsReachableFromPowerBi(string server)
-        {
-            string host = server.Trim();
-
-            if (host.StartsWith("tcp:", StringComparison.OrdinalIgnoreCase))
-                host = host.Substring(4);
-
-            int comma = host.IndexOf(',');
-            if (comma >= 0)
-                host = host.Substring(0, comma);
-
-            return host.EndsWith(".database.windows.net", StringComparison.OrdinalIgnoreCase);
         }
     }
 }

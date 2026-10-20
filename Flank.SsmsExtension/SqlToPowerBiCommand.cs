@@ -50,14 +50,13 @@ namespace Flank.SsmsExtension
             }
 
             string server =
-                SsmsSqlLogin.ActiveQueryWindowServer() ??
+                SsmsQueryHelper.ActiveQueryWindowServer() ??
                 (connection as DbConnection)?.DataSource ??
                 "";
 
             await PowerBiWorkflow.RunAsync(
                 server,
                 connection.Database,
-                SsmsSqlLogin.FromActiveQueryWindow(),
                 sql,
                 storedProcedure: null,
                 defaultReportName: "SSMS Query",

@@ -71,19 +71,56 @@ namespace Flank.PowerBi
     }
 
     /// <summary>A shareable cloud connection: Power BI's equivalent of an SSRS shared data source.</summary>
+    public enum PowerBiConnectionKind
+    {
+        /// <summary>A shareable cloud connection: Power BI reaches the database directly (e.g. Azure SQL).</summary>
+        Cloud,
+
+        /// <summary>A connection through an on-premises data gateway.</summary>
+        Gateway,
+    }
+
+    /// <summary>
+    /// A SQL Server connection set up in Power BI (Manage connections and
+    /// gateways): Power BI's equivalent of an SSRS shared data source.
+    /// </summary>
     public sealed class PowerBiConnection
     {
-        public PowerBiConnection(string id, string displayName)
+        public PowerBiConnection(
+            string id,
+            string displayName,
+            PowerBiConnectionKind kind = PowerBiConnectionKind.Cloud,
+            string server = "",
+            string database = "",
+            string? gatewayId = null)
         {
             Id = id;
             DisplayName = displayName;
+            Kind = kind;
+            Server = server;
+            Database = database;
+            GatewayId = gatewayId;
         }
 
         public string Id { get; }
 
         public string DisplayName { get; }
 
-        public override string ToString() => DisplayName;
+        public PowerBiConnectionKind Kind { get; }
+
+        public string Server { get; }
+
+        public string Database { get; }
+
+        /// <summary>The gateway (cluster) a gateway connection goes through; null for cloud ones.</summary>
+        public string? GatewayId { get; }
+
+        public bool IsFor(string server, string database) =>
+            string.Equals(Server, server, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(Database, database, StringComparison.OrdinalIgnoreCase);
+
+        public override string ToString() =>
+            $"{DisplayName}  ({(Kind == PowerBiConnectionKind.Gateway ? "gateway" : "cloud")}: {Server} / {Database})";
     }
 
     /// <summary>
@@ -251,11 +288,11 @@ namespace Flank.PowerBi
             return await getConnectionsToken(cancellationToken).ConfigureAwait(false) != null;
         }
 
-        /// <summary>The shared (shareable cloud) SQL connections to this server and database.</summary>
-        public async Task<IReadOnlyList<PowerBiConnection>> GetSqlConnectionsAsync(
-            string server,
-            string database,
-            CancellationToken cancellationToken = default)
+        /// <summary>
+        /// The SQL Server connections (cloud and gateway) the caller can use,
+        /// as listed under Manage connections and gateways.
+        /// </summary>
+        public async Task<IReadOnlyList<PowerBiConnection>> GetConnectionsAsync(CancellationToken cancellationToken = default)
         {
             var connections = new List<PowerBiConnection>();
             string? continuation = null;
@@ -269,21 +306,29 @@ namespace Flank.PowerBi
 
                 foreach (var c in json["value"]!)
                 {
-                    if ((string?)c["connectivityType"] != "ShareableCloud" ||
-                        !string.Equals((string?)c["connectionDetails"]?["type"], "SQL", StringComparison.OrdinalIgnoreCase))
-                    {
+                    string? connectivity = (string?)c["connectivityType"];
+                    PowerBiConnectionKind kind;
+
+                    if (connectivity == "ShareableCloud")
+                        kind = PowerBiConnectionKind.Cloud;
+                    else if (connectivity == "OnPremisesGateway" || connectivity == "OnPremisesGatewayPersonal")
+                        kind = PowerBiConnectionKind.Gateway;
+                    else
                         continue;
-                    }
+
+                    if (!string.Equals((string?)c["connectionDetails"]?["type"], "SQL", StringComparison.OrdinalIgnoreCase))
+                        continue;
 
                     // The path is "server;database".
                     string[] parts = ((string?)c["connectionDetails"]?["path"] ?? "").Split(';');
 
-                    if (parts.Length == 2 &&
-                        string.Equals(parts[0].Trim(), server, StringComparison.OrdinalIgnoreCase) &&
-                        string.Equals(parts[1].Trim(), database, StringComparison.OrdinalIgnoreCase))
-                    {
-                        connections.Add(new PowerBiConnection((string)c["id"]!, (string?)c["displayName"] ?? ""));
-                    }
+                    connections.Add(new PowerBiConnection(
+                        (string)c["id"]!,
+                        (string?)c["displayName"] ?? "",
+                        kind,
+                        parts.Length > 0 ? parts[0].Trim() : "",
+                        parts.Length > 1 ? parts[1].Trim() : "",
+                        (string?)c["gatewayId"]));
                 }
 
                 continuation = (string?)json["continuationToken"];
@@ -292,6 +337,17 @@ namespace Flank.PowerBi
 
             return connections
                 .OrderBy(c => c.DisplayName, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+        }
+
+        /// <summary>The connections to this server and database.</summary>
+        public async Task<IReadOnlyList<PowerBiConnection>> GetSqlConnectionsAsync(
+            string server,
+            string database,
+            CancellationToken cancellationToken = default)
+        {
+            return (await GetConnectionsAsync(cancellationToken).ConfigureAwait(false))
+                .Where(c => c.IsFor(server, database))
                 .ToList();
         }
 
@@ -329,25 +385,28 @@ namespace Flank.PowerBi
             };
 
             var json = await SendFabricAsync(HttpMethod.Post, "/connections", Json(body), cancellationToken).ConfigureAwait(false);
-            return new PowerBiConnection((string)json["id"]!, (string?)json["displayName"] ?? displayName);
+            return new PowerBiConnection((string)json["id"]!, (string?)json["displayName"] ?? displayName, PowerBiConnectionKind.Cloud, server, database);
         }
 
         /// <summary>
-        /// Points the report's data source at a shared connection. (Documented for
-        /// on-premises gateways only, but it works for shareable cloud
-        /// connections when given the report's own cloud gateway.)
+        /// Points the report's data source at a connection. For a gateway
+        /// connection that's its gateway; for a cloud connection the report's
+        /// own cloud gateway (Bind To Gateway is documented for on-premises
+        /// gateways only, but this works).
         /// </summary>
         public async Task BindToConnectionAsync(
             string workspaceId,
             string reportId,
             PowerBiReportDataSource dataSource,
-            string connectionId,
+            PowerBiConnection connection,
             CancellationToken cancellationToken = default)
         {
             var body = new
             {
-                gatewayObjectId = dataSource.GatewayId,
-                bindDetails = new[] { new { dataSourceName = dataSource.Name, dataSourceObjectId = connectionId } }
+                gatewayObjectId = connection.Kind == PowerBiConnectionKind.Gateway && connection.GatewayId != null
+                    ? connection.GatewayId
+                    : dataSource.GatewayId,
+                bindDetails = new[] { new { dataSourceName = dataSource.Name, dataSourceObjectId = connection.Id } }
             };
 
             await SendPowerBiAsync(

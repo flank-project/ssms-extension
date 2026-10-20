@@ -328,14 +328,9 @@ namespace Flank.SsmsExtension
                 .Select(name => new ReportColumn { Name = name })
                 .ToList();
 
-            var login = node.Connection is SqlConnectionInfo info
-                ? SsmsSqlLogin.FromConnectionInfo(info)
-                : null;
-
             await PowerBiWorkflow.RunAsync(
                 sproc.Server,
                 sproc.Database,
-                login,
                 sql: null,
                 storedProcedure: sproc.QualifiedName,
                 defaultReportName: sproc.Name,
@@ -426,8 +421,8 @@ namespace Flank.SsmsExtension
                     (s, e) => owner.RunForSelection(CreateSsrsReportAsync));
 
                 submenu.DropDownItems.Add(
-                    "Power BI Paginated Report",
-                    MenuIcons.Ssrs,
+                    "Power BI (Paginated Report) (Beta)",
+                    MenuIcons.PowerBi,
                     (s, e) => owner.RunForSelection(CreatePowerBiReportAsync));
 
                 submenu.DropDownItems.Add(new ToolStripSeparator());
@@ -464,6 +459,8 @@ namespace Flank.SsmsExtension
 
         public static Image? Ssrs => icons.Value[1];
 
+        public static Image? PowerBi => icons.Value[2];
+
         private static Image?[] Load()
         {
             try
@@ -471,14 +468,14 @@ namespace Flank.SsmsExtension
                 using (var stream = typeof(MenuIcons).Assembly.GetManifestResourceStream("Flank.MenuIcons.png"))
                 using (var strip = new Bitmap(stream))
                 {
-                    return new Image?[] { Slice(strip, 0), Slice(strip, 1) };
+                    return new Image?[] { Slice(strip, 0), Slice(strip, 1), Slice(strip, 2) };
                 }
             }
             catch (Exception ex)
             {
                 // A missing icon shouldn't stop the menu working.
                 System.Diagnostics.Debug.WriteLine($"Flank: could not load menu icons: {ex}");
-                return new Image?[2];
+                return new Image?[3];
             }
         }
 
