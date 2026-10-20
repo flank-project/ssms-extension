@@ -84,8 +84,13 @@ namespace Flank.SsmsExtension
                 AutoCompleteMode = AutoCompleteMode.SuggestAppend,
                 AutoCompleteSource = AutoCompleteSource.ListItems,
             };
+            // Picking a procedure means wanting the dropdown: tick it too.
             procedureComboBox.SelectionChangeCommitted += (s, e) =>
-                BeginInvoke((Action)(() => LoadList(keepSelection: false)));
+                BeginInvoke((Action)(() =>
+                {
+                    useList.Checked = true;
+                    LoadList(keepSelection: false);
+                }));
             procedureComboBox.TextUpdate += (s, e) =>
             {
                 list = null;
@@ -94,7 +99,10 @@ namespace Flank.SsmsExtension
             procedureComboBox.Leave += (s, e) =>
             {
                 if (list == null && procedureComboBox.Text.Trim().Length > 0)
+                {
+                    useList.Checked = true;
                     LoadList(keepSelection: false);
+                }
             };
 
             listStatus = new Label
@@ -183,7 +191,6 @@ namespace Flank.SsmsExtension
         private void UpdateEnabled()
         {
             bool on = useList.Checked;
-            procedureComboBox.Enabled = on;
             labelComboBox.Enabled = on && list != null;
             valueComboBox.Enabled = on && list != null;
             preview.Enabled = on;
