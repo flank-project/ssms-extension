@@ -85,6 +85,20 @@ public static partial class ExcelExporter
             var list = parameter.List!;
             string columns = string.Join(", ", list.Columns.Select(c => "\"" + EscapeM(c) + "\""));
 
+            if (list.Sql == null)
+            {
+                // Fixed choices: the table itself, so refreshing needs no database.
+                bool labelled = list.Columns.Count > 1;
+                string rows = string.Join(", ", list.Rows.Select(row => labelled
+                    ? $"{{{MLiteral(row.Label)}, {MLiteral(row.Value)}}}"
+                    : $"{{{MLiteral(row.Value)}}}"));
+
+                m.Append($@"
+
+shared {list.QueryName} = #table({{{columns}}}, {{{rows}}});");
+                continue;
+            }
+
             m.Append($@"
 
 shared {list.QueryName} = let
@@ -95,6 +109,28 @@ in
         }
 
         return m.ToString();
+    }
+
+    /// <summary>An M literal for a fixed choice: a number, logical, date, datetime or text.</summary>
+    private static string MLiteral(object? value)
+    {
+        switch (value)
+        {
+            case null:
+                return "null";
+            case bool flag:
+                return flag ? "true" : "false";
+            case DateTime date:
+                return date.TimeOfDay == TimeSpan.Zero
+                    ? $"#date({date.Year}, {date.Month}, {date.Day})"
+                    : $"#datetime({date.Year}, {date.Month}, {date.Day}, {date.Hour}, {date.Minute}, {date.Second})";
+            case string text:
+                return "\"" + EscapeM(text) + "\"";
+            case IFormattable number:
+                return number.ToString(null, System.Globalization.CultureInfo.InvariantCulture);
+            default:
+                return "\"" + EscapeM(value.ToString() ?? "") + "\"";
+        }
     }
 
     /// <summary>

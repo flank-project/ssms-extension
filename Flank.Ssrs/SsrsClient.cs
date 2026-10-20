@@ -264,15 +264,21 @@ namespace Flank.Ssrs
 
             foreach (var setting in settings ?? new ParameterSettings[0])
             {
-                if (!setting.HasList)
+                // Typed-in values are written into the parameter itself.
+                if (!setting.HasList || setting.ListSource == ListSource.Values)
                     continue;
+
+                string commandXml = setting.ListSource == ListSource.Query
+                    ? $@"
+        <CommandText>{XmlEscape(setting.ListQuery!)}</CommandText>"
+                    : $@"
+        <CommandType>StoredProcedure</CommandType>
+        <CommandText>{XmlEscape(setting.ListProcedure!)}</CommandText>";
 
                 dataSets.Append($@"
     <DataSet Name=""{XmlEscape(ListDataSetName(setting.SqlName.TrimStart('@')))}"">
       <Query>
-        <DataSourceName>{XmlEscape(dataSource.Name)}</DataSourceName>
-        <CommandType>StoredProcedure</CommandType>
-        <CommandText>{XmlEscape(setting.ListProcedure!)}</CommandText>
+        <DataSourceName>{XmlEscape(dataSource.Name)}</DataSourceName>{commandXml}
       </Query>
       <Fields>
         <Field Name=""Value"">
@@ -359,17 +365,26 @@ namespace Flank.Ssrs
       </DefaultValue>";
                 }
 
-                // A dropdown from the list procedure's dataset (see ListDataSetsXml).
-                string validValuesXml = setting?.HasList == true
+                // A dropdown: typed-in values, or the list's dataset (see ListDataSetsXml).
+                string validValuesXml = setting?.HasList != true ? ""
+                    : setting.ListSource == ListSource.Values
                     ? $@"
+      <ValidValues>
+        <ParameterValues>{string.Concat(setting.ListRows.Select(row => $@"
+          <ParameterValue>
+            <Value>{XmlEscape(FormatRdlValue(row.Key!, rdlType))}</Value>
+            <Label>{XmlEscape(Convert.ToString(row.Value, System.Globalization.CultureInfo.InvariantCulture) ?? "")}</Label>
+          </ParameterValue>"))}
+        </ParameterValues>
+      </ValidValues>"
+                    : $@"
       <ValidValues>
         <DataSetReference>
           <DataSetName>{XmlEscape(ListDataSetName(reportParameterName))}</DataSetName>
           <ValueField>Value</ValueField>
           <LabelField>Label</LabelField>
         </DataSetReference>
-      </ValidValues>"
-                    : "";
+      </ValidValues>";
 
                 reportParameters.Append($@"
     <ReportParameter Name=""{XmlEscape(reportParameterName)}"">

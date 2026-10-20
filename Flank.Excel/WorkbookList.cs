@@ -8,17 +8,20 @@ namespace Flank.Excel;
 /// </summary>
 public sealed class WorkbookList
 {
-    /// <param name="sql">The query that returns the choices, e.g. "EXEC [dbo].[get_leagues]".</param>
+    /// <param name="sql">
+    /// The query that returns the choices, e.g. "EXEC [dbo].[get_leagues]";
+    /// null for fixed choices, which the workbook holds (<see cref="Rows"/>).
+    /// </param>
     /// <param name="valueColumn">The column passed to the parameter.</param>
     /// <param name="labelColumn">The column shown in the dropdown; may be the same as the value column.</param>
-    public WorkbookList(string sql, string valueColumn, string labelColumn)
+    public WorkbookList(string? sql, string valueColumn, string labelColumn)
     {
         Sql = sql;
         ValueColumn = valueColumn;
         LabelColumn = labelColumn;
     }
 
-    public string Sql { get; }
+    public string? Sql { get; }
 
     public string ValueColumn { get; }
 

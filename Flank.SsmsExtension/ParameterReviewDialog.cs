@@ -100,12 +100,14 @@ namespace Flank.SsmsExtension
             grid.Columns.Add(new DataGridViewComboBoxColumn
             {
                 Name = "IfBlank", HeaderText = "If left blank", FillWeight = 27, FlatStyle = FlatStyle.Flat,
-                ToolTipText = "Require input; omit the parameter from the call, so the procedure's own default applies; or pass NULL.",
+                ToolTipText = settings.Any(s => s.Parameter.HasDefault)
+                    ? "Require input; omit the parameter from the call, so the procedure's own default applies; or pass NULL."
+                    : "Require input, or pass NULL.",
             });
             grid.Columns.Add(new DataGridViewTextBoxColumn
             {
                 Name = "Guardrails", HeaderText = "Guardrails", ReadOnly = true, FillWeight = 20,
-                ToolTipText = "Limits beyond the SQL type, e.g. a dropdown of choices from a procedure.",
+                ToolTipText = "Limits beyond the SQL type, e.g. a dropdown of choices.",
             });
             // Links rather than buttons: an empty one (no guardrail to remove) shows nothing.
             grid.Columns.Add(new DataGridViewLinkColumn

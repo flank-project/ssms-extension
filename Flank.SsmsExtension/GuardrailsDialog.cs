@@ -1,5 +1,6 @@
 using Flank.Ssrs;
 using System;
+using System.Collections.Generic;
 using System.Data;
 using System.Drawing;
 using System.Linq;
@@ -9,21 +10,50 @@ namespace Flank.SsmsExtension
 {
     /// <summary>
     /// Guardrails for one parameter, beyond its type: for now, a dropdown of
-    /// choices from a stored procedure, with the column shown and the column
-    /// passed chosen by the user. Laid out in sections so others (ranges,
-    /// patterns) can follow.
+    /// choices from a stored procedure, a query, or values typed in, with the
+    /// column shown and the column passed chosen by the user. Laid out in
+    /// sections so others (ranges, patterns) can follow.
     /// </summary>
     internal sealed class GuardrailsDialog : Form
     {
+        private const int Indent = 36;
+        private const int PanelWidth = 546;
+
         private readonly ParameterSettings setting;
         private readonly Func<IDbConnection> openConnection;
         private readonly CheckBox useList;
+
+        private readonly RadioButton fromProcedure;
+        private readonly RadioButton fromQuery;
+        private readonly RadioButton fromValues;
+
+        private readonly Panel procedurePanel;
         private readonly ComboBox procedureComboBox;
+
+        private readonly Panel queryPanel;
+        private readonly TextBox queryTextBox;
+
+        private readonly Panel valuesPanel;
+        private readonly RadioButton valuesOnly;
+        private readonly RadioButton valuesAndLabels;
+        private readonly TextBox valuesTextBox;
+        private readonly Label labelsLabel;
+        private readonly TextBox labelsTextBox;
+
         private readonly Label listStatus;
+        private readonly Label showLabel;
+        private readonly Label passLabel;
+        private readonly Label showHint;
+        private readonly Label passHint;
         private readonly ComboBox labelComboBox;
         private readonly ComboBox valueComboBox;
         private readonly DataGridView preview;
+
+        // From a run of the procedure or query.
         private ProcedureList.Description? list;
+
+        // Typed-in values, when they parse.
+        private IReadOnlyList<KeyValuePair<object?, object?>>? typedRows;
 
         public GuardrailsDialog(ParameterSettings setting, Func<IDbConnection> openConnection)
         {
@@ -35,7 +65,7 @@ namespace Flank.SsmsExtension
             StartPosition = FormStartPosition.CenterParent;
             MaximizeBox = false;
             MinimizeBox = false;
-            ClientSize = new Size(560, 470);
+            ClientSize = new Size(600, 650);
 
             Controls.Add(new Label
             {
@@ -64,71 +94,143 @@ namespace Flank.SsmsExtension
 
             useList = new CheckBox
             {
-                Text = "Choose from a list of values returned by a stored procedure",
+                Text = "People choose from a list",
                 Location = new Point(18, 102),
                 Width = 520,
                 Checked = setting.HasList,
             };
             useList.CheckedChanged += (s, e) => UpdateEnabled();
 
-            Controls.Add(new Label { Text = "Procedure:", Location = new Point(36, 135), Width = 110 });
+            Controls.Add(new Label { Text = "Choices from:", Location = new Point(Indent, 133), AutoSize = true });
 
-            // The database's procedures without parameters; others (all parameters
-            // defaulted) can be typed. Picking or leaving the box loads the columns.
+            fromProcedure = new RadioButton { Text = "A stored procedure", Location = new Point(130, 130), Width = 140 };
+            fromQuery = new RadioButton { Text = "A query", Location = new Point(275, 130), Width = 90 };
+            fromValues = new RadioButton { Text = "Values typed here", Location = new Point(370, 130), Width = 160 };
+
+            // ---- From a procedure
+            procedurePanel = new Panel { Location = new Point(Indent, 162), Size = new Size(PanelWidth, 190) };
+            procedurePanel.Controls.Add(new Label { Text = "Procedure:", Location = new Point(0, 3), Width = 90 });
+
+            // A plain list: typing to match only works from the start of the
+            // name, which is always "[schema]".
             procedureComboBox = new ComboBox
             {
-                Text = setting.ListProcedure ?? "",
-                Location = new Point(150, 132),
-                Width = 388,
-                DropDownStyle = ComboBoxStyle.DropDown,
-                AutoCompleteMode = AutoCompleteMode.SuggestAppend,
-                AutoCompleteSource = AutoCompleteSource.ListItems,
+                Location = new Point(94, 0),
+                Width = PanelWidth - 94,
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Name = "ListProcedure",
             };
-            // Picking a procedure means wanting the dropdown: tick it too.
             procedureComboBox.SelectionChangeCommitted += (s, e) =>
                 BeginInvoke((Action)(() =>
                 {
+                    // Picking one means wanting the dropdown: tick it too.
                     useList.Checked = true;
                     LoadList(keepSelection: false);
                 }));
-            procedureComboBox.TextUpdate += (s, e) =>
+
+            procedurePanel.Controls.Add(procedureComboBox);
+            procedurePanel.Controls.Add(Hint(
+                "Procedures that take no parameters. For one that does, choose A query and call it with values, " +
+                "e.g. EXEC dbo.get_teams @active = 1.",
+                new Point(94, 28),
+                PanelWidth - 94));
+
+            // ---- From a query
+            queryPanel = new Panel { Location = new Point(Indent, 162), Size = new Size(PanelWidth, 190) };
+
+            queryTextBox = new TextBox
             {
+                Location = new Point(0, 0),
+                Size = new Size(PanelWidth, 120),
+                Multiline = true,
+                ScrollBars = ScrollBars.Both,
+                WordWrap = false,
+                AcceptsReturn = true,
+                AcceptsTab = true,
+                Font = new Font("Consolas", 9),
+                Text = setting.ListQuery ?? "",
+                Name = "ListQuery",
+            };
+            queryTextBox.TextChanged += (s, e) =>
+            {
+                if (queryTextBox.Focused)
+                    useList.Checked = true;
+
                 list = null;
                 ShowColumns();
             };
-            procedureComboBox.Leave += (s, e) =>
+
+            var runQuery = new Button { Text = "Run query", Location = new Point(0, 128), Width = 100 };
+            runQuery.Click += (s, e) =>
             {
-                if (list == null && procedureComboBox.Text.Trim().Length > 0)
-                {
-                    useList.Checked = true;
-                    LoadList(keepSelection: false);
-                }
+                useList.Checked = true;
+                LoadList(keepSelection: false);
             };
 
+            queryPanel.Controls.Add(queryTextBox);
+            queryPanel.Controls.Add(runQuery);
+            queryPanel.Controls.Add(Hint(
+                "Any query that returns the choices, e.g. SELECT id, name FROM dbo.leagues WHERE active = 1. " +
+                "Run it, then choose its columns.",
+                new Point(108, 128),
+                PanelWidth - 108));
+
+            // ---- Typed-in values
+            valuesPanel = new Panel { Location = new Point(Indent, 162), Size = new Size(PanelWidth, 190) };
+
+            bool labelled = ProcedureList.HasLabels(setting);
+            valuesOnly = new RadioButton { Text = "Values only", Location = new Point(0, 0), Width = 110, Checked = !labelled };
+            valuesAndLabels = new RadioButton { Text = "Values, each with a label people see", Location = new Point(115, 0), Width = 300, Checked = labelled };
+
+            valuesPanel.Controls.Add(new Label { Text = "Values (one per line):", Location = new Point(0, 28), AutoSize = true });
+
+            valuesTextBox = ValuesBox(new Point(0, 46), "ListValues");
+            labelsLabel = new Label { Text = "Labels (same lines):", Location = new Point(PanelWidth / 2 + 6, 28), AutoSize = true };
+            labelsTextBox = ValuesBox(new Point(PanelWidth / 2 + 6, 46), "ListLabels");
+
+            if (setting.ListSource == ListSource.Values)
+            {
+                valuesTextBox.Text = string.Join(Environment.NewLine, setting.ListRows.Select(r => ProcedureList.FormatValue(r.Key)));
+                labelsTextBox.Text = labelled
+                    ? string.Join(Environment.NewLine, setting.ListRows.Select(r => Convert.ToString(r.Value)))
+                    : "";
+            }
+
+            valuesOnly.CheckedChanged += (s, e) => ParseValues();
+            valuesTextBox.TextChanged += (s, e) =>
+            {
+                if (valuesTextBox.Focused)
+                    useList.Checked = true;
+
+                ParseValues();
+            };
+            labelsTextBox.TextChanged += (s, e) => ParseValues();
+
+            valuesPanel.Controls.AddRange(new Control[] { valuesOnly, valuesAndLabels, valuesTextBox, labelsLabel, labelsTextBox });
+
+            // ---- Status, columns, preview (shared)
             listStatus = new Label
             {
-                Text = "Pick the procedure that returns the choices. Procedures that take parameters aren't listed; " +
-                       "type one whose parameters all have defaults.",
                 ForeColor = SystemColors.GrayText,
-                Location = new Point(150, 158),
-                Size = new Size(388, 32),
+                Location = new Point(Indent, 356),
+                Size = new Size(PanelWidth, 32),
             };
 
-            Controls.Add(new Label { Text = "Show:", Location = new Point(36, 197), Width = 110 });
-            labelComboBox = new ComboBox { Location = new Point(150, 194), Width = 200, DropDownStyle = ComboBoxStyle.DropDownList };
-            Controls.Add(new Label { Text = "what people pick from", ForeColor = SystemColors.GrayText, Location = new Point(358, 197), AutoSize = true });
+            showLabel = new Label { Text = "Show:", Location = new Point(Indent, 395), Width = 60 };
+            labelComboBox = new ComboBox { Location = new Point(100, 392), Width = 200, DropDownStyle = ComboBoxStyle.DropDownList };
+            showHint = Hint("what people pick from", new Point(308, 395), 270);
 
-            Controls.Add(new Label { Text = "Pass:", Location = new Point(36, 229), Width = 110 });
-            valueComboBox = new ComboBox { Location = new Point(150, 226), Width = 200, DropDownStyle = ComboBoxStyle.DropDownList };
-            Controls.Add(new Label { Text = "what the procedure receives", ForeColor = SystemColors.GrayText, Location = new Point(358, 229), AutoSize = true });
+            passLabel = new Label { Text = "Pass:", Location = new Point(Indent, 427), Width = 60 };
+            valueComboBox = new ComboBox { Location = new Point(100, 424), Width = 200, DropDownStyle = ComboBoxStyle.DropDownList };
+            passHint = Hint("what the parameter receives", new Point(308, 427), 270);
 
             labelComboBox.SelectedIndexChanged += (s, e) => ShowPreview();
             valueComboBox.SelectedIndexChanged += (s, e) => ShowPreview();
 
             preview = new DataGridView
             {
-                Location = new Point(36, 262),
-                Size = new Size(502, 150),
+                Location = new Point(Indent, 458),
+                Size = new Size(PanelWidth, 140),
                 ReadOnly = true,
                 AllowUserToAddRows = false,
                 AllowUserToDeleteRows = false,
@@ -138,29 +240,75 @@ namespace Flank.SsmsExtension
                 BackgroundColor = SystemColors.Window,
             };
 
-            var okButton = new Button { Text = "OK", Location = new Point(368, 428), Width = 80 };
+            var okButton = new Button { Text = "OK", Location = new Point(410, 610), Width = 80 };
             okButton.Click += (s, e) => Save();
 
-            var cancelButton = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Location = new Point(458, 428), Width = 80 };
+            var cancelButton = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Location = new Point(502, 610), Width = 80 };
 
             Controls.AddRange(new Control[]
             {
-                useList, procedureComboBox, listStatus, labelComboBox, valueComboBox, preview, okButton, cancelButton,
+                useList, fromProcedure, fromQuery, fromValues, procedurePanel, queryPanel, valuesPanel,
+                listStatus, showLabel, labelComboBox, showHint, passLabel, valueComboBox, passHint,
+                preview, okButton, cancelButton,
             });
 
-            AcceptButton = okButton;
             CancelButton = cancelButton;
 
-            UpdateEnabled();
+            fromProcedure.Checked = !setting.HasList || setting.ListSource == ListSource.Procedure;
+            fromQuery.Checked = setting.HasList && setting.ListSource == ListSource.Query;
+            fromValues.Checked = setting.HasList && setting.ListSource == ListSource.Values;
+
+            foreach (var radio in new[] { fromProcedure, fromQuery, fromValues })
+                radio.CheckedChanged += (s, e) =>
+                {
+                    if (((RadioButton)s).Checked)
+                    {
+                        useList.Checked = true;
+                        SourceChanged();
+                    }
+                };
+
+            SourceChanged();
 
             Shown += (s, e) =>
             {
                 LoadProcedures();
 
                 // Editing an existing list: load it so its columns can be changed.
-                if (setting.HasList)
+                if (setting.HasList && setting.ListSource != ListSource.Values)
                     LoadList(keepSelection: true);
             };
+        }
+
+        private ListSource Source =>
+            fromValues.Checked ? ListSource.Values : fromQuery.Checked ? ListSource.Query : ListSource.Procedure;
+
+        private static Label Hint(string text, Point location, int width) => new Label
+        {
+            Text = text,
+            ForeColor = SystemColors.GrayText,
+            Location = location,
+            Size = new Size(width, 32),
+        };
+
+        private static TextBox ValuesBox(Point location, string name) => new TextBox
+        {
+            Location = location,
+            Size = new Size(PanelWidth / 2 - 6, 140),
+            Multiline = true,
+            ScrollBars = ScrollBars.Vertical,
+            AcceptsReturn = true,
+            Name = name,
+        };
+
+        /// <summary>A procedure in the list: [schema].[name], shown as schema.name.</summary>
+        private sealed class ProcedureItem
+        {
+            public ProcedureItem(string name) => Name = name;
+
+            public string Name { get; }
+
+            public override string ToString() => Name.Replace("[", "").Replace("]", "");
         }
 
         private void LoadProcedures()
@@ -168,19 +316,31 @@ namespace Flank.SsmsExtension
             try
             {
                 Cursor = Cursors.WaitCursor;
-                string typed = procedureComboBox.Text;
 
                 using (var connection = openConnection())
                 {
-                    procedureComboBox.Items.AddRange(ProcedureList.Candidates(connection).Cast<object>().ToArray());
+                    procedureComboBox.Items.AddRange(
+                        ProcedureList.Candidates(connection).Select(n => (object)new ProcedureItem(n)).ToArray());
                 }
 
-                procedureComboBox.Text = typed;
+                // The procedure already chosen, even if it now takes parameters.
+                if (setting.ListSource == ListSource.Procedure && setting.ListProcedure != null)
+                {
+                    var current = procedureComboBox.Items.OfType<ProcedureItem>()
+                        .FirstOrDefault(i => string.Equals(i.Name, setting.ListProcedure, StringComparison.OrdinalIgnoreCase));
+
+                    if (current == null)
+                    {
+                        current = new ProcedureItem(setting.ListProcedure);
+                        procedureComboBox.Items.Insert(0, current);
+                    }
+
+                    procedureComboBox.SelectedItem = current;
+                }
             }
             catch (Exception ex)
             {
-                // The box still takes a typed name.
-                System.Diagnostics.Debug.WriteLine($"Flank: could not list procedures: {ex.Message}");
+                SetStatus("Flank couldn't list the database's procedures: " + ex.Message, error: true);
             }
             finally
             {
@@ -188,35 +348,76 @@ namespace Flank.SsmsExtension
             }
         }
 
+        private void SourceChanged()
+        {
+            var source = Source;
+
+            procedurePanel.Visible = source == ListSource.Procedure;
+            queryPanel.Visible = source == ListSource.Query;
+            valuesPanel.Visible = source == ListSource.Values;
+
+            bool columns = source != ListSource.Values;
+            foreach (Control control in new Control[] { showLabel, labelComboBox, showHint, passLabel, valueComboBox, passHint })
+                control.Visible = columns;
+
+            preview.Top = columns ? 458 : 392;
+            preview.Height = columns ? 140 : 206;
+
+            list = null;
+            typedRows = null;
+
+            if (source == ListSource.Values)
+            {
+                ParseValues();
+            }
+            else
+            {
+                SetStatus(
+                    source == ListSource.Procedure
+                        ? "Pick the procedure that returns the choices."
+                        : "Write the query, then Run query.",
+                    error: false);
+
+                // Back to a procedure that was already picked: show it again.
+                if (source == ListSource.Procedure && procedureComboBox.SelectedItem != null && IsHandleCreated)
+                    LoadList(keepSelection: setting.ListSource == ListSource.Procedure);
+                else
+                    ShowColumns();
+            }
+
+            UpdateEnabled();
+        }
+
         private void UpdateEnabled()
         {
-            bool on = useList.Checked;
-            labelComboBox.Enabled = on && list != null;
-            valueComboBox.Enabled = on && list != null;
-            preview.Enabled = on;
+            // The list's controls stay usable before the box is ticked: using them ticks it.
+            labelComboBox.Enabled = list != null;
+            valueComboBox.Enabled = list != null;
         }
 
         private void LoadList(bool keepSelection)
         {
-            string name = procedureComboBox.Text.Trim();
-
-            if (name.Length == 0)
-            {
-                SetStatus("Enter a stored procedure, e.g. dbo.get_leagues.", error: true);
-                return;
-            }
-
             try
             {
                 Cursor = Cursors.WaitCursor;
 
-                using (var connection = openConnection())
+                if (Source == ListSource.Procedure)
                 {
-                    list = ProcedureList.Describe(name, connection);
+                    if (!(procedureComboBox.SelectedItem is ProcedureItem item))
+                    {
+                        SetStatus("Pick the procedure that returns the choices.", error: true);
+                        return;
+                    }
+
+                    using (var connection = openConnection())
+                        list = ProcedureList.Describe(item.Name, connection);
+                }
+                else
+                {
+                    using (var connection = openConnection())
+                        list = ProcedureList.DescribeQuery(queryTextBox.Text, connection);
                 }
 
-                // Text, not TextUpdate (which only typing raises): the list stays loaded.
-                procedureComboBox.Text = list.Procedure;
                 SetStatus($"{list.Rows.Count:N0} choice(s), {list.Columns.Count} column(s).", error: false);
             }
             catch (Exception ex)
@@ -230,6 +431,29 @@ namespace Flank.SsmsExtension
             }
 
             ShowColumns(keepSelection);
+        }
+
+        /// <summary>Checks the typed-in values as they're typed, and previews them.</summary>
+        private void ParseValues()
+        {
+            labelsLabel.Visible = valuesAndLabels.Checked;
+            labelsTextBox.Visible = valuesAndLabels.Checked;
+            valuesTextBox.Width = valuesAndLabels.Checked ? PanelWidth / 2 - 6 : PanelWidth;
+
+            typedRows = ProcedureList.ParseValues(
+                setting.Parameter,
+                valuesTextBox.Text,
+                valuesAndLabels.Checked ? labelsTextBox.Text : null,
+                out string? problem);
+
+            if (typedRows != null)
+                SetStatus($"{typedRows.Count:N0} choice(s).", error: false);
+            else if (valuesTextBox.Text.Trim().Length == 0)
+                SetStatus($"Type the values, one per line, as {ProcedureCall.TypeDeclaration(setting.Parameter)}.", error: false);
+            else
+                SetStatus(problem!, error: true);
+
+            ShowPreview();
         }
 
         private void SetStatus(string text, bool error)
@@ -281,11 +505,25 @@ namespace Flank.SsmsExtension
                 ?? label;
         }
 
-        /// <summary>The first rows, Show then Pass, as people will see and the procedure receive them.</summary>
+        /// <summary>The first choices, Show then Pass, as people will see and the parameter receive them.</summary>
         private void ShowPreview()
         {
             preview.Columns.Clear();
             preview.Rows.Clear();
+
+            if (Source == ListSource.Values)
+            {
+                if (typedRows == null)
+                    return;
+
+                preview.Columns.Add("Show", "Show");
+                preview.Columns.Add("Pass", "Pass");
+
+                foreach (var row in typedRows.Take(200))
+                    preview.Rows.Add(row.Value, ProcedureList.FormatValue(row.Key));
+
+                return;
+            }
 
             if (list == null || labelComboBox.SelectedItem == null || valueComboBox.SelectedItem == null)
                 return;
@@ -310,9 +548,22 @@ namespace Flank.SsmsExtension
                 return;
             }
 
+            if (Source == ListSource.Values)
+            {
+                ParseValues();
+
+                if (typedRows == null)
+                    return;
+
+                ProcedureList.ApplyValues(setting, typedRows, valuesAndLabels.Checked);
+                DialogResult = DialogResult.OK;
+                Close();
+                return;
+            }
+
             if (list == null)
             {
-                LoadList(keepSelection: setting.HasList);
+                LoadList(keepSelection: setting.HasList && setting.ListSource == Source);
 
                 if (list == null)
                     return;
@@ -330,9 +581,22 @@ namespace Flank.SsmsExtension
         }
 
         /// <summary>A one-line description of a parameter's guardrails, for the review page.</summary>
-        public static string Summary(ParameterSettings setting) =>
-            setting.HasList
-                ? $"Dropdown: {setting.ListProcedure} ({setting.ListLabelColumn} → {setting.ListValueColumn})"
-                : "";
+        public static string Summary(ParameterSettings setting)
+        {
+            if (!setting.HasList)
+                return "";
+
+            switch (setting.ListSource)
+            {
+                case ListSource.Values:
+                    return $"Dropdown: {setting.ListRows.Count} value(s)" + (ProcedureList.HasLabels(setting) ? " with labels" : "");
+
+                case ListSource.Query:
+                    return $"Dropdown: query ({setting.ListLabelColumn} → {setting.ListValueColumn})";
+
+                default:
+                    return $"Dropdown: {setting.ListProcedure} ({setting.ListLabelColumn} → {setting.ListValueColumn})";
+            }
+        }
     }
 }

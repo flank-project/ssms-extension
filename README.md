@@ -187,8 +187,9 @@ WHERE league_id = @League_Id
 Before anything else, Flank asks how to run the query:
 
 1. **Run the SQL as written**, or **Turn it into a stored procedure** (give it
-   a name, e.g. `dbo.teams_since`). A procedure keeps the SQL in the database,
-   where you can change it later without re-creating the workbook or report
+   a new name, e.g. `dbo.teams_since`; Flank won't replace an existing one).
+   A procedure keeps the SQL in the database, where you can change it later
+   without re-creating the workbook or report
 2. **Edit the SQL**, adding or removing `@parameters`. Flank lists the ones it
    finds as you type
 3. **Choose each parameter's type**. Flank fills these in with SQL Server's
@@ -216,16 +217,26 @@ parameters, Flank shows them for review. For each one:
     procedure's own default applies (only for parameters that have one)
   - **Pass NULL**
 - **Guardrails** (**Add…**): limits beyond the SQL type. For now, a
-  **dropdown list**: pick a stored procedure that returns the choices (ones
-  taking no parameters are listed; type one whose parameters all have
-  defaults), then choose which of its columns people pick from (**Show**) and
-  which the procedure receives (**Pass**), e.g. `dbo.get_leagues`: show `name`,
-  pass `id`. The run on the next page offers the same dropdown
-  - **SSRS and Power BI**: the report parameter's available values come from the procedure
+  **dropdown list**, with choices from one of:
+  - **A stored procedure** that takes no parameters (picked from a list).
+    Choose which of its columns people pick from (**Show**) and which the
+    parameter receives (**Pass**), e.g. `dbo.get_leagues`: show `name`, pass `id`
+  - **A query** written there and then, e.g. `SELECT id, name FROM dbo.leagues
+    WHERE active = 1`, or `EXEC dbo.get_teams @active = 1` for a procedure that
+    takes parameters. **Run query**, then choose **Show** and **Pass** as above
+  - **Values typed here**, one per line, checked against the parameter's type
+    as you type. **Values only** shows people the values themselves; **Values,
+    each with a label people see** takes a second list of labels, one per value
+    on the same line number (Flank checks the two lists are the same length)
+
+  The run on the next page offers the same dropdown.
+  - **SSRS and Power BI**: the report parameter's available values come from
+    the procedure or query, or are the typed values themselves
   - **Excel**: the choices load to a table on a hidden **DropdownOptions**
     sheet, one table and query per dropdown, named after its parameter (e.g.
     `League_options`), and the cell becomes a dropdown of the labels.
-    **Refresh All** reloads the choices, and the workbook looks up the value
+    **Refresh All** reloads the choices (typed values are held in the
+    workbook, so they need no database), and the workbook looks up the value
     for the label chosen, always from the freshly loaded choices
 
 ## Uninstall

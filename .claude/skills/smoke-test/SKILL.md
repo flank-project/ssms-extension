@@ -348,8 +348,10 @@ Right to expand, and type-ahead (`dbo.flank_t`) to select.
 ### dropdown
 
 `review-excel` with a list: on the review page, click **Add...** in League's
-Guardrails cell (or Tab to it and Space). In **Guardrails for League**, tick
-the dropdown checkbox, pick `[dbo].[get_leagues]` from the Procedure list (it
+Guardrails cell (or Tab to it and Space). In **Guardrails for League**,
+**A stored procedure** is selected and the controls work before the box is
+ticked (using them ticks it). Open the Procedure list (Tab to it, alt+Down;
+it's a plain list of `schema.name`, no typing) and pick `dbo.get_leagues` (it
 loads the columns: Show `name`, Pass `id`, with a preview), OK. The row shows
 "Dropdown: [dbo].[get_leagues] (name → id)" with Edit... and Remove. Next.
 The run page shows League as a dropdown of league names; pick NFL, run (Team 1
@@ -359,6 +361,24 @@ OK, privacy levels as in `review-excel`): Team 4, league_id 3. Data > Queries &
 Connections shows `League_options`. Then Power BI on the same procedure with
 the same dropdown, publish, and `verify-pbi.ps1 -Report (Get-Clipboard)
 -Parameters "League_Id=3"`: 1 row.
+
+The other list sources (on any review page; `query-params`' query is
+quickest):
+
+- **A query**: paste `SELECT id, name FROM leagues WHERE id <= 3` into the
+  box, press **Run query** (`BM_CLICK`): "3 choice(s), 2 column(s)", Show
+  `name`, Pass `id`.
+- **Values typed here**: paste `1`, `2`, `3` (one per line) into Values,
+  choose **Values, each with a label people see**: "Type a label for each of
+  the 3 value(s)". Paste `NBA` and `NFL` into Labels: "3 value(s) but 2
+  label(s)". Add `MLB`: "3 choice(s)" and the preview pairs them. OK: the
+  row shows "Dropdown: 3 value(s) with labels". Run with NFL (Team 1 and
+  Team 2). For SSRS, `verify-ssrs.ps1 ... -Parameters "League_Id=2;..."`
+  renders and `League_Id=7` fails as not a valid value. For Excel, typing
+  MLB in B5 and refreshing gives Team 4 (the list itself is held in the
+  workbook, no query).
+- Setup page, **Turn it into a stored procedure** named `dbo.get_leagues`:
+  Next says it already exists and stays on the first page.
 
 ### query-pbi
 

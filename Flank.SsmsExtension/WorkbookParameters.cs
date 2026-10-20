@@ -23,7 +23,7 @@ namespace Flank.SsmsExtension
 
             if (setting.HasList)
             {
-                cell.List = new WorkbookList("EXEC " + setting.ListProcedure, setting.ListValueColumn!, setting.ListLabelColumn!)
+                cell.List = new WorkbookList(setting.ListSql, setting.ListValueColumn!, setting.ListLabelColumn!)
                 {
                     Rows = setting.ListRows.Select(row => (row.Key, row.Value)).ToList(),
                 };

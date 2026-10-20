@@ -194,6 +194,84 @@ public class ParameterSettingsWorkflowTests
     }
 
     [Fact]
+    public void A_query_supplies_a_list()
+    {
+        var settings = ParameterSettings.FromProcedure(Discover(out _))[0];
+
+        using (var connection = TestSettings.OpenSqlConnection())
+        {
+            var list = ProcedureList.DescribeQuery("SELECT id, name FROM leagues WHERE id <= 2", connection);
+            ProcedureList.Apply(settings, list, valueColumn: "id", labelColumn: "name");
+        }
+
+        Assert.Equal(ListSource.Query, settings.ListSource);
+        Assert.Equal("SELECT id, name FROM leagues WHERE id <= 2", settings.ListSql);
+        Assert.Null(settings.ListProcedure);
+        Assert.Equal(2, settings.ListRows.Count);
+    }
+
+    [Fact]
+    public void A_list_query_must_not_need_values()
+    {
+        using var connection = TestSettings.OpenSqlConnection();
+
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            ProcedureList.DescribeQuery("SELECT id, name FROM leagues WHERE id = @id", connection));
+
+        Assert.Contains("@id", ex.Message);
+    }
+
+    [Fact]
+    public void Ssrs_report_with_query_and_typed_value_dropdowns_renders()
+    {
+        var parameters = Discover(out var columns);
+        var settings = ParameterSettings.FromProcedure(parameters);
+
+        using (var connection = TestSettings.OpenSqlConnection())
+        {
+            var list = ProcedureList.DescribeQuery("SELECT id, name FROM leagues", connection);
+            ProcedureList.Apply(settings[0], list, "id", "name");
+        }
+
+        // @Name_Like nvarchar(50): typed-in values with labels.
+        var nameLike = settings.Single(s => s.SqlName == "@Name_Like");
+        var rows = ProcedureList.ParseValues(nameLike.Parameter, "%\nTeam 1%", "Any team\nTeam 1", out string? problem);
+        Assert.True(rows != null, problem);
+        ProcedureList.ApplyValues(nameLike, rows!, withLabels: true);
+
+        folder.EnsureClean();
+        new SsrsClient(TestSettings.ReportServer, TestSettings.ReportPortal).CreateReportFromStoredProcedure(
+            "[dbo].[flank_test_params]", parameters, columns, TestSettings.ReportDataSource,
+            folder.Path, "Query and typed dropdowns", settings: settings);
+
+        string output = Verifier.VerifySsrs(folder.Path + "/Query and typed dropdowns", "League_Id=1;Name_Like=%");
+        Assert.Contains("Value_team_name", output);
+    }
+
+    [Fact]
+    public async Task Power_bi_report_with_a_typed_value_dropdown_exports()
+    {
+        await workspace.EnsureReadyAsync();
+        var parameters = Discover(out var columns);
+        var settings = ParameterSettings.FromProcedure(parameters);
+
+        var rows = ProcedureList.ParseValues(settings[0].Parameter, "1\n2\n3", "NBA\nNFL\nMLB", out string? problem);
+        Assert.True(rows != null, problem);
+        ProcedureList.ApplyValues(settings[0], rows!, withLabels: true);
+
+        string rdl = SsrsClient.BuildStoredProcedureReportRdl(
+            "[dbo].[flank_test_params]", parameters, columns,
+            RdlDataSource.AzureSql(TestSettings.Server, TestSettings.Database), settings: settings);
+
+        var (username, password) = PowerBiTestWorkspace.SqlLogin;
+        var report = await PowerBiPublisher.PublishAsync(
+            workspace.Client, workspace.WorkspaceId, PowerBiTestWorkspace.ReportPrefix + "Typed dropdown", rdl,
+            TestSettings.Server, TestSettings.Database, new PowerBiDataAccess.ReportLogin(username, password));
+
+        Verifier.VerifyPowerBi(report.Url, "League_Id=1");
+    }
+
+    [Fact]
     public async Task Power_bi_report_with_reviewed_parameters_exports_with_only_the_required_one()
     {
         await workspace.EnsureReadyAsync();

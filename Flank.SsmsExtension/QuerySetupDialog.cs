@@ -431,6 +431,9 @@ namespace Flank.SsmsExtension
                     return;
                 }
 
+                if (asProcedure.Checked && !CheckNameIsFree())
+                    return;
+
                 ShowPage(1);
                 return;
             }
@@ -489,6 +492,10 @@ namespace Flank.SsmsExtension
             string name = NormalizeProcedureName(procedureName.Text)!;
             string script = QueryParameters.CreateProcedureScript(name, parameters, sql);
 
+            // Checked on the first page too; someone may have created it since.
+            if (!CheckNameIsFree())
+                return;
+
             try
             {
                 Cursor = Cursors.WaitCursor;
@@ -521,6 +528,54 @@ namespace Flank.SsmsExtension
             Setup = new QuerySetup(sql, parameters, new ProcedureSource(server, database, schema, procedure, openConnection));
             DialogResult = DialogResult.OK;
             Close();
+        }
+
+        /// <summary>
+        /// False (after telling the user) if something in the database already
+        /// has the new procedure's name, or the check fails.
+        /// </summary>
+        private bool CheckNameIsFree()
+        {
+            string name = NormalizeProcedureName(procedureName.Text)!;
+
+            try
+            {
+                Cursor = Cursors.WaitCursor;
+
+                using (var connection = openConnection())
+                using (var command = connection.CreateCommand())
+                {
+                    command.CommandText = "SELECT o.type_desc FROM sys.objects AS o WHERE o.object_id = OBJECT_ID(@name);";
+
+                    var parameter = command.CreateParameter();
+                    parameter.ParameterName = "@name";
+                    parameter.DbType = DbType.String;
+                    parameter.Size = 4000;
+                    parameter.Value = name;
+                    command.Parameters.Add(parameter);
+
+                    if (command.ExecuteScalar() is string type)
+                    {
+                        // SQL_STORED_PROCEDURE -> stored procedure, USER_TABLE -> table.
+                        string what = type.Replace("SQL_", "").Replace("USER_", "").Replace('_', ' ').ToLowerInvariant();
+                        Problem($"{name} already exists in {database} (a {what}). Choose another name.");
+                        ShowPage(0);
+                        procedureName.Select();
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Problem("Flank couldn't check whether " + name + " already exists.\n\n" + ex.Message);
+                return false;
+            }
+            finally
+            {
+                Cursor = Cursors.Default;
+            }
         }
 
         private void Problem(string message) =>
