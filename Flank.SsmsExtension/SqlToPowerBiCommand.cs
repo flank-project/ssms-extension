@@ -54,20 +54,43 @@ namespace Flank.SsmsExtension
                 (connection as DbConnection)?.DataSource ??
                 "";
 
+            // As written or as a procedure, with any @parameters and their types.
+            var setup = QueryWorkflows.SetUp(server, connection.Database, sql, connection, "report");
+            if (setup == null)
+                return;
+
+            if (setup.Procedure != null)
+            {
+                await ProcedureWorkflows.CreatePowerBiReportAsync(setup.Procedure);
+                return;
+            }
+
+            ReviewedQuery? reviewed = null;
+
+            if (setup.Parameters.Count > 0)
+            {
+                reviewed = QueryWorkflows.ReviewAndRun(setup, connection, "report");
+                if (reviewed == null)
+                    return;
+            }
+
             await PowerBiWorkflow.RunAsync(
                 server,
                 connection.Database,
-                sql,
+                setup.Sql,
                 storedProcedure: null,
                 defaultReportName: "SSMS Query",
                 preparingStatus: "Analyzing query...",
                 buildRdl: (options, dataSource) =>
                 {
+                    if (reviewed != null)
+                        return SsrsClient.BuildTextReportRdl(setup.Sql, reviewed.Columns, dataSource, setup.Parameters, reviewed.Settings);
+
                     IReadOnlyList<ReportColumn> columns = null!;
                     SsmsQueryHelper.UseBorrowedConnection(connection, c =>
-                        columns = SqlMetadataDiscovery.DiscoverQueryColumns(options.Sql!, c));
+                        columns = SqlMetadataDiscovery.DiscoverQueryColumns(setup.Sql, c));
 
-                    return SsrsClient.BuildTextReportRdl(options.Sql!, columns, dataSource);
+                    return SsrsClient.BuildTextReportRdl(setup.Sql, columns, dataSource);
                 });
         }
     }

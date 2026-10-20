@@ -65,10 +65,14 @@ namespace Flank.SsmsExtension
         private readonly Button backButton;
         private readonly Button nextButton;
 
-        // From the parameter review page, for the procedure's own parameters.
+        // From the parameter review page, for the procedure's or query's parameters.
         private readonly IReadOnlyList<ParameterSettings>? parameterSettings;
 
         /// <param name="procedure">[schema].[name] when creating from a stored procedure.</param>
+        /// <param name="procedureParameters">
+        /// The procedure's parameters; for a query, its @parameters (also
+        /// declared on the procedure if the query is turned into one).
+        /// </param>
         /// <param name="query">The query, when creating from the query editor.</param>
         /// <param name="queryTables">Tables/views the query reads, resolved as [schema].[name].</param>
         /// <param name="queryTablesProblem">Why <paramref name="queryTables"/> couldn't be found, if not.</param>
@@ -440,6 +444,7 @@ namespace Flank.SsmsExtension
                 Scope = effective != null ? AccessScope.Procedure : AccessScope.Objects,
                 Procedure = effective ?? "",
                 ProcedureBody = procedure == null && effective != null ? query : null,
+                ProcedureParameters = procedure == null ? procedureParameters : Array.Empty<SprocParameter>(),
                 Objects = queryTables,
             };
 
@@ -526,12 +531,8 @@ namespace Flank.SsmsExtension
             }
 
             string? effective = EffectiveProcedure;
-            var inputs = effective == procedure && procedure != null
-                ? procedureParameters.Where(p => !p.IsOutput).ToList()
-                : new List<SprocParameter>();
-            var outputs = effective == procedure && procedure != null
-                ? procedureParameters.Where(p => p.IsOutput).ToList()
-                : new List<SprocParameter>();
+            var inputs = procedureParameters.Where(p => !p.IsOutput).ToList();
+            var outputs = procedureParameters.Where(p => p.IsOutput).ToList();
 
             if (me == null)
             {
@@ -557,7 +558,7 @@ namespace Flank.SsmsExtension
             preview = new PreviewPanel(
                 inputs,
                 new Size(PageWidth, runPage.Height - 60),
-                effective == procedure ? parameterSettings : null)
+                parameterSettings)
             {
                 Location = new Point(0, 58),
                 Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
@@ -573,7 +574,7 @@ namespace Flank.SsmsExtension
                 {
                     Func<IReadOnlyList<ResultSet>> run = effective != null
                         ? () => StoredProcedureRunner.Run(connection, effective, named, PreviewPanel.MaxRows, outputs)
-                        : () => StoredProcedureRunner.RunQuery(connection, query!, PreviewPanel.MaxRows);
+                        : () => StoredProcedureRunner.RunQuery(connection, query!, inputs, values, PreviewPanel.MaxRows);
 
                     results = user == null ? run() : AccessTester.RunAs(connection, user, run);
                 });
@@ -658,9 +659,8 @@ namespace Flank.SsmsExtension
             }
 
             bool fromProcedure = effective != null;
-            bool ownParameters = effective == procedure && procedure != null;
-            var parameters = ownParameters ? procedureParameters : new List<SprocParameter>();
-            var settings = ownParameters ? parameterSettings : null;
+            var parameters = procedureParameters;
+            var settings = parameterSettings;
 
             Request = new WorkbookRequest(
                 fromProcedure ? ProcedureCall.BuildExec(effective!, parameters, settings) : query!,

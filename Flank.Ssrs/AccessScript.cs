@@ -64,6 +64,9 @@ namespace Flank.Ssrs
         /// </summary>
         public string? ProcedureBody { get; set; }
 
+        /// <summary>The query's @parameters, declared on the procedure made from <see cref="ProcedureBody"/>.</summary>
+        public IReadOnlyList<SprocParameter> ProcedureParameters { get; set; } = Array.Empty<SprocParameter>();
+
         /// <summary>For <see cref="AccessScope.Objects"/>: [schema].[name] of each table or view.</summary>
         public IReadOnlyList<string> Objects { get; set; } = Array.Empty<string>();
     }
@@ -130,9 +133,8 @@ namespace Flank.Ssrs
             if (request.Scope == AccessScope.Procedure && request.ProcedureBody != null)
             {
                 // Must be the only statement in its batch.
-                statements.Add(
-                    $"CREATE PROCEDURE {request.Procedure}\nAS\nBEGIN\n    SET NOCOUNT ON;\n\n" +
-                    request.ProcedureBody.Trim().TrimEnd(';') + ";\nEND;");
+                statements.Add(QueryParameters.CreateProcedureScript(
+                    request.Procedure, request.ProcedureParameters, request.ProcedureBody));
             }
 
             switch (request.Scope)

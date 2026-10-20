@@ -124,14 +124,49 @@ namespace Flank.SsmsExtension
             }
 
             System.Data.IDbConnection queryConnection;
+
+            try
+            {
+                queryConnection = SsmsQueryHelper.GetCurrentConnection();
+            }
+            catch (Exception ex)
+            {
+                ExcelWorkflow.ShowFailure(
+                    "Reading SQL Server connection",
+                    ex,
+                    server,
+                    database,
+                    null);
+                return;
+            }
+
+            // As written or as a procedure, with any @parameters and their types.
+            var setup = QueryWorkflows.SetUp(server, database, sql, queryConnection, "workbook");
+            if (setup == null)
+                return;
+
+            if (setup.Procedure != null)
+            {
+                await ProcedureWorkflows.CreateExcelAsync(setup.Procedure);
+                return;
+            }
+
+            sql = setup.Sql;
+
+            var settings = ProcedureWorkflows.ReviewParameters(
+                QueryWorkflows.QueryName,
+                setup.Parameters,
+                "workbook",
+                () => new BorrowedConnection(queryConnection));
+            if (settings == null)
+                return;
+
             bool isAzure = false;
             IReadOnlyList<string> tables = Array.Empty<string>();
             string tablesProblem = null;
 
             try
             {
-                queryConnection = SsmsQueryHelper.GetCurrentConnection();
-
                 SsmsQueryHelper.UseBorrowedConnection(queryConnection, connection =>
                 {
                     isAzure = AccessDiscovery.IsAzureSqlDatabase(connection);
@@ -171,11 +206,12 @@ namespace Flank.SsmsExtension
                 database,
                 isAzure,
                 procedure: null,
-                procedureParameters: Array.Empty<SprocParameter>(),
+                procedureParameters: setup.Parameters,
                 query: sql,
                 queryTables: tables,
                 queryTablesProblem: tablesProblem,
-                action => SsmsQueryHelper.UseBorrowedConnection(queryConnection, action)))
+                action => SsmsQueryHelper.UseBorrowedConnection(queryConnection, action),
+                settings))
             {
                 if (wizard.ShowDialog() != System.Windows.Forms.DialogResult.OK || wizard.Request == null)
                     return;

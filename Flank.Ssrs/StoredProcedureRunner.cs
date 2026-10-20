@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Globalization;
@@ -98,6 +98,44 @@ namespace Flank.Ssrs
                 {
                     return ReadResults(reader, maxRows);
                 }
+            }
+        }
+
+        /// <summary>
+        /// Runs a query with parameters: each of the query's @names gets its
+        /// value, typed as declared (null or DBNull is NULL).
+        /// </summary>
+        public static IReadOnlyList<ResultSet> RunQuery(
+            IDbConnection connection,
+            string sql,
+            IReadOnlyList<SprocParameter> parameters,
+            IReadOnlyList<object?> values,
+            int maxRows,
+            int timeoutSeconds = 120)
+        {
+            using (var command = connection.CreateCommand())
+            {
+                command.CommandText = sql;
+                command.CommandTimeout = timeoutSeconds;
+                AddQueryParameters(command, parameters, values);
+
+                using (var reader = command.ExecuteReader())
+                {
+                    return ReadResults(reader, maxRows);
+                }
+            }
+        }
+
+        /// <summary>Adds each parameter, typed, with its value (missing or null: NULL).</summary>
+        internal static void AddQueryParameters(IDbCommand command, IReadOnlyList<SprocParameter> parameters, IReadOnlyList<object?>? values)
+        {
+            for (int i = 0; i < parameters.Count; i++)
+            {
+                var p = command.CreateParameter();
+                p.ParameterName = parameters[i].Name;
+                SetSqlType(p, parameters[i]);
+                p.Value = values != null && i < values.Count && values[i] != null ? values[i] : DBNull.Value;
+                command.Parameters.Add(p);
             }
         }
 

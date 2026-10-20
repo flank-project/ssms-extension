@@ -8,13 +8,21 @@ namespace Flank.Ssrs
     {
         public static IReadOnlyList<ReportColumn> DiscoverQueryColumns(
             string sql,
-            IDbConnection connection)
+            IDbConnection connection) =>
+            DiscoverQueryColumns(sql, connection, new SprocParameter[0]);
+
+        /// <param name="parameters">The query's undeclared @names, with their types (passed as NULL).</param>
+        public static IReadOnlyList<ReportColumn> DiscoverQueryColumns(
+            string sql,
+            IDbConnection connection,
+            IReadOnlyList<SprocParameter> parameters)
         {
             var columns = new List<ReportColumn>();
 
             using (var command = connection.CreateCommand())
             {
                 command.CommandText = sql;
+                StoredProcedureRunner.AddQueryParameters(command, parameters, null);
 
                 using (var reader = command.ExecuteReader(
                     System.Data.CommandBehavior.SchemaOnly))
