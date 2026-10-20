@@ -128,6 +128,9 @@ if ($tables.Count -eq 0) {
 $stamp = $tables | Where-Object Table -eq "LastRefreshed"
 $tables = @($tables | Where-Object Table -ne "LastRefreshed")
 
+# Dropdown choices (the hidden DropdownOptions sheet) aren't the data either.
+$tables = @($tables | Where-Object Sheet -ne "DropdownOptions")
+
 foreach ($t in $tables) {
     Write-Host "$($t.Sheet)/$($t.Table): $($t.Rows) rows; columns: $($t.Columns -join ', ')"
 }

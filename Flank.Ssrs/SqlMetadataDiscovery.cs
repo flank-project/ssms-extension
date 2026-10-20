@@ -133,6 +133,7 @@ ORDER BY p.parameter_id;";
                         {
                             p.HasDefault = true;
                             p.DefaultValue = declared.Value;
+                            p.DefaultText = declared.Text;
                         }
                     }
                 }

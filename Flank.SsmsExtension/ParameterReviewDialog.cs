@@ -16,7 +16,7 @@ namespace Flank.SsmsExtension
     /// </summary>
     internal sealed class ParameterReviewDialog : Form
     {
-        private const string RequiredText = "Required";
+        private const string RequiredText = "Require input";
         private const string NullText = "Pass NULL";
 
         private readonly IReadOnlyList<ParameterSettings> settings;
@@ -100,7 +100,7 @@ namespace Flank.SsmsExtension
             grid.Columns.Add(new DataGridViewComboBoxColumn
             {
                 Name = "IfBlank", HeaderText = "If left blank", FillWeight = 18, FlatStyle = FlatStyle.Flat,
-                ToolTipText = "Required; use the procedure's own default (the parameter is left out of the call); or pass NULL.",
+                ToolTipText = "Require input; omit the parameter from the call, so the procedure's own default applies; or pass NULL.",
             });
             grid.Columns.Add(new DataGridViewTextBoxColumn
             {
@@ -179,10 +179,19 @@ namespace Flank.SsmsExtension
             CancelButton = cancelButton;
         }
 
-        private static string UseDefaultText(SprocParameter parameter) =>
-            parameter.DefaultValue != null
-                ? $"Use procedure default ({parameter.DefaultValue})"
-                : "Use procedure default";
+        // Long defaults are cut short so the column stays narrow.
+        private const int DefaultTextLength = 24;
+
+        /// <summary>"Omit (defaults to 5)": in SQL terms, what leaving it out of the EXEC does.</summary>
+        private static string UseDefaultText(SprocParameter parameter)
+        {
+            string text = parameter.DefaultText ?? parameter.DefaultValue ?? "its default";
+
+            if (text.Length > DefaultTextLength)
+                text = text.Substring(0, DefaultTextLength - 1).TrimEnd() + "…";
+
+            return $"Omit (defaults to {text})";
+        }
 
         private void ShowGuardrails(int row)
         {

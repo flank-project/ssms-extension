@@ -110,6 +110,38 @@ public class ParameterSettingsWorkflowTests
     }
 
     [Fact]
+    public void The_columns_shown_and_passed_can_be_any_of_the_procedures_columns()
+    {
+        var settings = ParameterSettings.FromProcedure(Discover(out _))[0];
+
+        using (var connection = TestSettings.OpenSqlConnection())
+        {
+            var list = ProcedureList.Describe("dbo.get_leagues", connection);
+            Assert.Equal(new[] { "id", "name" }, list.Columns);
+
+            // Show the id, pass the name: the reverse of the column order.
+            ProcedureList.Apply(settings, list, valueColumn: "name", labelColumn: "id");
+        }
+
+        Assert.Equal("name", settings.ListValueColumn);
+        Assert.Equal("id", settings.ListLabelColumn);
+        Assert.Contains(settings.ListRows, row => Equals(row.Key, "NBA") && Equals(row.Value, 1));
+    }
+
+    [Fact]
+    public void Procedures_without_parameters_are_offered_as_lists()
+    {
+        TestProcedures.EnsureCreated();
+
+        using var connection = TestSettings.OpenSqlConnection();
+        var candidates = ProcedureList.Candidates(connection);
+
+        Assert.Contains("[dbo].[get_leagues]", candidates);
+        Assert.DoesNotContain("[dbo].[sgm_ListTeamsByLeague]", candidates);
+        Assert.DoesNotContain("[dbo].[flank_test_params]", candidates);
+    }
+
+    [Fact]
     public void A_procedure_that_needs_values_cant_supply_a_list()
     {
         var settings = ParameterSettings.FromProcedure(Discover(out _))[0];

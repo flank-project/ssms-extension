@@ -20,7 +20,39 @@ namespace Flank.SsmsExtension
 
         private readonly IReadOnlyList<SprocParameter> parameters;
         private readonly IReadOnlyList<ParameterSettings?> settings;
-        private readonly List<TextBox> inputs = new List<TextBox>();
+        // A TextBox, or a ComboBox of Choices for a parameter with a dropdown list.
+        private readonly List<Control> inputs = new List<Control>();
+
+        /// <summary>One of a list parameter's choices: shown by its label, passing its value.</summary>
+        private sealed class Choice
+        {
+            public static readonly Choice Blank = new Choice(null, "(blank)");
+
+            public Choice(object? value, object? label)
+            {
+                Value = value;
+                Label = Convert.ToString(label, System.Globalization.CultureInfo.CurrentCulture) ?? "";
+            }
+
+            public object? Value { get; }
+
+            public string Label { get; }
+
+            public bool Matches(string? text) =>
+                text != null && Value != null &&
+                string.Equals(Convert.ToString(Value, System.Globalization.CultureInfo.InvariantCulture), text.Trim(), StringComparison.OrdinalIgnoreCase);
+
+            public override string ToString() => Label;
+        }
+
+        /// <summary>The value an input holds: typed for a box, the chosen value for a list; null if blank.</summary>
+        private object? ValueOf(int index)
+        {
+            if (inputs[index] is ComboBox choices)
+                return (choices.SelectedItem as Choice)?.Value;
+
+            return StoredProcedureRunner.ParseValue(parameters[index].SqlType, inputs[index].Text);
+        }
         private readonly TabControl results;
         private readonly Label status;
 
@@ -68,14 +100,44 @@ namespace Flank.SsmsExtension
                     AutoEllipsis = true,
                 });
 
-                var input = new TextBox
+                Control input;
+
+                if (setting?.HasList == true)
                 {
-                    Text = setting?.DefaultValue ?? "",
-                    Location = new Point(225, i * 30),
-                    Width = 300,
-                    Name = "Parameter_" + parameter.Name.TrimStart('@'),
-                };
-                input.TextChanged += (s, e) => Invalidate("Values changed. Run again to preview.");
+                    // The same choices people get in the report or workbook.
+                    var choices = new ComboBox
+                    {
+                        Location = new Point(225, i * 30),
+                        Width = 300,
+                        DropDownStyle = ComboBoxStyle.DropDownList,
+                        Name = "Parameter_" + parameter.Name.TrimStart('@'),
+                    };
+
+                    if (setting.IfBlank != BlankValue.Required)
+                        choices.Items.Add(Choice.Blank);
+
+                    foreach (var row in setting.ListRows)
+                        choices.Items.Add(new Choice(row.Key, row.Value));
+
+                    choices.SelectedItem =
+                        choices.Items.OfType<Choice>().FirstOrDefault(c => c.Matches(setting.DefaultValue)) ??
+                        (setting.IfBlank != BlankValue.Required ? Choice.Blank : null);
+
+                    choices.SelectedIndexChanged += (s, e) => Invalidate("Values changed. Run again to preview.");
+                    input = choices;
+                }
+                else
+                {
+                    input = new TextBox
+                    {
+                        Text = setting?.DefaultValue ?? "",
+                        Location = new Point(225, i * 30),
+                        Width = 300,
+                        Name = "Parameter_" + parameter.Name.TrimStart('@'),
+                    };
+                    input.TextChanged += (s, e) => Invalidate("Values changed. Run again to preview.");
+                }
+
                 inputs.Add(input);
                 inputPanel.Controls.Add(input);
             }
@@ -185,7 +247,7 @@ namespace Flank.SsmsExtension
 
             for (int i = 0; i < parameters.Count; i++)
             {
-                if (settings[i]?.IfBlank == BlankValue.Required && string.IsNullOrWhiteSpace(inputs[i].Text))
+                if (settings[i]?.IfBlank == BlankValue.Required && ValueOf(i) == null)
                 {
                     SetStatus($"Enter a value for {settings[i]!.DisplayName}: it's required.", Color.Firebrick);
                     inputs[i].Select();
@@ -196,7 +258,7 @@ namespace Flank.SsmsExtension
             // Null leaves a parameter out (the procedure's default); DBNull passes NULL.
             var values = parameters
                 .Select((p, i) =>
-                    StoredProcedureRunner.ParseValue(p.SqlType, inputs[i].Text) ??
+                    ValueOf(i) ??
                     (settings[i]?.IfBlank == BlankValue.PassNull ? DBNull.Value : null))
                 .ToList();
 
