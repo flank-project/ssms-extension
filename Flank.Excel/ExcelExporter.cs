@@ -170,6 +170,12 @@ public static partial class ExcelExporter
                 queryTable.Root.SetAttributeValue("adjustColumnWidth", "0");
         });
 
+        // Likewise the "Last refreshed" time in A2, which would fit column A
+        // (the parameter labels, and an inline table's first column) to it.
+        if (parameters.Count > 0)
+            UpdateXml(workbook, "xl/queryTables/queryTable2.xml", queryTable =>
+                queryTable.Root!.SetAttributeValue("adjustColumnWidth", "0"));
+
         var cells = new CellWriter(workbook);
 
         if (parameters.Count > 0)

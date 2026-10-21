@@ -208,6 +208,7 @@ public class ExcelExporterTests : IDisposable
 
         // Refreshing mustn't narrow the parameter column.
         Assert.Equal("0", (string)ReadPart("xl/queryTables/queryTable1.xml").Root!.Attribute("adjustColumnWidth")!);
+        Assert.Equal("0", (string)ReadPart("xl/queryTables/queryTable2.xml").Root!.Attribute("adjustColumnWidth")!);
     }
 
     private static readonly System.Xml.Linq.XNamespace FeaturePropertyBag =

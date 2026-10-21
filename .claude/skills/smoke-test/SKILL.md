@@ -82,6 +82,15 @@ Request computer-use access to "SQL Server Management Studio 22" (and
     Where-Object { $_.Current.ClassName -like 'WindowsForms10.BUTTON*' -and $_.Current.IsEnabled } |
     Select-Object -First 1 | ForEach-Object { [W]::PostMessage([IntPtr]$_.Current.NativeWindowHandle, 0xF5, 0, 0) }
   ```
+- **Keys that stop arriving.** If digits or letters do nothing and clicks
+  extend selections (Excel offers safe mode on launch), a Ctrl key is stuck
+  down: check `GetAsyncKeyState` and release it with `keybd_event`
+  (KEYEVENTF_KEYUP) for VK 0xA2/0xA3/0x11. Flank's grid cells (e.g. a table
+  parameter's rows on the run page) can be filled with UI Automation's
+  ValuePattern on the cell named `<column> Row <n>`; a TextBox shows as a
+  `WindowsForms10.EDIT` pane: send it `WM_SETTEXT`. In an open workbook,
+  `[Runtime.InteropServices.Marshal]::BindToMoniker(<path>)` gives its COM
+  object for setting cells (GetActiveObject fails here).
 - **New Query fails with STG_E_FILEALREADYEXISTS** when an empty
   `%TEMP%\SQLQueryN.sql` from an earlier run is left over. Instead, write the
   query to a file under `C:\temp\flank-smoke` and open it through SSMS's

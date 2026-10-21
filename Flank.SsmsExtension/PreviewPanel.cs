@@ -68,11 +68,13 @@ namespace Flank.SsmsExtension
         {
             var rows = new List<IReadOnlyList<object?>>();
 
+            // A cell still being edited (e.g. Run clicked straight after typing) hasn't saved its value yet.
+            grid.EndEdit();
+
+            // Including the empty row for adding one: it's skipped while blank,
+            // but holds values set without starting a new row (e.g. by automation).
             foreach (DataGridViewRow row in grid.Rows)
             {
-                if (row.IsNewRow)
-                    continue;
-
                 var values = parameter.Columns
                     .Select((column, c) => StoredProcedureRunner.ParseValue(column.SqlType, Convert.ToString(row.Cells[c].Value) ?? ""))
                     .ToArray();
