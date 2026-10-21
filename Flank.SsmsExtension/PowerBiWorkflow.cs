@@ -18,7 +18,6 @@ namespace Flank.SsmsExtension
         private const string Title = "Creating Power BI Report";
 
         /// <param name="server">The server as SSMS connected to it.</param>
-        /// <param name="login">The SSMS connection's SQL login, to pre-fill the report's; null if it has none.</param>
         /// <param name="sql">The query, shown editable in the dialog. Null for a stored procedure.</param>
         /// <param name="storedProcedure">The stored procedure, shown read-only. Null for a query.</param>
         /// <param name="buildRdl">
@@ -28,7 +27,6 @@ namespace Flank.SsmsExtension
         public static async Task RunAsync(
             string server,
             string database,
-            SsmsSqlLogin? login,
             string? sql,
             string? storedProcedure,
             string defaultReportName,
@@ -38,16 +36,6 @@ namespace Flank.SsmsExtension
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
             server = NormalizeServer(server);
-
-            if (!PowerBiPublisher.IsReachableFromPowerBi(server))
-            {
-                SsmsUiHelper.ShowMessage(
-                    $"Flank can publish Power BI reports for Azure SQL databases only, for now.\n\n" +
-                    $"Power BI reaches '{server}' only through an on-premises data gateway, " +
-                    "which Flank doesn't set up yet.",
-                    OLEMSGICON.OLEMSGICON_INFO);
-                return;
-            }
 
             SsrsProgressDialog? progressDialog = null;
 
@@ -69,6 +57,9 @@ namespace Flank.SsmsExtension
                 progressDialog?.Dispose();
                 progressDialog = null;
             }
+
+            // What Flank was doing, for the error message.
+            var step = PowerBiStep.SignIn;
 
             try
             {
@@ -100,12 +91,19 @@ namespace Flank.SsmsExtension
                         (await signIn.GetTokenSilentAsync(PowerBiSignIn.ConnectionScopes, cancellationToken))?.AccessToken);
 
                 ShowProgress("Loading your Power BI workspaces...");
+                step = PowerBiStep.Workspaces;
 
                 IReadOnlyList<PowerBiWorkspace> workspaces = await client.GetWorkspacesAsync();
-                IReadOnlyList<PowerBiConnection>? connections = await TryGetConnectionsAsync(client, server, database);
+                IReadOnlyList<PowerBiConnection>? connections = await TryGetConnectionsAsync(client);
 
                 await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
                 CloseProgress();
+
+                if (workspaces.Count == 0)
+                {
+                    SsmsUiHelper.ShowMessage(PowerBiHelp.NoWorkspaces, OLEMSGICON.OLEMSGICON_WARNING, "Flank");
+                    return;
+                }
 
                 var settings = PowerBiSettings.Load();
                 PowerBiReportOptions options;
@@ -120,7 +118,7 @@ namespace Flank.SsmsExtension
                     {
                         using (var allow = new PowerBiSignInDialog(
                             signIn,
-                            "To list and create shared connections, Flank needs one more permission " +
+                            "To list your Gateway / Cloud Connections, Flank needs one more permission " +
                             "(Power BI connections). Sign in again to grant it.",
                             PowerBiSignIn.ConnectionScopes))
                         {
@@ -128,20 +126,16 @@ namespace Flank.SsmsExtension
                                 return null;
                         }
 
-                        var allowed = await TryGetConnectionsAsync(client, server, database);
+                        var allowed = await TryGetConnectionsAsync(client);
                         await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
                         if (allowed == null)
                         {
-                            SsmsUiHelper.ShowMessage(
-                                "Flank still can't list Power BI connections. Ask your admin to grant the " +
-                                "Flank app the Connection.ReadWrite.All permission, or save a login on the report instead.",
-                                OLEMSGICON.OLEMSGICON_WARNING);
+                            SsmsUiHelper.ShowMessage(PowerBiHelp.ConnectionsNotAllowed, OLEMSGICON.OLEMSGICON_WARNING, "Flank");
                         }
 
                         return allowed;
                     },
-                    login,
                     sql,
                     storedProcedure,
                     defaultReportName,
@@ -154,7 +148,12 @@ namespace Flank.SsmsExtension
                 }
 
                 ShowProgress(preparingStatus);
-                string rdl = buildRdl(options, RdlDataSource.AzureSql(server, database));
+                step = PowerBiStep.Upload;
+
+                // The report reads the database the connection points at, through it.
+                var connection = options.Connection;
+                string rdl = buildRdl(options, RdlDataSource.ForPowerBiConnection(
+                    connection.Server, connection.Database, connection.Kind == PowerBiConnectionKind.Gateway));
 
                 // Created on the UI thread, so reports arrive there.
                 var progress = new Progress<string>(status => progressDialog?.SetStatus(status));
@@ -164,55 +163,51 @@ namespace Flank.SsmsExtension
                     options.Workspace.Id,
                     options.ReportName,
                     rdl,
-                    server,
-                    database,
-                    options.Access,
+                    connection.Server,
+                    connection.Database,
+                    new PowerBiDataAccess.ExistingConnection(connection),
                     progress);
 
                 await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
                 CloseProgress();
 
                 settings.WorkspaceId = options.Workspace.Id;
-                settings.UseSharedConnection = published.ConnectionId != null;
-                if (published.ConnectionId != null)
-                    settings.ConnectionId = published.ConnectionId;
+                settings.ConnectionId = connection.Id;
                 settings.Save();
 
                 using (var success = new SsrsSuccessDialog(options.ReportName, published.Url, "Power BI Report Created"))
                 {
                     success.ShowDialog();
                 }
-
-                Feedback.RecordSuccess();
             }
             catch (Exception ex)
             {
                 await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
                 CloseProgress();
 
+                // Upload and Connect are told apart by the publisher.
+                var failed = (ex as PowerBiException)?.Step ?? step;
+
                 SsmsUiHelper.ShowMessage(
-                    "Flank couldn't create the Power BI report.\n\n" + ex.Message,
+                    PowerBiHelp.Explain(failed, ex),
                     OLEMSGICON.OLEMSGICON_CRITICAL,
                     "Flank Error");
             }
         }
 
-        /// <summary>The shared connections to this database, or null if Flank may not list them.</summary>
-        private static async System.Threading.Tasks.Task<IReadOnlyList<PowerBiConnection>?> TryGetConnectionsAsync(
-            PowerBiClient client,
-            string server,
-            string database)
+        /// <summary>The Gateway / Cloud Connections, or null if Flank may not list them.</summary>
+        private static async System.Threading.Tasks.Task<IReadOnlyList<PowerBiConnection>?> TryGetConnectionsAsync(PowerBiClient client)
         {
             try
             {
                 if (!await client.CanUseConnectionsAsync())
                     return null;
 
-                return await client.GetSqlConnectionsAsync(server, database);
+                return await client.GetConnectionsAsync();
             }
             catch (Exception ex)
             {
-                // Without connections the user can still save a login on the report.
+                // The dialog then offers to sign in for the permission.
                 System.Diagnostics.Debug.WriteLine($"Flank: could not list Power BI connections: {ex.Message}");
                 return null;
             }

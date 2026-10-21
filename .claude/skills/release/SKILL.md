@@ -43,8 +43,8 @@ git checkout -b release-vX.Y.Z
 Set-Content VERSION "X.Y.Z"
 ```
 
-In `README.md`, update the download line (both the file name and the
-`/download/vX.Y.Z/` path) to the new version. Commit both files as
+In `README.md`, update the Install table's row: the version cell, the file
+name and the `/download/vX.Y.Z/` path. Commit both files as
 `Release X.Y.Z`.
 
 ## 4. Build and sign

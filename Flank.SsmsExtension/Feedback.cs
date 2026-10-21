@@ -1,4 +1,3 @@
-using Microsoft.Win32;
 using System;
 using System.Diagnostics;
 using System.Drawing;
@@ -7,61 +6,18 @@ using System.Windows.Forms;
 namespace Flank.SsmsExtension
 {
     /// <summary>
-    /// Ways to reach the developer: the Feedback menu item, and a one-time
-    /// prompt after the third report or workbook. Successes are counted per
-    /// Windows user (HKCU\Software\Flank); nothing is sent anywhere.
+    /// Ways to reach the developer, from the Feedback menu item.
     /// </summary>
     internal static class Feedback
     {
         public const string Email = "anguspmitchell@gmail.com";
         public const string DiscussionsUrl = "https://github.com/flank-project/ssms-extension/discussions";
 
-        private const string KeyPath = @"Software\Flank";
-        private const string SuccessCountValue = "SuccessCount";
-        private const string PromptShownValue = "FeedbackPromptShown";
-        private const int PromptAfter = 3;
-
         public static void ShowDialog()
         {
             using (var dialog = new FeedbackDialog(
                 "Feedback",
                 "Questions, ideas or problems? I'd love to hear how you use Flank."))
-            {
-                dialog.ShowDialog();
-            }
-        }
-
-        /// <summary>
-        /// Counts a report or workbook created, and on the third asks once
-        /// whether the user would talk to the developer.
-        /// </summary>
-        public static void RecordSuccess()
-        {
-            try
-            {
-                using (var key = Registry.CurrentUser.CreateSubKey(KeyPath))
-                {
-                    int count = (key.GetValue(SuccessCountValue) as int? ?? 0) + 1;
-                    key.SetValue(SuccessCountValue, count, RegistryValueKind.DWord);
-
-                    if (count < PromptAfter || key.GetValue(PromptShownValue) != null)
-                        return;
-
-                    // Saved before showing, so a crash or a closed dialog never asks again.
-                    key.SetValue(PromptShownValue, 1, RegistryValueKind.DWord);
-                }
-            }
-            catch (Exception ex)
-            {
-                // Counting is a nicety; never get in the way of the user's report.
-                Debug.WriteLine($"Flank: could not record success: {ex.Message}");
-                return;
-            }
-
-            using (var dialog = new FeedbackDialog(
-                "Thanks for using Flank",
-                "You've made 3 reports or workbooks with Flank. I'm the developer, and I'd love " +
-                "20 minutes to hear how you use it and what would make it better."))
             {
                 dialog.ShowDialog();
             }

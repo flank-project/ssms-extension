@@ -55,9 +55,6 @@ namespace Flank.SsmsExtension
                 await ThreadHelper.JoinableTaskFactory
                     .SwitchToMainThreadAsync();
 
-                // Before Excel opens, or the prompt is hidden behind it.
-                Feedback.RecordSuccess();
-
                 step = "Opening Excel workbook";
 
                 SsmsUiHelper.SetStatusBar(

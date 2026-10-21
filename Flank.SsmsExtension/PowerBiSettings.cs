@@ -13,9 +13,8 @@ namespace Flank.SsmsExtension
 
         public string? WorkspaceId { get; set; }
 
+        /// <summary>The Gateway / Cloud Connection last used.</summary>
         public string? ConnectionId { get; set; }
-
-        public bool UseSharedConnection { get; set; }
 
         public static PowerBiSettings Load()
         {
@@ -30,7 +29,6 @@ namespace Flank.SsmsExtension
 
                     settings.WorkspaceId = key.GetValue(nameof(WorkspaceId)) as string;
                     settings.ConnectionId = key.GetValue(nameof(ConnectionId)) as string;
-                    settings.UseSharedConnection = key.GetValue(nameof(UseSharedConnection)) as int? == 1;
                 }
             }
             catch (Exception ex)
@@ -50,7 +48,6 @@ namespace Flank.SsmsExtension
                 {
                     if (WorkspaceId != null) key.SetValue(nameof(WorkspaceId), WorkspaceId);
                     if (ConnectionId != null) key.SetValue(nameof(ConnectionId), ConnectionId);
-                    key.SetValue(nameof(UseSharedConnection), UseSharedConnection ? 1 : 0, RegistryValueKind.DWord);
                 }
             }
             catch (Exception ex)

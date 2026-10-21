@@ -77,6 +77,33 @@ namespace Flank.Ssrs
                 reportName);
         }
 
+        /// <summary>A report on a query with parameters; see <see cref="BuildTextReportRdl(string, IReadOnlyList{ReportColumn}, RdlDataSource, IReadOnlyList{SprocParameter}, IReadOnlyList{ParameterSettings}?)"/>.</summary>
+        public string CreateReportFromText(
+            string sql,
+            IReadOnlyList<ReportColumn> columns,
+            IReadOnlyList<SprocParameter> parameters,
+            IReadOnlyList<ParameterSettings>? settings,
+            string sharedDataSourcePath,
+            string reportFolder,
+            string reportName)
+        {
+            string rdl = BuildTextReportRdl(
+                sql,
+                columns,
+                RdlDataSource.Shared(sharedDataSourcePath),
+                parameters,
+                settings);
+
+            DeployReport(
+                rdl,
+                reportFolder,
+                reportName);
+
+            return GetReportUrl(
+                reportFolder,
+                reportName);
+        }
+
         public string CreateReportFromStoredProcedure(
             string procedureName,
             IReadOnlyList<SprocParameter> parameters,
@@ -110,6 +137,40 @@ namespace Flank.Ssrs
             IReadOnlyList<ReportColumn> columns,
             string sharedDataSourcePath) =>
             BuildTextReportRdl(sql, columns, RdlDataSource.Shared(sharedDataSourcePath));
+
+        /// <summary>
+        /// A report on a query with parameters (@names it doesn't DECLARE): each
+        /// becomes a report parameter, set up as the review page chose, and is
+        /// passed to the query as a query parameter.
+        /// </summary>
+        public static string BuildTextReportRdl(
+            string sql,
+            IReadOnlyList<ReportColumn> columns,
+            RdlDataSource dataSource,
+            IReadOnlyList<SprocParameter> parameters,
+            IReadOnlyList<ParameterSettings>? settings)
+        {
+            if (parameters.Count == 0)
+                return BuildTextReportRdl(sql, columns, dataSource);
+
+            BuildStoredProcedureParameters(
+                parameters,
+                null,
+                settings,
+                out string reportParametersXml,
+                out string queryParametersXml);
+
+            string queryXml = $@"
+        <CommandText>{XmlEscape(sql)}</CommandText>
+{queryParametersXml}";
+
+            return BuildReportRdl(
+                columns,
+                dataSource,
+                queryXml,
+                reportParametersXml,
+                ListDataSetsXml(settings, dataSource));
+        }
 
         public static string BuildTextReportRdl(
             string sql,
@@ -203,15 +264,21 @@ namespace Flank.Ssrs
 
             foreach (var setting in settings ?? new ParameterSettings[0])
             {
-                if (!setting.HasList)
+                // Typed-in values are written into the parameter itself.
+                if (!setting.HasList || setting.ListSource == ListSource.Values)
                     continue;
+
+                string commandXml = setting.ListSource == ListSource.Query
+                    ? $@"
+        <CommandText>{XmlEscape(setting.ListQuery!)}</CommandText>"
+                    : $@"
+        <CommandType>StoredProcedure</CommandType>
+        <CommandText>{XmlEscape(setting.ListProcedure!)}</CommandText>";
 
                 dataSets.Append($@"
     <DataSet Name=""{XmlEscape(ListDataSetName(setting.SqlName.TrimStart('@')))}"">
       <Query>
-        <DataSourceName>{XmlEscape(dataSource.Name)}</DataSourceName>
-        <CommandType>StoredProcedure</CommandType>
-        <CommandText>{XmlEscape(setting.ListProcedure!)}</CommandText>
+        <DataSourceName>{XmlEscape(dataSource.Name)}</DataSourceName>{commandXml}
       </Query>
       <Fields>
         <Field Name=""Value"">
@@ -298,17 +365,26 @@ namespace Flank.Ssrs
       </DefaultValue>";
                 }
 
-                // A dropdown from the list procedure's dataset (see ListDataSetsXml).
-                string validValuesXml = setting?.HasList == true
+                // A dropdown: typed-in values, or the list's dataset (see ListDataSetsXml).
+                string validValuesXml = setting?.HasList != true ? ""
+                    : setting.ListSource == ListSource.Values
                     ? $@"
+      <ValidValues>
+        <ParameterValues>{string.Concat(setting.ListRows.Select(row => $@"
+          <ParameterValue>
+            <Value>{XmlEscape(FormatRdlValue(row.Key!, rdlType))}</Value>
+            <Label>{XmlEscape(Convert.ToString(row.Value, System.Globalization.CultureInfo.InvariantCulture) ?? "")}</Label>
+          </ParameterValue>"))}
+        </ParameterValues>
+      </ValidValues>"
+                    : $@"
       <ValidValues>
         <DataSetReference>
           <DataSetName>{XmlEscape(ListDataSetName(reportParameterName))}</DataSetName>
           <ValueField>Value</ValueField>
           <LabelField>Label</LabelField>
         </DataSetReference>
-      </ValidValues>"
-                    : "";
+      </ValidValues>";
 
                 reportParameters.Append($@"
     <ReportParameter Name=""{XmlEscape(reportParameterName)}"">

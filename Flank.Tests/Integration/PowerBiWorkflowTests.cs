@@ -116,16 +116,19 @@ public class PowerBiWorkflowTests
             var dataSource = (await workspace.Client.GetReportDataSourcesAsync(workspace.WorkspaceId, report.ReportId)).Single();
             Assert.Equal(report.ConnectionId, dataSource.DatasourceId);
 
-            var listed = await workspace.Client.GetSqlConnectionsAsync(TestSettings.Server, TestSettings.Database);
-            Assert.Contains(listed, c => c.Id == report.ConnectionId && c.DisplayName == connectionName);
+            // Listed as a cloud connection to the test database, as the dropdown shows it.
+            var listed = (await workspace.Client.GetConnectionsAsync()).Single(c => c.Id == report.ConnectionId);
+            Assert.Equal(connectionName, listed.DisplayName);
+            Assert.Equal(PowerBiConnectionKind.Cloud, listed.Kind);
+            Assert.True(listed.IsFor(TestSettings.Server, TestSettings.Database));
 
             Verifier.VerifyPowerBi(report.Url);
 
-            // A second report reusing it, as when the user picks an existing connection.
+            // A second report reusing it, as when the user picks it in the dropdown.
             var reused = await PublishQueryAsync(
                 "SELECT name FROM leagues",
                 "Existing shared connection",
-                new PowerBiDataAccess.ExistingConnection(report.ConnectionId!));
+                new PowerBiDataAccess.ExistingConnection(listed));
             Verifier.VerifyPowerBi(reused.Url);
             await workspace.Client.DeleteReportAsync(workspace.WorkspaceId, reused.ReportId);
         }

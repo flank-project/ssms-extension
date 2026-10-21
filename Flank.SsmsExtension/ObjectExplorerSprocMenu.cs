@@ -151,227 +151,8 @@ namespace Flank.SsmsExtension
             });
         }
 
-        private static async Task CreateExcelAsync(INodeInformation node, StoredProcedureInfo sproc)
-        {
-            string step = "Reading stored procedure";
-            IReadOnlyList<SprocParameter> parameters;
-            bool isAzure;
-
-            try
-            {
-                using (var connection = OpenConnection(node, sproc.Database))
-                {
-                    int objectId = SqlMetadataDiscovery.GetStoredProcedureObjectId(
-                        sproc.QualifiedName, connection);
-
-                    parameters = SqlMetadataDiscovery.DiscoverStoredProcedureParameters(
-                        objectId, connection);
-
-                    isAzure = AccessDiscovery.IsAzureSqlDatabase(connection);
-                }
-            }
-            catch (Exception ex)
-            {
-                ExcelWorkflow.ShowFailure(step, ex, sproc.Server, sproc.Database, null);
-                return;
-            }
-
-            var settings = ReviewParameters(node, sproc, parameters, "workbook");
-            if (settings == null)
-                return;
-
-            // Who refreshes it, their access, then a run as them: the workbook
-            // starts with that run's values and rows.
-            WorkbookRequest request;
-            string fileName;
-
-            using (var wizard = new ExcelWorkbookWizard(
-                sproc.Server,
-                sproc.Database,
-                isAzure,
-                sproc.QualifiedName,
-                parameters,
-                query: null,
-                queryTables: Array.Empty<string>(),
-                queryTablesProblem: null,
-                action =>
-                {
-                    using (var connection = OpenConnection(node, sproc.Database))
-                    {
-                        action(connection);
-                    }
-                },
-                settings))
-            {
-                if (wizard.ShowDialog() != DialogResult.OK || wizard.Request == null)
-                    return;
-
-                request = wizard.Request;
-                fileName = wizard.DefaultFileName;
-            }
-
-            await ExcelWorkflow.RunAsync(request, fileName);
-        }
-
-        private static async Task CreateSsrsReportAsync(INodeInformation node, StoredProcedureInfo sproc)
-        {
-            IReadOnlyList<SprocParameter> parameters;
-
-            try
-            {
-                using (var connection = OpenConnection(node, sproc.Database))
-                {
-                    int objectId = SqlMetadataDiscovery.GetStoredProcedureObjectId(
-                        sproc.QualifiedName, connection);
-
-                    parameters = SqlMetadataDiscovery.DiscoverStoredProcedureParameters(
-                        objectId, connection);
-                }
-            }
-            catch (Exception ex)
-            {
-                SsmsUiHelper.ShowMessage(
-                    "Flank couldn't read the stored procedure.\n\n" + ex.Message,
-                    OLEMSGICON.OLEMSGICON_CRITICAL,
-                    "Flank Error");
-                return;
-            }
-
-            var settings = ReviewParameters(node, sproc, parameters, "report");
-            if (settings == null)
-                return;
-
-            // Run it first to preview the results and get the report's columns.
-            // The values entered aren't used as report defaults: those come
-            // from the review page.
-            ResultSet result;
-
-            using (var dialog = new StoredProcedureRunDialog(
-                sproc.QualifiedName,
-                parameters,
-                () => OpenConnection(node, sproc.Database),
-                "Continue",
-                "SSRS",
-                settings))
-            {
-                if (dialog.ShowDialog() != DialogResult.OK)
-                    return;
-
-                result = dialog.Results[0];
-            }
-
-            var columns = result.Columns
-                .Select(name => new ReportColumn { Name = name })
-                .ToList();
-
-            await SsrsWorkflow.RunAsync(
-                sql: null,
-                storedProcedure: sproc.QualifiedName,
-                defaultReportName: sproc.Name,
-                analyzingStatus: "Preparing report...",
-                prepare: reportOptions => client => client.CreateReportFromStoredProcedure(
-                    sproc.QualifiedName,
-                    parameters,
-                    columns,
-                    reportOptions.DataSource,
-                    reportOptions.Folder,
-                    reportOptions.ReportName,
-                    settings: settings));
-        }
-
-        private static async Task CreatePowerBiReportAsync(INodeInformation node, StoredProcedureInfo sproc)
-        {
-            IReadOnlyList<SprocParameter> parameters;
-
-            try
-            {
-                using (var connection = OpenConnection(node, sproc.Database))
-                {
-                    int objectId = SqlMetadataDiscovery.GetStoredProcedureObjectId(
-                        sproc.QualifiedName, connection);
-
-                    parameters = SqlMetadataDiscovery.DiscoverStoredProcedureParameters(
-                        objectId, connection);
-                }
-            }
-            catch (Exception ex)
-            {
-                SsmsUiHelper.ShowMessage(
-                    "Flank couldn't read the stored procedure.\n\n" + ex.Message,
-                    OLEMSGICON.OLEMSGICON_CRITICAL,
-                    "Flank Error");
-                return;
-            }
-
-            var settings = ReviewParameters(node, sproc, parameters, "report");
-            if (settings == null)
-                return;
-
-            // As for SSRS: run it to preview the results and get the report's columns.
-            ResultSet result;
-
-            using (var dialog = new StoredProcedureRunDialog(
-                sproc.QualifiedName,
-                parameters,
-                () => OpenConnection(node, sproc.Database),
-                "Continue",
-                "Power BI",
-                settings))
-            {
-                if (dialog.ShowDialog() != DialogResult.OK)
-                    return;
-
-                result = dialog.Results[0];
-            }
-
-            var columns = result.Columns
-                .Select(name => new ReportColumn { Name = name })
-                .ToList();
-
-            var login = node.Connection is SqlConnectionInfo info
-                ? SsmsSqlLogin.FromConnectionInfo(info)
-                : null;
-
-            await PowerBiWorkflow.RunAsync(
-                sproc.Server,
-                sproc.Database,
-                login,
-                sql: null,
-                storedProcedure: sproc.QualifiedName,
-                defaultReportName: sproc.Name,
-                preparingStatus: "Preparing report...",
-                buildRdl: (options, dataSource) => SsrsClient.BuildStoredProcedureReportRdl(
-                    sproc.QualifiedName,
-                    parameters,
-                    columns,
-                    dataSource,
-                    settings: settings));
-        }
-
-        /// <summary>
-        /// The parameter review page, for a procedure with input parameters.
-        /// Null if the user cancels; empty (no page) without parameters.
-        /// </summary>
-        private static IReadOnlyList<ParameterSettings>? ReviewParameters(
-            INodeInformation node,
-            StoredProcedureInfo sproc,
-            IReadOnlyList<SprocParameter> parameters,
-            string outputName)
-        {
-            var settings = ParameterSettings.FromProcedure(parameters);
-
-            if (settings.Count == 0)
-                return settings;
-
-            using (var dialog = new ParameterReviewDialog(
-                sproc.QualifiedName,
-                settings,
-                outputName,
-                () => OpenConnection(node, sproc.Database)))
-            {
-                return dialog.ShowDialog() == DialogResult.OK ? settings : null;
-            }
-        }
+        private static ProcedureSource Source(INodeInformation node, StoredProcedureInfo sproc) =>
+            new ProcedureSource(sproc.Server, sproc.Database, sproc.Schema, sproc.Name, () => OpenConnection(node, sproc.Database));
 
         /// <summary>Opens a connection to the node's server, in the procedure's database.</summary>
         private static IDbConnection OpenConnection(INodeInformation node, string database)
@@ -418,17 +199,17 @@ namespace Flank.SsmsExtension
                 submenu.DropDownItems.Add(
                     "Excel (Power Query)",
                     MenuIcons.Excel,
-                    (s, e) => owner.RunForSelection(CreateExcelAsync));
+                    (s, e) => owner.RunForSelection((node, sproc) => ProcedureWorkflows.CreateExcelAsync(Source(node, sproc))));
 
                 submenu.DropDownItems.Add(
                     "SSRS Report",
                     MenuIcons.Ssrs,
-                    (s, e) => owner.RunForSelection(CreateSsrsReportAsync));
+                    (s, e) => owner.RunForSelection((node, sproc) => ProcedureWorkflows.CreateSsrsReportAsync(Source(node, sproc))));
 
                 submenu.DropDownItems.Add(
-                    "Power BI Paginated Report",
-                    MenuIcons.Ssrs,
-                    (s, e) => owner.RunForSelection(CreatePowerBiReportAsync));
+                    "Power BI (Paginated Report) (Beta)",
+                    MenuIcons.PowerBi,
+                    (s, e) => owner.RunForSelection((node, sproc) => ProcedureWorkflows.CreatePowerBiReportAsync(Source(node, sproc))));
 
                 submenu.DropDownItems.Add(new ToolStripSeparator());
                 submenu.DropDownItems.Add(
@@ -464,6 +245,8 @@ namespace Flank.SsmsExtension
 
         public static Image? Ssrs => icons.Value[1];
 
+        public static Image? PowerBi => icons.Value[2];
+
         private static Image?[] Load()
         {
             try
@@ -471,14 +254,14 @@ namespace Flank.SsmsExtension
                 using (var stream = typeof(MenuIcons).Assembly.GetManifestResourceStream("Flank.MenuIcons.png"))
                 using (var strip = new Bitmap(stream))
                 {
-                    return new Image?[] { Slice(strip, 0), Slice(strip, 1) };
+                    return new Image?[] { Slice(strip, 0), Slice(strip, 1), Slice(strip, 2) };
                 }
             }
             catch (Exception ex)
             {
                 // A missing icon shouldn't stop the menu working.
                 System.Diagnostics.Debug.WriteLine($"Flank: could not load menu icons: {ex}");
-                return new Image?[2];
+                return new Image?[3];
             }
         }
 

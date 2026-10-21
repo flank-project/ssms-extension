@@ -44,6 +44,38 @@ namespace Flank.Ssrs
                 "SQLAZURE",
                 $"Data Source={server};Initial Catalog={database};Encrypt=True");
 
+        /// <summary>A SQL Server database, embedded in the report (reached through an on-premises gateway).</summary>
+        public static RdlDataSource SqlServer(string server, string database) =>
+            new RdlDataSource(
+                "Database",
+                null,
+                "SQL",
+                $"Data Source={server};Initial Catalog={database}");
+
+        /// <summary>
+        /// The data source for a Power BI connection to this database: Azure SQL
+        /// for an Azure host reached directly, SQL Server otherwise (gateways).
+        /// </summary>
+        public static RdlDataSource ForPowerBiConnection(string server, string database, bool throughGateway) =>
+            !throughGateway && IsAzureSql(server)
+                ? AzureSql(server, database)
+                : SqlServer(server, database);
+
+        /// <summary>An Azure SQL Database host (*.database.windows.net), with or without tcp: and a port.</summary>
+        public static bool IsAzureSql(string server)
+        {
+            string host = server.Trim();
+
+            if (host.StartsWith("tcp:", StringComparison.OrdinalIgnoreCase))
+                host = host.Substring(4);
+
+            int comma = host.IndexOf(',');
+            if (comma >= 0)
+                host = host.Substring(0, comma);
+
+            return host.EndsWith(".database.windows.net", StringComparison.OrdinalIgnoreCase);
+        }
+
         internal string ToXml()
         {
             if (sharedPath != null)

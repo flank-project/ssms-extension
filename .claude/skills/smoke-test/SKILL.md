@@ -1,6 +1,6 @@
 ---
 name: smoke-test
-description: Build, install and smoke-test the Flank SSMS extension end to end, driving SSMS with computer use. Scenarios - menus, query-excel, query-ssrs, sproc-excel, sproc-ssrs, access, large, or all. Use when asked to smoke-test, run, or check that the extension works in SSMS.
+description: Build, install and smoke-test the Flank SSMS extension end to end, driving SSMS with computer use. Scenarios - menus, query-excel, query-ssrs, query-params, sproc-excel, sproc-ssrs, review-excel, dropdown, query-pbi, sproc-pbi, access, large, or all. Use when asked to smoke-test, run, or check that the extension works in SSMS.
 ---
 
 # Smoke test
@@ -19,11 +19,12 @@ The argument picks the scenario; default `menus`.
 | `menus` | Query editor and stored procedure menus have Make Self-Serve |
 | `query-excel` | Query window > Excel, skipping access setup: SSMS saves a workbook, and it refreshes with rows |
 | `query-ssrs` | Query window > SSRS: SSMS creates a report, and it renders with rows |
+| `query-params` | A query with `@parameters`: setup pages (as written / as a procedure, SQL, types); SSRS report with them renders; as a procedure, Power BI report exports; Excel workbook refreshes with a changed value |
 | `sproc-excel` | Stored procedure > Excel: workbook for `EXEC` refreshes with rows; with parameters, the user types values above the table and refreshes |
 | `sproc-ssrs` | Stored procedure > SSRS: SSMS creates a report with blank parameters, and it renders with rows |
 | `review-excel` | Parameter review page, then Excel guardrails: labels/notes, type validation, required highlight, refresh catches a pasted bad value, blank uses the procedure default |
 | `dropdown` | A dropdown guardrail: procedure picked from a list, Show/Pass columns; dropdown on the run page; Excel dropdown from the hidden DropdownOptions sheet, refresh looks up the value; Power BI report with valid values |
-| `query-pbi` | Query window > Power BI: signed in silently, SQL login pre-filled from SSMS, report publishes and exports with rows |
+| `query-pbi` | Query window > Power BI: signed in silently, the Gateway / Cloud Connection for the database preselected, report publishes and exports with rows |
 | `sproc-pbi` | Stored procedure > Power BI: report with a blank parameter publishes; exports with a value |
 | `access` | The Excel wizard's access steps: a new SQL user gets SELECT on a query's tables, an existing one EXECUTE on a query turned into a procedure, and each runs exactly what it was granted |
 | `large` | Over 50,000 rows: the preview is capped, the workbook starts with headers only and the first refresh loads everything |
@@ -65,10 +66,30 @@ Request computer-use access to "SQL Server Management Studio 22" (and
   directly: find the box's handle with UI Automation (WinForms controls show
   as panes whose AutomationId is the window handle) and send `WM_SETTEXT`;
   `BM_CLICK` does the same for a button. Both raise the usual events.
+- **Buttons in Flank's dialogs that ignore clicks and keys** (e.g. Next on
+  the review page while its grid has focus: Return moves down the grid and
+  typed keys edit cells): post `BM_CLICK` to the first enabled WinForms
+  button with that text in an SSMS window:
+  ```powershell
+  $Text = "Next"
+  Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+  Add-Type 'using System;using System.Runtime.InteropServices;public static class W{[DllImport("user32.dll")]public static extern bool PostMessage(IntPtr h,int m,IntPtr w,IntPtr l);}'
+  $A = [Windows.Automation.AutomationElement]; $ssms = (Get-Process SSMS).Id
+  $A::RootElement.FindAll('Children', [Windows.Automation.Condition]::TrueCondition) |
+    Where-Object { $_.Current.ProcessId -eq $ssms } |
+    ForEach-Object { $_.FindAll('Descendants', (New-Object Windows.Automation.PropertyCondition($A::NameProperty, $Text))) } |
+    Where-Object { $_.Current.ClassName -like 'WindowsForms10.BUTTON*' -and $_.Current.IsEnabled } |
+    Select-Object -First 1 | ForEach-Object { [W]::PostMessage([IntPtr]$_.Current.NativeWindowHandle, 0xF5, 0, 0) }
+  ```
 - **New Query fails with STG_E_FILEALREADYEXISTS** when an empty
   `%TEMP%\SQLQueryN.sql` from an earlier run is left over. Instead, write the
-  query to a file under `C:\temp\flank-smoke` and open it (ctrl+o, alt+n,
-  paste the path, Return); it connects with the last connection. Never touch
+  query to a file under `C:\temp\flank-smoke` and open it through SSMS's
+  automation object (ctrl+o's dialog has frozen SSMS): find
+  `!VisualStudio.DTE.18.0:<SSMS pid>` in the running object table and call
+  `ItemOperations.OpenFile(path)`. It opens disconnected: alt+q, Right
+  (Connection), Return (Connect...), then Return in the Connect dialog. A
+  failed New Query can also blank a recovered tab that owns that temp file;
+  ctrl+z in it brings the text back. Never touch
   the user's own query tabs; "changed externally, reload?" prompts about
   them: answer **No**.
 - **Excel's Document Recovery** prompt on close: choose "Yes, I want to view
@@ -98,6 +119,13 @@ For the query scenarios:
 4. Open the editor's menu: shift+F10, Home (Make Self-Serve), Right to open
    the submenu.
 
+Every query command starts with Flank's query setup ("How should the
+report/workbook run your query?"): **Run the SQL as written** is selected,
+so click the title bar and press Return (Next) to reach the SQL page, then
+click **Next** (not Return: the SQL box takes it, and its text starts
+selected). Without parameters that page's Next finishes setup; with them the
+types page follows (**Continue**).
+
 For the stored procedure scenarios:
 
 2. In Object Explorer, expand Databases > fomf-ss-sandbox-db >
@@ -126,19 +154,20 @@ Procedures used (all read-only):
 
 ### menus
 
-The submenu shows **Excel (Power Query)** and **SSRS Report**. Escape twice.
+The submenu shows **Excel (Power Query)**, **SSRS Report**, **Power BI (Paginated Report) (Beta)** and **Feedback...**; zoom: Power BI has its own icon (three gold bars). Escape twice.
 
 Then in Object Explorer, expand Databases > (database) > Programmability >
 Stored Procedures (double-click a folder's label to expand it), click a
 procedure, and shift+F10: **Make Self-Serve** is the first item, with a
-separator under it. Open it and zoom: both items have icons (Excel's and
-the SSRS chart, as in the query editor). The Stored Procedures folder's own
+separator under it. Open it and zoom: the items have the same icons
+as in the query editor. The Stored Procedures folder's own
 menu should not have it.
 
 ### query-excel
 
 1. `Set-Clipboard -Value "C:\temp\flank-smoke\query-excel.xlsx"`
-2. In the submenu, highlight **Excel (Power Query)** and press Return.
+2. In the submenu, highlight **Excel (Power Query)** and press Return, then
+   go through the query setup (section 3).
 3. **Create Excel workbook** wizard, "Who will refresh this workbook?":
    **Skip this if end user already has access** is selected. Return (Next)
    goes straight to "Run the query" with focus on Run: Return runs it
@@ -158,7 +187,8 @@ menu should not have it.
 
 1. Bring SSMS to the front if needed; click in the editor and reopen the
    submenu (section 3, step 4).
-2. Highlight **SSRS Report**, Return.
+2. Highlight **SSRS Report**, Return, then go through the query setup
+   (section 3).
 3. **Connect to SSRS**: defaults are `http://localhost/ReportServer` and
    `http://localhost/Reports`. Return (Continue).
 4. **Create SSRS Report**: focus starts on Folder. It's pre-selected with the
@@ -174,6 +204,47 @@ menu should not have it.
    .\tests\verify-ssrs.ps1 -Report (Get-Clipboard)
    ```
    Pass: `OK`, with 5 rows and columns `Value_id, Value_name`.
+
+### query-params
+
+Uses this query instead of the common one (`dbo.sgm_teams`: league 1 has
+Team 3 and Team 5, league 2 Team 1 and Team 2):
+
+```powershell
+Set-Clipboard -Value "-- Flank smoke test`r`nSELECT t.team_name, t.team_id`r`nFROM dbo.sgm_teams AS t`r`nWHERE t.league_id = @League_Id`r`n  AND t.team_name LIKE @Name_Like"
+```
+
+1. **SSRS, as written.** Submenu > **SSRS Report**. Setup page 1: Return.
+   SQL page: under the editor, "Parameters: @League_Id, @Name_Like"; click
+   **Next**. Types page: `int` and `varchar(8000)` (SQL Server's
+   suggestions); click **Continue**. Review page ("Flank - the query"): click
+   the title bar, Return (Next). Run page: `1`, Tab, `%` (shift+5), Return
+   (Run: 2 rows), Return (Continue). Then as `query-ssrs` from step 3 (the
+   SQL box is read-only; default name "SSMS Query"). Check:
+   `.\tests\verify-ssrs.ps1 -Report (Get-Clipboard) -Parameters "League_Id=1;Name_Like=%"`
+   (2 rows).
+2. **Power BI, as a procedure.** Submenu > **Power BI (Paginated Report) (Beta)**. Setup page 1: click the title bar, Down (**Turn it into a stored
+   procedure**), Tab, ctrl+a, paste `dbo.flank_smoke_teams`, Return. SQL
+   page: click **Next**. Types page shows the `CREATE PROCEDURE` script;
+   click **Create procedure**. The procedure's review page follows ("Flank -
+   [dbo].[flank_smoke_teams]"): press **Next** with `BM_CLICK` (the grid has
+   focus). Run: `1`, Tab, `%`, Return, Return (Continue). The Power BI
+   dialog has the connection for the sandbox database preselected; Return
+   (Publish), ctrl+c, Escape. Check:
+   `.\tests\verify-pbi.ps1 -Report (Get-Clipboard) -Parameters "League_Id=1;Name_Like=%"`
+   (2 rows). Then drop the procedure: `DROP PROCEDURE dbo.flank_smoke_teams`
+   (via `FLANK_TEST_SQL`).
+3. **Excel, as written.** Submenu > **Excel (Power Query)**, setup as in
+   step 1 (`BM_CLICK` for **Continue** and **Next** if clicks are ignored).
+   Wizard: Return (skip access). Run page lists both parameters: `1`, Tab,
+   `%`, Return, Return (Create workbook). Save as
+   `C:\temp\flank-smoke\query-params.xlsx`. The workbook shows League_Id 1,
+   Name_Like %, Team 3 and Team 5. Enable Content, ctrl+g `B5` Return, `2`,
+   Return, ctrl+alt+F5. Excel asks to approve the **Native Database Query**
+   (click **Run**), then privacy levels (Tab, Tab, shift+Tab, Space,
+   Return). Pass: Team 1 and Team 2. Close without saving (**Don't Save**).
+   If Excel is already showing a dialog for an earlier test workbook, the new
+   one won't open: clear that first.
 
 ### sproc-excel
 
@@ -276,8 +347,10 @@ Right to expand, and type-ahead (`dbo.flank_t`) to select.
 ### dropdown
 
 `review-excel` with a list: on the review page, click **Add...** in League's
-Guardrails cell (or Tab to it and Space). In **Guardrails for League**, tick
-the dropdown checkbox, pick `[dbo].[get_leagues]` from the Procedure list (it
+Guardrails cell (or Tab to it and Space). In **Guardrails for League**,
+**A stored procedure** is selected and the controls work before the box is
+ticked (using them ticks it). Open the Procedure list (Tab to it, alt+Down;
+it's a plain list of `schema.name`, no typing) and pick `dbo.get_leagues` (it
 loads the columns: Show `name`, Pass `id`, with a preview), OK. The row shows
 "Dropdown: [dbo].[get_leagues] (name → id)" with Edit... and Remove. Next.
 The run page shows League as a dropdown of league names; pick NFL, run (Team 1
@@ -288,23 +361,39 @@ Connections shows `League_options`. Then Power BI on the same procedure with
 the same dropdown, publish, and `verify-pbi.ps1 -Report (Get-Clipboard)
 -Parameters "League_Id=3"`: 1 row.
 
+The other list sources (on any review page; `query-params`' query is
+quickest):
+
+- **A query**: paste `SELECT id, name FROM leagues WHERE id <= 3` into the
+  box, press **Run query** (`BM_CLICK`): "3 choice(s), 2 column(s)", Show
+  `name`, Pass `id`.
+- **Values typed here**: paste `1`, `2`, `3` (one per line) into Values,
+  choose **Values, each with a label people see**: "Type a label for each of
+  the 3 value(s)". Paste `NBA` and `NFL` into Labels: "3 value(s) but 2
+  label(s)". Add `MLB`: "3 choice(s)" and the preview pairs them. OK: the
+  row shows "Dropdown: 3 value(s) with labels". Run with NFL (Team 1 and
+  Team 2). For SSRS, `verify-ssrs.ps1 ... -Parameters "League_Id=2;..."`
+  renders and `League_Id=7` fails as not a valid value. For Excel, typing
+  MLB in B5 and refreshing gives Team 4 (the list itself is held in the
+  workbook, no query).
+- Setup page, **Turn it into a stored procedure** named `dbo.get_leagues`:
+  Next says it already exists and stays on the first page.
+
 ### query-pbi
 
 Needs a cached Power BI sign-in, or Flank shows its sign-in dialog, which
 only the user can complete. Check first:
 `.\Flank.TestPbiApp\bin\Debug\net472\Flank.TestPbiApp.exe --check` (build
-it with `dotnet build Flank.TestPbiApp`). If it says a sign-in is needed, ask
-the user to run it without `--check` (`--device` on this server: its own
-browser can't run the sign-in page). Never sign out: that drops the cache.
+it with `dotnet build Flank.TestPbiApp`). It should say "Silent sign-in: OK"
+and "Connections API (silent): OK". If not, ask the user to run it without
+`--check` (`--device` on this server: its own browser can't run the sign-in
+page). Never sign out: that drops the cache.
 
-1. In the query window's submenu, highlight **Power BI Paginated Report**
-   (third item), Return.
-2. **Create Power BI Paginated Report**: "Signed in to Power BI as ...",
-   Workspace `FlankSmoke`, the SQL, and "A SQL login saved on this report"
-   with SQL login `fomf-user` and a filled password ("From your SSMS
-   connection"). The shared-connection option is greyed out with a "Let
-   Flank list and create shared connections" link until the Flank app has the
-   connections permission (don't click it: it needs an interactive sign-in).
+1. In the query window's submenu, highlight **Power BI (Paginated Report) (Beta)** (third item, gold bars icon), Return, then the query setup
+   (section 3).
+2. **Create Power BI Paginated Report**: "Signed in to Power BI as
+   ...", Workspace `FlankSmoke`, and **Gateway / Cloud Connection** set to
+   the cloud connection for `fomf-ss-sandbox-db` (or the one used last time).
 3. `Set-Clipboard -Value "Smoke - Query"`; Tab (to Report Name), ctrl+a,
    ctrl+v, zoom, Return (Publish).
 4. **Power BI Report Created**: ctrl+c copies the link; Escape.
@@ -317,10 +406,10 @@ browser can't run the sign-in page). Never sign out: that drops the cache.
 ### sproc-pbi
 
 1. On `dbo.sgm_ListTeamsByLeague`, open the submenu, highlight **Power BI
-   Paginated Report**, Return. Run dialog: `2`, Return (Run: Team 1 and
+   (Paginated Report)**, Return. Run dialog: `2`, Return (Run: Team 1 and
    Team 2), Return (Continue).
-2. The Power BI dialog shows the procedure read-only and the login
-   pre-filled from the Object Explorer connection. `Set-Clipboard -Value
+2. The Power BI dialog shows the procedure read-only and the connection
+   for the database preselected. `Set-Clipboard -Value
    "Smoke - Sproc"`, Tab, ctrl+a, ctrl+v, Return (Publish); ctrl+c, Escape.
 3. Check it (the parameter has no default, so without a value it's empty):
    ```powershell

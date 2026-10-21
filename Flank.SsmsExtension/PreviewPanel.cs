@@ -149,7 +149,7 @@ namespace Flank.SsmsExtension
                 Controls.Add(new Label
                 {
                     Text = settings.Any(s => s != null)
-                        ? "* Required. Other blank values are left out (the procedure's default) or NULL, as set on the review page."
+                        ? BlankHint(settings.Where(s => s != null).Select(s => s!.IfBlank).ToList())
                         : "Leave a value blank to use the procedure's default.",
                     Location = new Point(0, y),
                     AutoSize = true,
@@ -351,6 +351,29 @@ namespace Flank.SsmsExtension
         /// Power Query and SSRS only ever read the first result set: make sure
         /// the user knows the rest won't be in the output.
         /// </summary>
+        /// <summary>What a blank value does, for just the choices made on the review page.</summary>
+        private static string BlankHint(IReadOnlyList<BlankValue> blanks)
+        {
+            var parts = new List<string>();
+
+            if (blanks.Contains(BlankValue.Required))
+                parts.Add("* Required.");
+
+            bool omit = blanks.Contains(BlankValue.UseProcedureDefault);
+            bool passNull = blanks.Contains(BlankValue.PassNull);
+
+            if (omit || passNull)
+            {
+                string what = omit && passNull ? "are left out (the procedure's default) or NULL, as set on the review page"
+                    : omit ? "are left out, so the procedure's default applies"
+                    : "are passed as NULL";
+
+                parts.Add((parts.Count > 0 ? "Other blank values " : "Blank values ") + what + ".");
+            }
+
+            return string.Join(" ", parts);
+        }
+
         public static bool ConfirmFirstResultSetOnly(IWin32Window owner, string what, IReadOnlyList<ResultSet> results, string outputName)
         {
             if (results.Count <= 1)

@@ -122,19 +122,53 @@ namespace Flank.SsmsExtension
                 return;
             }
 
+            string server = SsmsQueryHelper.ActiveQueryWindowServer() ?? "";
+
+            // As written or as a procedure, with any @parameters and their types.
+            var setup = QueryWorkflows.SetUp(server, connection.Database, sql, connection, "report");
+            if (setup == null)
+                return;
+
+            if (setup.Procedure != null)
+            {
+                await ProcedureWorkflows.CreateSsrsReportAsync(setup.Procedure);
+                return;
+            }
+
+            ReviewedQuery reviewed = null;
+
+            if (setup.Parameters.Count > 0)
+            {
+                reviewed = QueryWorkflows.ReviewAndRun(setup, connection, "report");
+                if (reviewed == null)
+                    return;
+            }
+
             await SsrsWorkflow.RunAsync(
-                sql,
+                setup.Sql,
                 storedProcedure: null,
-                defaultReportName: "SSMS Query Test",
+                defaultReportName: "SSMS Query",
                 analyzingStatus: "Analyzing query...",
                 prepare: reportOptions =>
                 {
+                    if (reviewed != null)
+                    {
+                        return client => client.CreateReportFromText(
+                            setup.Sql,
+                            reviewed.Columns,
+                            setup.Parameters,
+                            reviewed.Settings,
+                            reportOptions.DataSource,
+                            reportOptions.Folder,
+                            reportOptions.ReportName);
+                    }
+
                     IReadOnlyList<ReportColumn> columns = null;
                     SsmsQueryHelper.UseBorrowedConnection(connection, c =>
-                        columns = SqlMetadataDiscovery.DiscoverQueryColumns(reportOptions.Sql, c));
+                        columns = SqlMetadataDiscovery.DiscoverQueryColumns(setup.Sql, c));
 
                     return client => client.CreateReportFromText(
-                        reportOptions.Sql,
+                        setup.Sql,
                         columns,
                         reportOptions.DataSource,
                         reportOptions.Folder,

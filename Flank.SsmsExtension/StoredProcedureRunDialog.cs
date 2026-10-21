@@ -23,13 +23,18 @@ namespace Flank.SsmsExtension
         /// <param name="openConnection">Opens a connection to the procedure's database.</param>
         /// <param name="outputName">What's being created, for messages, e.g. "SSRS".</param>
         /// <param name="reviewed">From the parameter review page, if there was one.</param>
+        /// <param name="runQuery">
+        /// For a query rather than a procedure: runs it with the values, in
+        /// parameter order. <paramref name="procedureName"/> is then just its name in messages.
+        /// </param>
         public StoredProcedureRunDialog(
             string procedureName,
             IReadOnlyList<SprocParameter> parameters,
             Func<IDbConnection> openConnection,
             string createText,
             string outputName,
-            IReadOnlyList<ParameterSettings>? reviewed = null)
+            IReadOnlyList<ParameterSettings>? reviewed = null,
+            Func<IReadOnlyList<object?>, IReadOnlyList<ResultSet>>? runQuery = null)
         {
             this.procedureName = procedureName;
             this.outputName = outputName;
@@ -46,7 +51,7 @@ namespace Flank.SsmsExtension
 
             Controls.Add(new Label
             {
-                Text = "Run the procedure to preview its results.",
+                Text = runQuery == null ? "Run the procedure to preview its results." : "Run the query to preview its results.",
                 Location = new Point(16, 12),
                 Size = new Size(748, 20),
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
@@ -56,7 +61,7 @@ namespace Flank.SsmsExtension
             {
                 Location = new Point(16, 40),
                 Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
-                Runner = values =>
+                Runner = runQuery ?? (values =>
                 {
                     var named = inputs
                         .Select((p, i) => new KeyValuePair<string, object?>(p.Name, values[i]))
@@ -66,7 +71,7 @@ namespace Flank.SsmsExtension
                     {
                         return StoredProcedureRunner.Run(connection, procedureName, named, PreviewPanel.MaxRows, outputs);
                     }
-                },
+                }),
             };
             Controls.Add(preview);
 

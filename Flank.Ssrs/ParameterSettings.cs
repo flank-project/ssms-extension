@@ -16,6 +16,19 @@ namespace Flank.Ssrs
         PassNull,
     }
 
+    /// <summary>Where a dropdown's choices come from.</summary>
+    public enum ListSource
+    {
+        /// <summary>A stored procedure that takes no parameters.</summary>
+        Procedure,
+
+        /// <summary>A query written on the guardrails page.</summary>
+        Query,
+
+        /// <summary>Values typed in; the report or workbook holds them, no SQL runs.</summary>
+        Values,
+    }
+
     /// <summary>
     /// How one input parameter of a stored procedure is presented to the
     /// people using the report or workbook, chosen on the parameter review page.
@@ -46,21 +59,39 @@ namespace Flank.Ssrs
 
         public BlankValue IfBlank { get; set; }
 
+        /// <summary>Where a dropdown's choices come from.</summary>
+        public ListSource ListSource { get; set; }
+
         /// <summary>
-        /// A stored procedure ([schema].[name]) whose first result set gives the
-        /// choices, as a dropdown; null for free entry. Its first column is the
-        /// value passed, its second (if any) the label shown.
+        /// For <see cref="ListSource.Procedure"/>: a stored procedure
+        /// ([schema].[name]) whose first result set gives the choices.
         /// </summary>
         public string? ListProcedure { get; set; }
 
+        /// <summary>For <see cref="ListSource.Query"/>: a query whose first result set gives the choices.</summary>
+        public string? ListQuery { get; set; }
+
+        /// <summary>The column passed to the parameter.</summary>
         public string? ListValueColumn { get; set; }
 
+        /// <summary>The column shown; may be the same as the value column.</summary>
         public string? ListLabelColumn { get; set; }
 
-        /// <summary>The choices from a preview run of the list procedure: value, then label.</summary>
+        /// <summary>
+        /// The choices: value, then label. From a preview run of the procedure
+        /// or query, or for <see cref="ListSource.Values"/>, the values themselves.
+        /// </summary>
         public IReadOnlyList<KeyValuePair<object?, object?>> ListRows { get; set; } = new KeyValuePair<object?, object?>[0];
 
-        public bool HasList => ListProcedure != null && ListValueColumn != null && ListLabelColumn != null;
+        /// <summary>The SQL that returns the choices; null for typed-in values (or no list).</summary>
+        public string? ListSql =>
+            ListSource == ListSource.Procedure && ListProcedure != null ? "EXEC " + ListProcedure
+            : ListSource == ListSource.Query && !string.IsNullOrWhiteSpace(ListQuery) ? ListQuery
+            : null;
+
+        public bool HasList =>
+            ListValueColumn != null && ListLabelColumn != null &&
+            (ListSource == ListSource.Values ? ListRows.Count > 0 : ListSql != null);
 
         /// <summary>Settings as the procedure declares the parameters, before any review.</summary>
         public static IReadOnlyList<ParameterSettings> FromProcedure(IReadOnlyList<SprocParameter> parameters) =>

@@ -56,6 +56,20 @@ namespace Flank.SsmsExtension
 
             return sql;
         }
+        /// <summary>The active query window's server, as SSMS connected to it; null if unknown.</summary>
+        public static string? ActiveQueryWindowServer()
+        {
+            try
+            {
+                return Microsoft.SqlServer.Management.UI.VSIntegration.ServiceCache.ScriptFactory?
+                    .CurrentlyActiveWndConnectionInfo?.UIConnectionInfo?.ServerName;
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
         public static IDbConnection GetCurrentConnection()
         {
             ThreadHelper.ThrowIfNotOnUIThread();

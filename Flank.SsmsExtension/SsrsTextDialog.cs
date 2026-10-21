@@ -83,6 +83,7 @@ namespace Flank.SsmsExtension
                 sqlTextBox = new TextBox
                 {
                     Text = sql,
+                    ReadOnly = true,
                     Multiline = true,
                     ScrollBars = ScrollBars.Both,
                     WordWrap = false,
