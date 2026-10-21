@@ -5,7 +5,7 @@ using System.Xml.Linq;
 
 namespace Flank.Excel;
 
-public static class ExcelExporter
+public static partial class ExcelExporter
 {
     /// <summary>Workbook-level name for the parameter cells (names in A, values in B).</summary>
     public const string ParametersName = "FlankParameters";
@@ -115,6 +115,10 @@ public static class ExcelExporter
         {
             AddParameterCells(workbook, parameters, request.ParameterValues, cells);
             AddParameterChecks(workbook, parameters, cells);
+
+            var lists = Lists(parameters);
+            if (lists.Count > 0)
+                AddListParts(workbook, lists, cells);
         }
 
         if (columnNames != null && CanUseAsTableColumns(columnNames))
@@ -349,10 +353,15 @@ public static class ExcelExporter
             .Take(oldZipLength)
             .ToArray();
 
-        // Everything after the embedded ZIP must be preserved.
+        // Everything after the embedded ZIP must be preserved (lists add to its metadata).
         byte[] trailingBytes = mashupBytes
             .Skip(8 + oldZipLength)
             .ToArray();
+
+        var lists = Lists(parameters);
+
+        if (lists.Count > 0)
+            trailingBytes = AddListMetadata(trailingBytes, lists);
 
         // Make a writable copy of the embedded ZIP.
         using var zipStream = new MemoryStream();
@@ -379,6 +388,8 @@ public static class ExcelExporter
             mCode = parameters.Count > 0
                 ? ReplaceWithParameterizedQuery(mCode, sql, server, database, parameters)
                 : ReplaceTemplateQuery(mCode, sql, server, database);
+
+            mCode = mCode.TrimEnd() + ListQueriesM(lists, server, database) + Environment.NewLine;
 
             // ZIP entries can't be overwritten directly.
             section.Delete();
@@ -498,7 +509,8 @@ public static class ExcelExporter
 
         for (int i = 0; i < parameters.Count; i++)
         {
-            checks.Append($"    Value{i} = {CheckedValueM(parameters[i], i)},{Environment.NewLine}");
+            int? listNumber = Lists(parameters).Where(l => l.Parameter == parameters[i]).Select(l => (int?)l.Number).FirstOrDefault();
+            checks.Append($"    Value{i} = {CheckedValueM(parameters[i], i, listNumber)},{Environment.NewLine}");
         }
 
         string values = string.Join(", ", Enumerable.Range(0, parameters.Count).Select(i => "Value" + i));
@@ -526,7 +538,8 @@ in
     /// cell if it can't be. Data validation stops most bad values as they're
     /// typed, but not pasted ones.
     /// </summary>
-    internal static string CheckedValueM(WorkbookParameter parameter, int index)
+    /// <param name="listNumber">For a parameter with a list: which one (List1 = 1).</param>
+    internal static string CheckedValueM(WorkbookParameter parameter, int index, int? listNumber = null)
     {
         string cell = "B" + (FirstParameterRow + index);
         string label = $"{parameter.DisplayName} (cell {cell})";
@@ -542,6 +555,10 @@ in
 
         switch (parameter.Kind)
         {
+            case var _ when parameter.List != null && listNumber != null:
+                convert = ListValueM(parameter, listNumber.Value, label, Fail);
+                break;
+
             case WorkbookParameterKind.WholeNumber:
                 string range = hasRange ? $" and n >= {parameter.Minimum} and n <= {parameter.Maximum}" : "";
                 string between = hasRange
@@ -636,7 +653,8 @@ in
 
                 if (parameterValues != null && i < parameterValues.Count)
                 {
-                    var value = cells.Cell("B" + r, parameterValues[i], dateOnly: parameters[i].Kind == WorkbookParameterKind.Date);
+                    // A list shows labels, so start with the label for the value.
+                    var value = cells.Cell("B" + r, ListLabelFor(parameters[i], parameterValues[i]), dateOnly: parameters[i].Kind == WorkbookParameterKind.Date);
                     if (value != null)
                         row.Add(value);
                 }
@@ -695,14 +713,16 @@ in
     {
         var validations = new XElement(Sheet + "dataValidations");
         var formats = new List<XElement>();
+        var lists = Lists(parameters);
         int priority = 1;
 
         for (int i = 0; i < parameters.Count; i++)
         {
             var parameter = parameters[i];
             string cell = "B" + (FirstParameterRow + i);
+            int? listNumber = lists.Where(l => l.Parameter == parameter).Select(l => (int?)l.Number).FirstOrDefault();
 
-            var validation = DataValidation(parameter, cell);
+            var validation = DataValidation(parameter, cell, listNumber);
             if (validation != null)
                 validations.Add(validation);
 
@@ -739,7 +759,7 @@ in
         });
     }
 
-    private static XElement? DataValidation(WorkbookParameter parameter, string cell)
+    private static XElement? DataValidation(WorkbookParameter parameter, string cell, int? listNumber)
     {
         string? type = null;
         string? comparison = null;
@@ -750,6 +770,12 @@ in
 
         switch (parameter.Kind)
         {
+            case var _ when parameter.List != null && listNumber != null:
+                type = "list";
+                formula1 = ListRangeName(listNumber.Value);
+                error = "Choose one of the choices in the list.";
+                break;
+
             case WorkbookParameterKind.WholeNumber:
                 type = "whole";
                 comparison = "between";

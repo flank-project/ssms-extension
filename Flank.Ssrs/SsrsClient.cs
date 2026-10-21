@@ -185,7 +185,46 @@ namespace Flank.Ssrs
                 columns,
                 dataSource,
                 queryXml,
-                reportParametersXml);
+                reportParametersXml,
+                ListDataSetsXml(settings, dataSource));
+        }
+
+        private static string ListDataSetName(string reportParameterName) =>
+            "List_" + MakeSafeRdlName(reportParameterName, 0);
+
+        /// <summary>
+        /// A dataset per parameter with a list procedure: the procedure called
+        /// with no parameters, its value and label columns as fields Value and
+        /// Label, for the parameter's valid values.
+        /// </summary>
+        private static string ListDataSetsXml(IReadOnlyList<ParameterSettings>? settings, RdlDataSource dataSource)
+        {
+            var dataSets = new StringBuilder();
+
+            foreach (var setting in settings ?? new ParameterSettings[0])
+            {
+                if (!setting.HasList)
+                    continue;
+
+                dataSets.Append($@"
+    <DataSet Name=""{XmlEscape(ListDataSetName(setting.SqlName.TrimStart('@')))}"">
+      <Query>
+        <DataSourceName>{XmlEscape(dataSource.Name)}</DataSourceName>
+        <CommandType>StoredProcedure</CommandType>
+        <CommandText>{XmlEscape(setting.ListProcedure!)}</CommandText>
+      </Query>
+      <Fields>
+        <Field Name=""Value"">
+          <DataField>{XmlEscape(setting.ListValueColumn!)}</DataField>
+        </Field>
+        <Field Name=""Label"">
+          <DataField>{XmlEscape(setting.ListLabelColumn!)}</DataField>
+        </Field>
+      </Fields>
+    </DataSet>");
+            }
+
+            return dataSets.ToString();
         }
 
         private static void BuildStoredProcedureParameters(
@@ -259,11 +298,23 @@ namespace Flank.Ssrs
       </DefaultValue>";
                 }
 
+                // A dropdown from the list procedure's dataset (see ListDataSetsXml).
+                string validValuesXml = setting?.HasList == true
+                    ? $@"
+      <ValidValues>
+        <DataSetReference>
+          <DataSetName>{XmlEscape(ListDataSetName(reportParameterName))}</DataSetName>
+          <ValueField>Value</ValueField>
+          <LabelField>Label</LabelField>
+        </DataSetReference>
+      </ValidValues>"
+                    : "";
+
                 reportParameters.Append($@"
     <ReportParameter Name=""{XmlEscape(reportParameterName)}"">
       <DataType>{rdlType}</DataType>
       <Nullable>{(required ? "false" : "true")}</Nullable>{defaultXml}
-      <Prompt>{XmlEscape(prompt)}</Prompt>
+      <Prompt>{XmlEscape(prompt)}</Prompt>{validValuesXml}
     </ReportParameter>");
 
                 queryParameters.Append($@"
@@ -301,7 +352,8 @@ namespace Flank.Ssrs
             IReadOnlyList<ReportColumn> columns,
             RdlDataSource dataSource,
             string queryXml,
-            string reportParametersXml)
+            string reportParametersXml,
+            string extraDataSetsXml = "")
         {
             TableRdl table =
                 BuildTableRdl(columns);
@@ -329,7 +381,7 @@ namespace Flank.Ssrs
       <Fields>
 {table.Fields}
       </Fields>
-    </DataSet>
+    </DataSet>{extraDataSetsXml}
   </DataSets>
 
 {reportParametersXml}

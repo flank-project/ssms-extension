@@ -122,6 +122,31 @@ AS SELECT 1;");
     }
 
     [Fact]
+    public void A_parameter_with_a_list_gets_a_dataset_and_valid_values()
+    {
+        var parameters = new[] { Param("@League_Id", "int") };
+        var settings = ParameterSettings.FromProcedure(parameters);
+        settings[0].ListProcedure = "[dbo].[get_leagues]";
+        settings[0].ListValueColumn = "id";
+        settings[0].ListLabelColumn = "name";
+
+        var rdl = XDocument.Parse(SsrsClient.BuildStoredProcedureReportRdl(
+            "[dbo].[p]", parameters, new[] { new ReportColumn { Name = "x" } },
+            RdlDataSource.AzureSql("s.database.windows.net", "d"), null, settings));
+
+        var list = rdl.Descendants(Rdl + "DataSet").Single(d => (string)d.Attribute("Name")! == "List_League_Id");
+        Assert.Equal("StoredProcedure", (string)list.Descendants(Rdl + "CommandType").Single());
+        Assert.Equal("[dbo].[get_leagues]", (string)list.Descendants(Rdl + "CommandText").Single());
+        Assert.Equal("Database", (string)list.Descendants(Rdl + "DataSourceName").Single());
+        Assert.Equal(new[] { "id", "name" }, list.Descendants(Rdl + "DataField").Select(f => (string)f));
+
+        var reference = rdl.Descendants(Rdl + "ReportParameter").Single().Descendants(Rdl + "DataSetReference").Single();
+        Assert.Equal("List_League_Id", (string)reference.Element(Rdl + "DataSetName")!);
+        Assert.Equal("Value", (string)reference.Element(Rdl + "ValueField")!);
+        Assert.Equal("Label", (string)reference.Element(Rdl + "LabelField")!);
+    }
+
+    [Fact]
     public void Without_settings_reports_are_as_before()
     {
         var parameters = new[] { Param("@League_Id", "int") };

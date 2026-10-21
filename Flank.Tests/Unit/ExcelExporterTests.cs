@@ -194,6 +194,73 @@ public class ExcelExporterTests : IDisposable
         Assert.Contains("Active only (cell B6) must be TRUE or FALSE.", m);
     }
 
+    private WorkbookRequest ListRequest() =>
+        new WorkbookRequest("EXEC [dbo].[p] @League_Id = @League_Id", "my-server", "my-db")
+        {
+            Parameters = new[]
+            {
+                new WorkbookParameter("League_Id", "League")
+                {
+                    Required = true,
+                    List = new WorkbookList("EXEC [dbo].[get_leagues]", "id", "name")
+                    {
+                        Rows = new (object?, object?)[] { (1, "NBA"), (2, "NFL"), (3, "MLB") },
+                    },
+                },
+            },
+            ParameterValues = new object?[] { 2 },
+        };
+
+    [Fact]
+    public void A_list_parameter_shows_the_label_and_a_dropdown_from_a_hidden_lists_sheet()
+    {
+        ExcelExporter.Generate(outputPath, ListRequest());
+
+        var sheet = ReadPart("xl/worksheets/sheet1.xml").Root!;
+        var b4 = sheet.Descendants(Sheet + "c").Single(c => (string)c.Attribute("r")! == "B4");
+        Assert.Equal("NFL", b4.Descendants(Sheet + "t").Single().Value);
+
+        var validation = sheet.Descendants(Sheet + "dataValidation").Single();
+        Assert.Equal("list", (string)validation.Attribute("type")!);
+        Assert.Equal("FlankList1", (string)validation.Element(Sheet + "formula1")!);
+
+        var book = ReadPart("xl/workbook.xml").Root!;
+        var lists = book.Descendants(Sheet + "sheet").Single(s => (string)s.Attribute("name")! == "Lists");
+        Assert.Equal("hidden", (string)lists.Attribute("state")!);
+        var names = book.Descendants(Sheet + "definedName").ToDictionary(n => (string)n.Attribute("name")!, n => n.Value);
+        Assert.Equal("List1[name]", names["FlankList1"]);
+        Assert.Equal("Lists!$A$1:$B$4", names["ExternalData_3"]);
+
+        var table = ReadPart("xl/tables/table3.xml").Root!;
+        Assert.Equal("List1", (string)table.Attribute("name")!);
+        Assert.Equal(new[] { "name", "id" }, table.Descendants(Sheet + "tableColumn").Select(c => (string)c.Attribute("name")!));
+
+        var listSheet = ReadPart("xl/worksheets/sheet2.xml").Root!;
+        Assert.Equal(4, listSheet.Descendants(Sheet + "row").Count());
+
+        var connection = ReadPart("xl/connections.xml").Root!.Elements(Sheet + "connection").Single(c => (string)c.Attribute("id")! == "3");
+        Assert.Contains("Location=List1", (string)connection.Element(Sheet + "dbPr")!.Attribute("connection")!);
+
+        var types = ReadPart("[Content_Types].xml").ToString();
+        Assert.Contains("/xl/worksheets/sheet2.xml", types);
+        Assert.Contains("/xl/tables/table3.xml", types);
+        Assert.Contains("/xl/queryTables/queryTable3.xml", types);
+    }
+
+    [Fact]
+    public void The_list_is_its_own_query_and_the_main_query_looks_up_the_value()
+    {
+        ExcelExporter.Generate(outputPath, ListRequest());
+        string m = MashupReader.ReadSection1(outputPath);
+
+        Assert.Contains("shared List1 = let", m);
+        Assert.Contains("[Query=\"EXEC [dbo].[get_leagues]\"]", m);
+        Assert.Contains("Table.SelectColumns(Source, {\"name\", \"id\"})", m);
+        Assert.Contains("Table.SelectRows(List1, each Text.From(Record.Field(_, \"name\")) = Text.From(v))", m);
+        Assert.Contains("Record.Field(match{0}, \"id\")", m);
+        Assert.Contains("League (cell B4) must be one of the choices in its list.", m);
+    }
+
     [Fact]
     public void Parameter_names_go_in_column_a_above_the_table()
     {
