@@ -12,7 +12,7 @@ Right-click a query (or a stored procedure in Object Explorer) and choose:
 
 ---
 
-**Jump to:** [Install](#install) · [Excel (Power Query)](#excel-power-query) · [SSRS Reports](#ssrs-reports) · [Power BI Paginated Reports](#power-bi-paginated-reports) · [Uninstall](#uninstall)
+**Jump to:** [Install](#install) · [Excel (Power Query)](#excel-power-query) · [SSRS Reports](#ssrs-reports) · [Power BI (Paginated Reports) (Beta)](#power-bi-paginated-reports-beta) · [Uninstall](#uninstall)
 
 ---
 
@@ -110,7 +110,7 @@ Then choose a folder and shared data source, name the report, and click **Create
 
 Flank remembers the server URLs, folder and data source from the last report you created (per Windows user) and pre-fills them next time.
 
-## Power BI Paginated Reports
+## Power BI (Paginated Reports) (Beta)
 
 Flank can publish a SQL query or stored procedure as a paginated report in a Power BI workspace. Paginated reports are SSRS reports hosted in Power BI, so you get the same basic tabular report as **SSRS Report**, without an SSRS server.
 
