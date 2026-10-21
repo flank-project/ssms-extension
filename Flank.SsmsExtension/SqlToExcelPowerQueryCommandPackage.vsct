@@ -118,7 +118,7 @@
 				<Icon guid="guidImages" id="bmpPowerBi"/>
 
 				<Strings>
-					<ButtonText>Power BI (Paginated Report)</ButtonText>
+					<ButtonText>Power BI (Paginated Report) (Beta)</ButtonText>
 				</Strings>
 
 			</Button>

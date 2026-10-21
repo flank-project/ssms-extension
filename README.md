@@ -6,7 +6,7 @@ Right-click a query (or a stored procedure in Object Explorer) and choose:
 
 - **Excel (Power Query)**
 - **SSRS Report**
-- **Power BI (Paginated Report)**
+- **Power BI (Paginated Report) (Beta)**
 
 <img width="1600" height="682" alt="Flank SSRS SSMS README" src="https://github.com/user-attachments/assets/1f21ef93-ad61-408b-bfa9-9300cef3bd66" />
 
@@ -138,7 +138,7 @@ Flank can publish a SQL query or stored procedure as a paginated report in a Pow
 
 ### Create a report
 
-Right-click a query and choose **Make Self-Serve → Power BI (Paginated Report)**, or right-click a stored procedure in Object Explorer. Sign in if Flank asks, then choose the workspace, name the report, pick the connection, and click **Publish**.
+Right-click a query and choose **Make Self-Serve → Power BI (Paginated Report) (Beta)**, or right-click a stored procedure in Object Explorer. Sign in if Flank asks, then choose the workspace, name the report, pick the connection, and click **Publish**.
 
 ### One-time setup Flank doesn't do for you
 
