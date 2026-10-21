@@ -5,8 +5,8 @@
 #   .\tests\verify-excel.ps1 -Path C:\temp\report.xlsx [-MinRows 1] [-Timeout 300]
 #   .\tests\verify-excel.ps1 -Path C:\temp\report.xlsx -Parameters "League_Id=1;Name=x"
 #
-# -Parameters fills in the workbook's parameter cells (names in column A,
-# values in column B) before refreshing. The file is opened read-only and
+# -Parameters fills in the workbook's parameter cells (labels in column A,
+# values in column B, each named Flank_<parameter>) before refreshing. The file is opened read-only and
 # never saved.
 #
 # Excel runs hidden. A cold start (open + first refresh) can take over a
@@ -46,12 +46,14 @@ $job = Start-Job -ArgumentList $Path, $values -ScriptBlock {
         $workbook = $excel.Workbooks.Open($path, 0, $true)
         try {
             if ($values.Count -gt 0) {
-                $cells = $workbook.Names.Item("FlankParameters").RefersToRange
+                # Each parameter's value cell is named Flank_<parameter>; its label is beside it in column A.
                 $missing = [System.Collections.Generic.List[string]]::new([string[]]$values.Keys)
-                foreach ($row in $cells.Rows) {
-                    $name = [string]$row.Cells.Item(1, 1).Value2
+                foreach ($definedName in $workbook.Names) {
+                    if (-not $definedName.Name.StartsWith("Flank_")) { continue }
+                    $cell = $definedName.RefersToRange
+                    $name = [string]$cell.Offset(0, -1).Value2
                     if ($values.Contains($name)) {
-                        $row.Cells.Item(1, 2).Value2 = $values[$name]
+                        $cell.Value2 = $values[$name]
                         [void]$missing.Remove($name)
                     }
                 }
@@ -67,9 +69,10 @@ $job = Start-Job -ArgumentList $Path, $values -ScriptBlock {
 
             # Workbooks start with the preview's rows. Clear them so rows can
             # only come from this refresh (a failed one leaves the table empty).
+            # Only query tables (SourceType 3): a table parameter's rows are input.
             foreach ($sheet in $workbook.Worksheets) {
                 foreach ($table in $sheet.ListObjects) {
-                    if ($table.Name -ne "LastRefreshed" -and $table.DataBodyRange) {
+                    if ($table.Name -ne "LastRefreshed" -and $table.SourceType -eq 3 -and $table.DataBodyRange) {
                         [void]$table.DataBodyRange.ClearContents()
                     }
                 }

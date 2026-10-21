@@ -69,7 +69,10 @@ namespace Flank.SsmsExtension
 
                     using (var connection = openConnection())
                     {
-                        return StoredProcedureRunner.Run(connection, procedureName, named, PreviewPanel.MaxRows, outputs);
+                        // Table-valued parameters go through the report's own call, which takes them as JSON.
+                        return inputs.Any(p => p.IsTable)
+                            ? StoredProcedureRunner.RunCall(connection, procedureName, parameters, reviewed, values, PreviewPanel.MaxRows)
+                            : StoredProcedureRunner.Run(connection, procedureName, named, PreviewPanel.MaxRows, outputs);
                     }
                 }),
             };

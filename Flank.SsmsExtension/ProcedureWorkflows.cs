@@ -60,6 +60,7 @@ namespace Flank.SsmsExtension
             string step = "Reading stored procedure";
             IReadOnlyList<SprocParameter> parameters;
             bool isAzure;
+            string? problem;
 
             try
             {
@@ -72,11 +73,18 @@ namespace Flank.SsmsExtension
                         objectId, connection);
 
                     isAzure = AccessDiscovery.IsAzureSqlDatabase(connection);
+                    problem = TableParameterProblem(sproc, parameters, connection, forReport: false);
                 }
             }
             catch (Exception ex)
             {
                 ExcelWorkflow.ShowFailure(step, ex, sproc.Server, sproc.Database, null);
+                return;
+            }
+
+            if (problem != null)
+            {
+                SsmsUiHelper.ShowMessage(problem, OLEMSGICON.OLEMSGICON_INFO, "Flank");
                 return;
             }
 
@@ -122,6 +130,7 @@ namespace Flank.SsmsExtension
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
             IReadOnlyList<SprocParameter> parameters;
+            string? problem;
 
             try
             {
@@ -132,6 +141,8 @@ namespace Flank.SsmsExtension
 
                     parameters = SqlMetadataDiscovery.DiscoverStoredProcedureParameters(
                         objectId, connection);
+
+                    problem = TableParameterProblem(sproc, parameters, connection, forReport: true);
                 }
             }
             catch (Exception ex)
@@ -140,6 +151,12 @@ namespace Flank.SsmsExtension
                     "Flank couldn't read the stored procedure.\n\n" + ex.Message,
                     OLEMSGICON.OLEMSGICON_CRITICAL,
                     "Flank Error");
+                return;
+            }
+
+            if (problem != null)
+            {
+                SsmsUiHelper.ShowMessage(problem, OLEMSGICON.OLEMSGICON_INFO, "Flank");
                 return;
             }
 
@@ -190,6 +207,7 @@ namespace Flank.SsmsExtension
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
             IReadOnlyList<SprocParameter> parameters;
+            string? problem;
 
             try
             {
@@ -200,6 +218,8 @@ namespace Flank.SsmsExtension
 
                     parameters = SqlMetadataDiscovery.DiscoverStoredProcedureParameters(
                         objectId, connection);
+
+                    problem = TableParameterProblem(sproc, parameters, connection, forReport: true);
                 }
             }
             catch (Exception ex)
@@ -208,6 +228,12 @@ namespace Flank.SsmsExtension
                     "Flank couldn't read the stored procedure.\n\n" + ex.Message,
                     OLEMSGICON.OLEMSGICON_CRITICAL,
                     "Flank Error");
+                return;
+            }
+
+            if (problem != null)
+            {
+                SsmsUiHelper.ShowMessage(problem, OLEMSGICON.OLEMSGICON_INFO, "Flank");
                 return;
             }
 
@@ -249,6 +275,43 @@ namespace Flank.SsmsExtension
                     columns,
                     dataSource,
                     settings: settings));
+        }
+
+        /// <summary>
+        /// Why the procedure's table-valued parameters can't be supported, or
+        /// null if they can (or it has none). Their rows are passed as JSON and
+        /// read with OPENJSON, which needs compatibility level 130. A report
+        /// takes one as a multi-value parameter, so only a one-column table.
+        /// </summary>
+        private static string? TableParameterProblem(
+            ProcedureSource sproc,
+            IReadOnlyList<SprocParameter> parameters,
+            IDbConnection connection,
+            bool forReport)
+        {
+            var tables = parameters.Where(p => p.IsTable).ToList();
+
+            if (tables.Count == 0)
+                return null;
+
+            int level = SqlMetadataDiscovery.GetCompatibilityLevel(connection);
+            if (level < 130)
+            {
+                return $"{sproc.QualifiedName} takes a table ({tables[0].Name}). Flank passes tables as JSON, " +
+                       $"which needs the database's compatibility level to be 130 (SQL Server 2016) or later; {sproc.Database} is at {level}.";
+            }
+
+            if (tables.FirstOrDefault(t => t.Columns.Count == 0) is SprocParameter empty)
+                return $"{empty.Name}'s table type {empty.TableType} has no columns to fill in, so Flank can't pass rows to it.";
+
+            if (forReport && tables.FirstOrDefault(t => t.Columns.Count > 1) is SprocParameter wide)
+            {
+                return $"{sproc.QualifiedName} takes a table with {wide.Columns.Count} columns ({wide.Name} {wide.TableType}).\n\n" +
+                       "Reports can take a table with one column, as a parameter with multiple values, but not a wider one. " +
+                       "Create an Excel workbook from it instead: people enter the rows in a table.";
+            }
+
+            return null;
         }
 
         /// <summary>

@@ -20,8 +20,12 @@ namespace Flank.SsmsExtension
 
         private readonly IReadOnlyList<SprocParameter> parameters;
         private readonly IReadOnlyList<ParameterSettings?> settings;
-        // A TextBox, or a ComboBox of Choices for a parameter with a dropdown list.
+        // A TextBox, a ComboBox of Choices for a parameter with a dropdown list,
+        // or a DataGridView for a table-valued parameter's rows.
         private readonly List<Control> inputs = new List<Control>();
+
+        // Height of a table-valued parameter's grid: its header and about three rows.
+        private const int TableInputHeight = 96;
 
         /// <summary>One of a list parameter's choices: shown by its label, passing its value.</summary>
         private sealed class Choice
@@ -51,8 +55,35 @@ namespace Flank.SsmsExtension
             if (inputs[index] is ComboBox choices)
                 return (choices.SelectedItem as Choice)?.Value;
 
+            if (inputs[index] is DataGridView grid)
+                return TableValue(parameters[index], grid);
+
             return StoredProcedureRunner.ParseValue(parameters[index].SqlType, inputs[index].Text);
         }
+        /// <summary>
+        /// A table-valued parameter's rows, typed per column; rows left
+        /// entirely blank are skipped. Null if there are none.
+        /// </summary>
+        private static IReadOnlyList<IReadOnlyList<object?>>? TableValue(SprocParameter parameter, DataGridView grid)
+        {
+            var rows = new List<IReadOnlyList<object?>>();
+
+            foreach (DataGridViewRow row in grid.Rows)
+            {
+                if (row.IsNewRow)
+                    continue;
+
+                var values = parameter.Columns
+                    .Select((column, c) => StoredProcedureRunner.ParseValue(column.SqlType, Convert.ToString(row.Cells[c].Value) ?? ""))
+                    .ToArray();
+
+                if (values.Any(v => v != null))
+                    rows.Add(values);
+            }
+
+            return rows.Count > 0 ? rows : null;
+        }
+
         private readonly TabControl results;
         private readonly Label status;
 
@@ -70,7 +101,8 @@ namespace Flank.SsmsExtension
                 .ToList();
             Size = size;
 
-            int inputsHeight = parameters.Count == 0 ? 24 : Math.Min(parameters.Count * 30, 240);
+            int contentHeight = parameters.Sum(p => p.IsTable ? TableInputHeight + 6 : 30);
+            int inputsHeight = parameters.Count == 0 ? 24 : Math.Min(contentHeight, 240);
             var inputPanel = new Panel
             {
                 Location = new Point(0, 0),
@@ -85,29 +117,63 @@ namespace Flank.SsmsExtension
                 inputPanel.Controls.Add(new Label { Text = "No parameters.", Location = new Point(0, 4), AutoSize = true });
             }
 
+            int top = 0;
+
             for (int i = 0; i < parameters.Count; i++)
             {
                 var parameter = parameters[i];
                 var setting = settings[i];
+                string type = parameter.IsTable ? "table" : parameter.SqlType;
 
                 inputPanel.Controls.Add(new Label
                 {
                     Text = setting != null
-                        ? $"{setting.DisplayName} ({parameter.SqlType}){(setting.IfBlank == BlankValue.Required ? " *" : "")}"
-                        : $"{parameter.Name} ({parameter.SqlType})",
-                    Location = new Point(0, i * 30 + 4),
+                        ? $"{setting.DisplayName} ({type}){(setting.IfBlank == BlankValue.Required ? " *" : "")}"
+                        : $"{parameter.Name} ({type})",
+                    Location = new Point(0, top + 4),
                     Size = new Size(220, 20),
                     AutoEllipsis = true,
                 });
 
                 Control input;
 
-                if (setting?.HasList == true)
+                if (parameter.IsTable)
+                {
+                    // One row per row of the table; the empty last row adds one.
+                    var grid = new DataGridView
+                    {
+                        Location = new Point(225, top),
+                        Size = new Size(Math.Max(Width - 250, 300), TableInputHeight),
+                        Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+                        AllowUserToAddRows = true,
+                        AllowUserToDeleteRows = true,
+                        RowHeadersWidth = 24,
+                        AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
+                        BackgroundColor = SystemColors.Window,
+                        Name = "Parameter_" + parameter.Name.TrimStart('@'),
+                    };
+
+                    foreach (var column in parameter.Columns)
+                    {
+                        grid.Columns.Add(new DataGridViewTextBoxColumn
+                        {
+                            HeaderText = column.Name,
+                            ToolTipText = ProcedureCall.TypeDeclaration(column) + (column.IsNullable ? "" : ", required"),
+                            SortMode = DataGridViewColumnSortMode.NotSortable,
+                        });
+                    }
+
+                    grid.CellValueChanged += (s, e) => Invalidate("Values changed. Run again to preview.");
+                    grid.RowsRemoved += (s, e) => Invalidate("Values changed. Run again to preview.");
+                    input = grid;
+                    top += TableInputHeight + 6;
+                }
+                else if (setting?.HasList == true)
                 {
                     // The same choices people get in the report or workbook.
                     var choices = new ComboBox
                     {
-                        Location = new Point(225, i * 30),
+                        Location = new Point(225, top),
                         Width = 300,
                         DropDownStyle = ComboBoxStyle.DropDownList,
                         Name = "Parameter_" + parameter.Name.TrimStart('@'),
@@ -125,17 +191,19 @@ namespace Flank.SsmsExtension
 
                     choices.SelectedIndexChanged += (s, e) => Invalidate("Values changed. Run again to preview.");
                     input = choices;
+                    top += 30;
                 }
                 else
                 {
                     input = new TextBox
                     {
                         Text = setting?.DefaultValue ?? "",
-                        Location = new Point(225, i * 30),
+                        Location = new Point(225, top),
                         Width = 300,
                         Name = "Parameter_" + parameter.Name.TrimStart('@'),
                     };
                     input.TextChanged += (s, e) => Invalidate("Values changed. Run again to preview.");
+                    top += 30;
                 }
 
                 inputs.Add(input);
@@ -249,7 +317,11 @@ namespace Flank.SsmsExtension
             {
                 if (settings[i]?.IfBlank == BlankValue.Required && ValueOf(i) == null)
                 {
-                    SetStatus($"Enter a value for {settings[i]!.DisplayName}: it's required.", Color.Firebrick);
+                    SetStatus(
+                        parameters[i].IsTable
+                            ? $"Enter at least one row for {settings[i]!.DisplayName}: it's required."
+                            : $"Enter a value for {settings[i]!.DisplayName}: it's required.",
+                        Color.Firebrick);
                     inputs[i].Select();
                     return;
                 }

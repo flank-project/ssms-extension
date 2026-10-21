@@ -7,9 +7,6 @@ namespace Flank.Excel;
 
 public static partial class ExcelExporter
 {
-    /// <summary>Workbook-level name for the parameter cells (names in A, values in B).</summary>
-    public const string ParametersName = "FlankParameters";
-
     private static readonly XNamespace Sheet =
         "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
 
@@ -18,9 +15,62 @@ public static partial class ExcelExporter
     // down, with a blank row between.
     private const int TemplateTableRow = 4;
 
-    // With parameters: a header row (Parameter / User Input), then one row each.
+    // With parameters: a header row (Parameter / User Input), then a row each
+    // (an inline table takes its label's row, its own header row and rows,
+    // and a blank row after).
     private const int ParameterHeaderRow = 4;
     private const int FirstParameterRow = 5;
+
+    /// <summary>Where each parameter goes on the sheet, and the query's table below them.</summary>
+    private sealed class SheetLayout
+    {
+        public SheetLayout(IReadOnlyList<int> rows, int tableRow)
+        {
+            Rows = rows;
+            TableRow = tableRow;
+        }
+
+        /// <summary>
+        /// Each parameter's row: its label in A, and its value in B; for an
+        /// inline table, a hint in B, with the table (from column A) below.
+        /// </summary>
+        public IReadOnlyList<int> Rows { get; }
+
+        /// <summary>The query's table's header row.</summary>
+        public int TableRow { get; }
+    }
+
+    private static SheetLayout Layout(IReadOnlyList<WorkbookParameter> parameters)
+    {
+        if (parameters.Count == 0)
+            return new SheetLayout(Array.Empty<int>(), TemplateTableRow);
+
+        var rows = new List<int>();
+        int row = FirstParameterRow;
+        bool blankAfter = false;
+
+        foreach (var parameter in parameters)
+        {
+            rows.Add(row);
+
+            if (parameter.Table?.Layout == WorkbookTableLayout.Inline)
+            {
+                // Label, the table's header and rows, then a blank row, so
+                // typing a value in the next parameter's cell doesn't extend
+                // the table over it.
+                row += 2 + parameter.Table.DataRowCount + 1;
+                blankAfter = true;
+            }
+            else
+            {
+                row++;
+                blankAfter = false;
+            }
+        }
+
+        // A blank row before the query's table.
+        return new SheetLayout(rows, blankAfter ? row : row + 1);
+    }
 
     private const string RefreshNote =
         "To update: Data > Refresh All. The first time, Excel asks you to sign in to the database.";
@@ -75,6 +125,10 @@ public static partial class ExcelExporter
         var parameters = request.EffectiveParameters;
         var columnNames = request.ColumnNames;
 
+        // Names for the cells and tables the query reads, and where they go.
+        PrepareParameters(parameters, request.ParameterValues);
+        var layout = Layout(parameters);
+
         var assembly = typeof(ExcelExporter).Assembly;
 
         using var templateStream =
@@ -92,7 +146,11 @@ public static partial class ExcelExporter
 
         UpdateQuery(workbook, request.Sql, request.Server, request.Database, parameters);
 
-        SetNote(workbook, parameters.Count > 0 ? ParameterRefreshNote : RefreshNote);
+        SetNote(
+            workbook,
+            parameters.Any(p => p.Table != null) ? ParameterRefreshNote.Replace("in column B,", "in column B and rows in the tables,")
+            : parameters.Count > 0 ? ParameterRefreshNote
+            : RefreshNote);
 
         if (request.RowsFetchedAt is DateTime fetched)
         {
@@ -116,8 +174,9 @@ public static partial class ExcelExporter
 
         if (parameters.Count > 0)
         {
-            AddParameterCells(workbook, parameters, request.ParameterValues, cells);
-            AddParameterChecks(workbook, parameters, cells);
+            AddParameterCells(workbook, parameters, request.ParameterValues, layout, cells);
+            AddParameterChecks(workbook, parameters, layout, cells);
+            AddNotes(workbook, parameters, layout);
 
             if (parameters.Any(IsCheckbox))
                 AddCheckboxFeature(workbook);
@@ -125,6 +184,9 @@ public static partial class ExcelExporter
             var lists = Lists(parameters);
             if (lists.Count > 0)
                 AddListParts(workbook, lists, cells);
+
+            // After the lists' hidden sheet, whose names refer to it by position.
+            AddTableSheets(workbook, parameters, cells);
         }
 
         if (columnNames != null && CanUseAsTableColumns(columnNames))
@@ -133,18 +195,11 @@ public static partial class ExcelExporter
                 workbook,
                 columnNames,
                 request.Rows ?? Array.Empty<IReadOnlyList<object?>>(),
-                tableRow: TableRow(parameters.Count),
+                tableRow: layout.TableRow,
                 cells);
         }
 
         cells.SaveStyles();
-    }
-
-    private static int TableRow(int parameterCount)
-    {
-        return parameterCount > 0
-            ? FirstParameterRow + parameterCount + 1
-            : TemplateTableRow;
     }
 
     private static void SetNote(ZipArchive workbook, string note)
@@ -479,10 +534,11 @@ public static partial class ExcelExporter
     }
 
     /// <summary>
-    /// Reads the parameter cells (column B, in order), checks each value, and
-    /// passes them as a record (SQL parameter name -> value) to
-    /// Value.NativeQuery, so values are sent as SQL parameters, never spliced
-    /// into the SQL. Reading cells and the database in one query means Excel
+    /// Reads the parameter cells (each by its name, so inserting rows doesn't
+    /// break it) and tables, checks each value, and passes them as a record
+    /// (SQL parameter name -> value) to Value.NativeQuery, so values are sent
+    /// as SQL parameters, never spliced into the SQL. A table's rows go as
+    /// JSON text. Reading cells and the database in one query means Excel
     /// asks once about privacy levels; separate queries fail outright with a
     /// "rebuild this data combination" error.
     /// </summary>
@@ -516,7 +572,8 @@ public static partial class ExcelExporter
         for (int i = 0; i < parameters.Count; i++)
         {
             int? listNumber = Lists(parameters).Where(l => l.Parameter == parameters[i]).Select(l => (int?)l.Number).FirstOrDefault();
-            checks.Append($"    Value{i} = {CheckedValueM(parameters[i], i, listNumber)},{Environment.NewLine}");
+            string value = parameters[i].Table != null ? TableValueM(parameters[i]) : CheckedValueM(parameters[i], listNumber);
+            checks.Append($"    Value{i} = {value},{Environment.NewLine}");
         }
 
         string values = string.Join(", ", Enumerable.Range(0, parameters.Count).Select(i => "Value" + i));
@@ -524,7 +581,6 @@ public static partial class ExcelExporter
 
         string query =
 $@"shared Query1 = let
-    Cells = Excel.CurrentWorkbook(){{[Name=""{ParametersName}""]}}[Content][Column2],
 {checks}    Values = Record.FromList({{{values}}}, {{{names}}}),
     Source = Value.NativeQuery(Sql.Database(""{EscapeM(server)}"", ""{EscapeM(database)}""), ""{EscapeM(sql)}"", Values)
 in
@@ -539,22 +595,78 @@ in
     }
 
     /// <summary>
-    /// M for one parameter's value: blank is null (or an error if it's
-    /// required); otherwise converted to its kind, with a message naming the
-    /// cell if it can't be. Data validation stops most bad values as they're
-    /// typed, but not pasted ones.
+    /// M for one parameter's value, read from its named cell: blank is null
+    /// (or an error if it's required); otherwise converted to its kind, with a
+    /// message naming the parameter if it can't be. Data validation stops
+    /// most bad values as they're typed, but not pasted ones.
     /// </summary>
     /// <param name="listNumber">For a parameter with a list: which one (List1 = 1).</param>
-    internal static string CheckedValueM(WorkbookParameter parameter, int index, int? listNumber = null)
+    internal static string CheckedValueM(WorkbookParameter parameter, int? listNumber = null)
     {
-        string cell = "B" + (FirstParameterRow + index);
-        string label = $"{parameter.DisplayName} (cell {cell})";
+        // An empty named cell may come back as an empty table.
+        string cell = $"try Excel.CurrentWorkbook(){{[Name=\"{EscapeM(parameter.CellName)}\"]}}[Content]{{0}}[Column1] otherwise null";
+        string label = MText(parameter.DisplayName);
 
-        string Fail(string message) => $"error Error.Record(\"Flank\", \"{EscapeM(message)}\")";
+        return $"let v = {cell} in " +
+               CheckM(parameter, label, parameter.Required ? " is required. Enter a value, then refresh." : null, listNumber);
+    }
 
-        string ifBlank = parameter.Required
-            ? Fail($"{label} is required. Enter a value, then refresh.")
+    /// <summary>
+    /// M for a table-valued parameter's value: the named Excel table's
+    /// non-blank rows, each value checked like a parameter's, as JSON text (an
+    /// array of rows, each an array of column values in order); null for no
+    /// rows, or an error if it's required.
+    /// </summary>
+    internal static string TableValueM(WorkbookParameter parameter)
+    {
+        var table = parameter.Table!;
+        string nl = Environment.NewLine;
+        string columns = string.Join(", ", table.Columns.Select(c => MText(c.DisplayName)));
+        string blank = "(x) => x = null or (x is text and Text.Trim(x) = \"\")";
+
+        // "Teams (row 2" & ", Team id)": the row counts entered rows, not sheet rows.
+        string at = $"{MText(parameter.DisplayName + " (row ")} & Text.From(n + 1)";
+        string checks = string.Join("," + nl, table.Columns.Select((c, i) =>
+            $"                let v = row{{{i}}} in " +
+            CheckM(c, $"at & {MText(", " + c.DisplayName + ")")}", c.Required ? " is required: fill it in, or clear the row." : null, null)));
+
+        string unreadable = $"Couldn't read the {table.Name} table for {parameter.DisplayName}. " +
+                            $"Its columns must be named {string.Join(", ", table.Columns.Select(c => c.DisplayName))}.";
+        string ifEmpty = parameter.Required
+            ? $"error Error.Record(\"Flank\", {MText(parameter.DisplayName + " needs at least one row. Enter one, then refresh.")})"
             : "null";
+
+        return
+$@"let
+        Entered = try Table.SelectColumns(Excel.CurrentWorkbook(){{[Name=""{EscapeM(table.Name)}""]}}[Content], {{{columns}}})
+            otherwise error Error.Record(""Flank"", {MText(unreadable)}),
+        Rows = List.Select(Table.ToRows(Entered), (r) => not List.MatchesAll(r, {blank})),
+        Checked = List.Transform(List.Positions(Rows), (n) => let row = Rows{{n}}, at = {at} in {{{nl}{checks}{nl}            }})
+    in
+        if List.IsEmpty(Rows) then {ifEmpty} else Text.FromBinary(Json.FromValue(Checked))";
+    }
+
+    /// <summary>An M text literal.</summary>
+    private static string MText(string text) => "\"" + EscapeM(text) + "\"";
+
+    /// <summary>
+    /// M that checks v and converts it to the parameter's kind: blank is null,
+    /// or an error if <paramref name="ifBlank"/> is given. Errors read
+    /// "&lt;label&gt;&lt;message&gt;", e.g. "League must be a whole number.".
+    /// </summary>
+    /// <param name="label">M for the text that starts error messages: a literal, or an expression.</param>
+    /// <param name="ifBlank">The message when it's blank and mustn't be, after the label; null if blank is fine.</param>
+    private static string CheckM(WorkbookParameter parameter, string label, string? ifBlank, int? listNumber)
+    {
+        // One literal when the label is one, to keep the M readable.
+        string Message(string text) =>
+            label.Length >= 2 && label[0] == '"' && label[label.Length - 1] == '"' && label.IndexOf("\" & ", StringComparison.Ordinal) < 0
+                ? label.Substring(0, label.Length - 1) + EscapeM(text) + "\""
+                : $"{label} & {MText(text)}";
+
+        string Fail(string text) => $"error Error.Record(\"Flank\", {Message(text)})";
+
+        string whenBlank = ifBlank != null ? Fail(ifBlank) : "null";
 
         bool hasRange = parameter.Minimum != null && parameter.Maximum != null;
         string convert;
@@ -562,7 +674,7 @@ in
         switch (parameter.Kind)
         {
             case var _ when parameter.List != null && listNumber != null:
-                convert = ListValueM(parameter, listNumber.Value, label, Fail);
+                convert = ListValueM(parameter, listNumber.Value, Fail);
                 break;
 
             case WorkbookParameterKind.WholeNumber:
@@ -571,28 +683,28 @@ in
                     ? string.Format(CultureInfo.InvariantCulture, " between {0:N0} and {1:N0}", parameter.Minimum, parameter.Maximum)
                     : "";
                 convert = $"try (let n = Number.From(v) in if n = Number.Round(n){range} then n else error \"\") " +
-                          $"otherwise {Fail($"{label} must be a whole number{between}.")}";
+                          $"otherwise {Fail($" must be a whole number{between}.")}";
                 break;
 
             case WorkbookParameterKind.Decimal:
-                convert = $"try Number.From(v) otherwise {Fail($"{label} must be a number.")}";
+                convert = $"try Number.From(v) otherwise {Fail(" must be a number.")}";
                 break;
 
             case WorkbookParameterKind.Date:
-                convert = $"try Date.From(v) otherwise {Fail($"{label} must be a date.")}";
+                convert = $"try Date.From(v) otherwise {Fail(" must be a date.")}";
                 break;
 
             case WorkbookParameterKind.DateTime:
-                convert = $"try DateTime.From(v) otherwise {Fail($"{label} must be a date and time.")}";
+                convert = $"try DateTime.From(v) otherwise {Fail(" must be a date and time.")}";
                 break;
 
             case WorkbookParameterKind.TrueFalse:
-                convert = $"try (if v is logical then v else Logical.From(v)) otherwise {Fail($"{label} must be TRUE or FALSE.")}";
+                convert = $"try (if v is logical then v else Logical.From(v)) otherwise {Fail(" must be TRUE or FALSE.")}";
                 break;
 
             case WorkbookParameterKind.Text when parameter.MaxLength != null:
                 convert = $"let t = Text.From(v) in if Text.Length(t) <= {parameter.MaxLength} then t " +
-                          $"else {Fail($"{label} can be at most {parameter.MaxLength} characters.")}";
+                          $"else {Fail($" can be at most {parameter.MaxLength} characters.")}";
                 break;
 
             default:
@@ -600,28 +712,30 @@ in
                 break;
         }
 
-        return $"let v = Cells{{{index}}} in if v = null or (v is text and Text.Trim(v) = \"\") then {ifBlank} else {convert}";
+        return $"if v = null or (v is text and Text.Trim(v) = \"\") then {whenBlank} else {convert}";
     }
 
     /// <summary>
-    /// Column C: the note. (Required cells say so with their highlight and,
-    /// on refresh, an error, not with text.)
-    /// </summary>
-    private static string NoteText(WorkbookParameter parameter) => parameter.Note.Trim();
-
-    /// <summary>
-    /// A bold header row (Parameter, User Input, and Note if any) in row 4, the
-    /// parameter names in column A below it, a blank row, then the query table.
+    /// A bold header row (Parameter, User Input) in row 4, the parameter
+    /// names in column A below it with their values in B, then the query
+    /// table. An inline table goes below its label, from column A: a row
+    /// added to a table shifts only the table's columns down, so starting in
+    /// A keeps the labels and values below it together (for a table at least
+    /// two columns wide). A table on its own sheet gets a link to it instead
+    /// of a value. Each value cell gets a name (see <see cref="WorkbookParameter.CellName"/>),
+    /// which the query reads it by.
     /// </summary>
     private static void AddParameterCells(
         ZipArchive workbook,
         IReadOnlyList<WorkbookParameter> parameters,
         IReadOnlyList<object?>? parameterValues,
+        SheetLayout layout,
         CellWriter cells)
     {
-        int count = parameters.Count;
-        int lastParameterRow = FirstParameterRow + count - 1;
-        int tableRow = TableRow(count);
+        int tableRow = layout.TableRow;
+        var inlineTables = new List<(WorkbookParameter Parameter, int Row)>();
+        var links = new List<XElement>();
+        int lastColumn = 2;
 
         UpdateXml(workbook, "xl/worksheets/sheet1.xml", sheet =>
         {
@@ -641,47 +755,78 @@ in
                 }
             }
 
-            // Rows must stay in order: insert before the (shifted) table rows.
-            var firstTableRow = sheetData.Elements(Sheet + "row")
-                .FirstOrDefault(r => (int)r.Attribute("r")! >= tableRow);
-
-            var headings = new List<string> { "Parameter", "User Input" };
-            if (parameters.Any(p => NoteText(p).Length > 0))
-                headings.Add("Note");
+            var rows = new List<XElement>();
 
             var header = new XElement(Sheet + "row", new XAttribute("r", ParameterHeaderRow));
-            for (int c = 0; c < headings.Count; c++)
+            string[] headings = { "Parameter", "User Input" };
+            for (int c = 0; c < headings.Length; c++)
             {
                 var heading = cells.Cell(ColumnLetter(c + 1) + ParameterHeaderRow, headings[c])!;
                 heading.SetAttributeValue("s", cells.BoldStyle());
                 header.Add(heading);
             }
+            rows.Add(header);
 
-            if (firstTableRow != null)
-                firstTableRow.AddBeforeSelf(header);
-            else
-                sheetData.Add(header);
-
-            for (int i = 0; i < count; i++)
+            for (int i = 0; i < parameters.Count; i++)
             {
-                int r = FirstParameterRow + i;
+                var parameter = parameters[i];
+                int r = layout.Rows[i];
                 var row = new XElement(Sheet + "row",
                     new XAttribute("r", r),
-                    new XElement(Sheet + "c",
-                        new XAttribute("r", "A" + r),
-                        new XAttribute("t", "inlineStr"),
-                        new XElement(Sheet + "is",
-                            new XElement(Sheet + "t", parameters[i].DisplayName))));
+                    cells.Cell("A" + r, parameter.DisplayName));
+                rows.Add(row);
+
+                var table = parameter.Table;
+
+                if (table?.Layout == WorkbookTableLayout.Inline)
+                {
+                    // A hint on how to add rows, then the table's header row and rows.
+                    var hint = cells.Cell("B" + r, InlineTableHint)!;
+                    hint.SetAttributeValue("s", cells.HintStyle());
+                    row.Add(hint);
+
+                    var tableHeader = new XElement(Sheet + "row", new XAttribute("r", r + 1));
+                    for (int c = 0; c < table.Columns.Count; c++)
+                        tableHeader.Add(cells.Cell(ColumnLetter(c + 1) + (r + 1), table.Columns[c].DisplayName));
+                    rows.Add(tableHeader);
+
+                    for (int d = 0; d < table.DataRowCount; d++)
+                    {
+                        int dataRow = r + 2 + d;
+                        var data = new XElement(Sheet + "row", new XAttribute("r", dataRow));
+                        AddTableRowCells(data, table, d, dataRow, firstColumn: 1, cells);
+                        rows.Add(data);
+                    }
+
+                    inlineTables.Add((parameter, r + 1));
+                    lastColumn = Math.Max(lastColumn, table.Columns.Count);
+                    continue;
+                }
+
+                if (table != null)
+                {
+                    // A link to the table's own sheet.
+                    string text = $"Enter rows on the {table.SheetName} sheet";
+                    var link = cells.Cell("B" + r, text)!;
+                    link.SetAttributeValue("s", cells.LinkStyle());
+                    row.Add(link);
+
+                    links.Add(new XElement(Sheet + "hyperlink",
+                        new XAttribute("ref", "B" + r),
+                        new XAttribute("location", $"{SheetReference(table.SheetName)}!A1"),
+                        new XAttribute("display", text)));
+                    continue;
+                }
 
                 XElement? value = null;
 
                 if (parameterValues != null && i < parameterValues.Count)
                 {
                     // A list shows labels, so start with the label for the value.
-                    value = cells.Cell("B" + r, ListLabelFor(parameters[i], parameterValues[i]), dateOnly: parameters[i].Kind == WorkbookParameterKind.Date);
+                    value = cells.Cell("B" + r, ListLabelFor(parameter, parameterValues[i]), dateOnly: parameter.Kind == WorkbookParameterKind.Date);
                 }
 
-                if (IsCheckbox(parameters[i]))
+                if (IsCheckbox(parameter))
                 {
                     // A blank checkbox shows greyed out: not set, so the blank rule applies.
                     value ??= new XElement(Sheet + "c", new XAttribute("r", "B" + r));
@@ -690,20 +835,27 @@ in
 
                 if (value != null)
                     row.Add(value);
-
-                string note = NoteText(parameters[i]);
-                if (note.Length > 0)
-                    row.Add(cells.Cell("C" + r, note));
-
-                if (firstTableRow != null)
-                    firstTableRow.AddBeforeSelf(row);
-                else
-                    sheetData.Add(row);
             }
 
-            string lastColumn = parameters.Any(p => NoteText(p).Length > 0) ? "C" : "B";
+            // Rows must stay in order: insert before the (shifted) table rows.
+            var firstTableRow = sheetData.Elements(Sheet + "row")
+                .FirstOrDefault(r => (int)r.Attribute("r")! >= tableRow);
+
+            if (firstTableRow != null)
+                firstTableRow.AddBeforeSelf(rows);
+            else
+                sheetData.Add(rows);
+
+            if (links.Count > 0)
+            {
+                // Schema order: ..., dataValidations, hyperlinks, printOptions, pageMargins, ...
+                var after = sheet.Root.Element(Sheet + "pageMargins")
+                    ?? throw new Exception("Could not find pageMargins");
+                after.AddBeforeSelf(new XElement(Sheet + "hyperlinks", links));
+            }
+
             sheet.Root.Element(Sheet + "dimension")?
-                .SetAttributeValue("ref", $"A1:{lastColumn}{tableRow + 1}");
+                .SetAttributeValue("ref", $"A1:{ColumnLetter(lastColumn)}{tableRow + 1}");
         });
 
         UpdateXml(workbook, "xl/tables/table1.xml", table =>
@@ -726,24 +878,63 @@ in
                 }
             }
 
-            definedNames.AddFirst(
-                new XElement(Sheet + "definedName",
-                    new XAttribute("name", ParametersName),
-                    $"Query1!$A${FirstParameterRow}:$B${lastParameterRow}"));
+            // Names move with their cells when rows are inserted, so the query keeps finding them.
+            for (int i = 0; i < parameters.Count; i++)
+            {
+                if (parameters[i].Table == null)
+                {
+                    definedNames.Add(new XElement(Sheet + "definedName",
+                        new XAttribute("name", parameters[i].CellName),
+                        $"Query1!$B${layout.Rows[i]}"));
+                }
+            }
         });
+
+        if (inlineTables.Count > 0)
+        {
+            var parts = inlineTables
+                .Select(t => (t.Parameter.Table!, $"A{t.Row}:{ColumnLetter(t.Parameter.Table!.Columns.Count)}{t.Row + t.Parameter.Table!.DataRowCount}"))
+                .ToList();
+
+            AddTableParts(workbook, "xl/worksheets/sheet1.xml", parts);
+        }
+    }
+
+    private const string InlineTableHint = "Enter rows in the table below. For more, right-click a row number in it > Insert";
+
+    /// <summary>A sheet name as a formula or link refers to it: 'Team list'.</summary>
+    private static string SheetReference(string sheetName) => "'" + sheetName.Replace("'", "''") + "'";
+
+    /// <summary>One data row's cells for a table: its starting values, if it has any.</summary>
+    private static void AddTableRowCells(XElement row, WorkbookTable table, int index, int rowNumber, int firstColumn, CellWriter cells)
+    {
+        if (index >= table.InitialRows.Count)
+            return;
+
+        var values = table.InitialRows[index];
+
+        for (int c = 0; c < table.Columns.Count && c < values.Count; c++)
+        {
+            var cell = cells.Cell(ColumnLetter(firstColumn + c) + rowNumber, values[c], dateOnly: table.Columns[c].Kind == WorkbookParameterKind.Date);
+            if (cell != null)
+                row.Add(cell);
+        }
     }
 
     /// <summary>
     /// Data validation on the value cells (type, range, length; TRUE/FALSE as a
-    /// dropdown, for Excel without checkboxes), with the note as the message shown when a cell is selected,
-    /// and required cells highlighted while they're empty.
+    /// dropdown, for Excel without checkboxes), with the note as the message
+    /// shown when a cell is selected, and required cells highlighted while
+    /// they're empty. An inline table's columns get the same checks; a
+    /// required column is highlighted in rows that have other values.
     /// </summary>
     private static void AddParameterChecks(
         ZipArchive workbook,
         IReadOnlyList<WorkbookParameter> parameters,
+        SheetLayout layout,
         CellWriter cells)
     {
-        var validations = new XElement(Sheet + "dataValidations");
+        var validations = new List<XElement>();
         var formats = new List<XElement>();
         var lists = Lists(parameters);
         int priority = 1;
@@ -751,7 +942,17 @@ in
         for (int i = 0; i < parameters.Count; i++)
         {
             var parameter = parameters[i];
-            string cell = "B" + (FirstParameterRow + i);
+
+            if (parameter.Table?.Layout == WorkbookTableLayout.Inline)
+            {
+                TableChecks(parameter.Table, layout.Rows[i] + 2, 1, cells, validations, formats, ref priority);
+                continue;
+            }
+
+            if (parameter.Table != null)
+                continue;
+
+            string cell = "B" + layout.Rows[i];
             int? listNumber = lists.Where(l => l.Parameter == parameter).Select(l => (int?)l.Number).FirstOrDefault();
 
             var validation = DataValidation(parameter, cell, listNumber);
@@ -759,23 +960,65 @@ in
                 validations.Add(validation);
 
             if (parameter.Required)
-            {
-                formats.Add(new XElement(Sheet + "conditionalFormatting",
-                    new XAttribute("sqref", cell),
-                    new XElement(Sheet + "cfRule",
-                        new XAttribute("type", "expression"),
-                        new XAttribute("dxfId", cells.MissingValueFormat()),
-                        new XAttribute("priority", priority++),
-                        new XElement(Sheet + "formula", $"LEN(TRIM({cell}))=0"))));
-            }
+                formats.Add(MissingValueFormat(cell, $"LEN(TRIM({cell}))=0", cells, ref priority));
         }
 
-        if (!validations.HasElements && formats.Count == 0)
+        AddChecks(workbook, "xl/worksheets/sheet1.xml", validations, formats);
+    }
+
+    /// <summary>The checks for a table's columns, whose first data row is <paramref name="firstRow"/>.</summary>
+    private static void TableChecks(
+        WorkbookTable table,
+        int firstRow,
+        int firstColumn,
+        CellWriter cells,
+        List<XElement> validations,
+        List<XElement> formats,
+        ref int priority)
+    {
+        int lastRow = firstRow + table.DataRowCount - 1;
+        string first = ColumnLetter(firstColumn);
+        string last = ColumnLetter(firstColumn + table.Columns.Count - 1);
+
+        for (int c = 0; c < table.Columns.Count; c++)
+        {
+            var column = table.Columns[c];
+            string letter = ColumnLetter(firstColumn + c);
+            string range = $"{letter}{firstRow}:{letter}{lastRow}";
+
+            var validation = DataValidation(column, range, null);
+            if (validation != null)
+                validations.Add(validation);
+
+            // Relative to the range's first cell, like Excel's own rules.
+            if (column.Required)
+            {
+                formats.Add(MissingValueFormat(
+                    range,
+                    $"AND(COUNTA(${first}{firstRow}:${last}{firstRow})>0,LEN(TRIM({letter}{firstRow}))=0)",
+                    cells,
+                    ref priority));
+            }
+        }
+    }
+
+    /// <summary>A light red fill on the cells while the formula is true.</summary>
+    private static XElement MissingValueFormat(string range, string formula, CellWriter cells, ref int priority) =>
+        new XElement(Sheet + "conditionalFormatting",
+            new XAttribute("sqref", range),
+            new XElement(Sheet + "cfRule",
+                new XAttribute("type", "expression"),
+                new XAttribute("dxfId", cells.MissingValueFormat()),
+                new XAttribute("priority", priority++),
+                new XElement(Sheet + "formula", formula)));
+
+    /// <summary>Adds conditional formats and data validations to a sheet, in schema order.</summary>
+    private static void AddChecks(ZipArchive workbook, string sheetPath, IReadOnlyList<XElement> validations, IReadOnlyList<XElement> formats)
+    {
+        if (validations.Count == 0 && formats.Count == 0)
             return;
 
-        validations.SetAttributeValue("count", validations.Elements().Count());
-
-        UpdateXml(workbook, "xl/worksheets/sheet1.xml", sheet =>
+        UpdateXml(workbook, sheetPath, sheet =>
         {
             // Schema order: sheetData, ..., mergeCells, phoneticPr, conditionalFormatting, dataValidations, ..., pageMargins.
             var sheetData = sheet.Root!.Element(Sheet + "sheetData")!;
@@ -784,8 +1027,8 @@ in
                 ?? sheetData;
 
             var added = new List<XElement>(formats);
-            if (validations.HasElements)
-                added.Add(validations);
+            if (validations.Count > 0)
+                added.Add(new XElement(Sheet + "dataValidations", new XAttribute("count", validations.Count), validations));
 
             after.AddAfterSelf(added.ToArray());
         });
@@ -1102,6 +1345,56 @@ in
             cellXfs.SetAttributeValue("count", index + 1);
 
             boldStyle = index;
+            return index;
+        }
+
+        private int? hintStyle;
+        private int? linkStyle;
+
+        /// <summary>Grey italic, for hints.</summary>
+        public int HintStyle() => hintStyle ??= FontStyle(italic: true, underline: false, rgb: "FF7F7F7F");
+
+        /// <summary>Blue underlined, for links.</summary>
+        public int LinkStyle() => linkStyle ??= FontStyle(italic: false, underline: true, rgb: "FF0563C1");
+
+        /// <summary>A cell format in the default font, changed as given.</summary>
+        private int FontStyle(bool italic, bool underline, string rgb)
+        {
+            var root = Styles().Root!;
+            var fonts = root.Element(Sheet + "fonts") ?? throw new Exception("Could not find fonts");
+
+            // Font elements go in schema order: b, i, ..., u, ..., sz, color, name, ...
+            var font = new XElement(fonts.Elements(Sheet + "font").First());
+            font.Elements().Where(e => e.Name == Sheet + "i" || e.Name == Sheet + "u" || e.Name == Sheet + "color").Remove();
+
+            var size = font.Element(Sheet + "sz");
+            var color = new XElement(Sheet + "color", new XAttribute("rgb", rgb));
+            if (size != null)
+                size.AddAfterSelf(color);
+            else
+                font.AddFirst(color);
+
+            if (underline)
+                (size ?? color).AddBeforeSelf(new XElement(Sheet + "u"));
+            if (italic)
+                font.AddFirst(new XElement(Sheet + "i"));
+
+            fonts.Add(font);
+            int fontId = fonts.Elements(Sheet + "font").Count() - 1;
+            fonts.SetAttributeValue("count", fontId + 1);
+
+            var cellXfs = root.Element(Sheet + "cellXfs") ?? throw new Exception("Could not find cellXfs");
+
+            cellXfs.Add(new XElement(Sheet + "xf",
+                new XAttribute("numFmtId", 0),
+                new XAttribute("fontId", fontId),
+                new XAttribute("fillId", 0),
+                new XAttribute("borderId", 0),
+                new XAttribute("xfId", 0),
+                new XAttribute("applyFont", 1)));
+
+            int index = cellXfs.Elements(Sheet + "xf").Count() - 1;
+            cellXfs.SetAttributeValue("count", index + 1);
             return index;
         }
 

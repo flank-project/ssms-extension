@@ -446,6 +446,7 @@ namespace Flank.SsmsExtension
                 ProcedureBody = procedure == null && effective != null ? query : null,
                 ProcedureParameters = procedure == null ? procedureParameters : Array.Empty<SprocParameter>(),
                 Objects = queryTables,
+                TableTypes = procedureParameters.Where(p => p.IsTable).Select(p => p.TableType!).ToList(),
             };
 
             return request.Name.Length > 0 &&
@@ -572,7 +573,11 @@ namespace Flank.SsmsExtension
 
                 useConnection(connection =>
                 {
-                    Func<IReadOnlyList<ResultSet>> run = effective != null
+                    // Table-valued parameters go through the workbook's own call, which takes them as JSON.
+                    Func<IReadOnlyList<ResultSet>> run =
+                        effective != null && inputs.Any(p => p.IsTable)
+                        ? () => StoredProcedureRunner.RunCall(connection, effective, procedureParameters, parameterSettings, values, PreviewPanel.MaxRows)
+                        : effective != null
                         ? () => StoredProcedureRunner.Run(connection, effective, named, PreviewPanel.MaxRows, outputs)
                         : () => StoredProcedureRunner.RunQuery(connection, query!, inputs, values, PreviewPanel.MaxRows);
 

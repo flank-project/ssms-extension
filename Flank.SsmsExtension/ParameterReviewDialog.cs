@@ -19,9 +19,16 @@ namespace Flank.SsmsExtension
         private const string RequiredText = "Require input";
         private const string NullText = "Pass NULL";
 
+        // For a table-valued parameter.
+        private const string RequiredRowText = "Require a row";
+        private const string NoRowsText = "Allow no rows (empty table)";
+
         private readonly IReadOnlyList<ParameterSettings> settings;
         private readonly Func<IDbConnection> openConnection;
         private readonly DataGridView grid;
+
+        // A workbook asks where a table's rows go; a report takes them as a multi-value parameter.
+        private readonly bool forWorkbook;
 
         /// <param name="outputName">What's being created, e.g. "workbook".</param>
         /// <param name="openConnection">Opens a connection to the database, to check list procedures.</param>
@@ -33,6 +40,7 @@ namespace Flank.SsmsExtension
         {
             this.settings = settings;
             this.openConnection = openConnection;
+            forWorkbook = outputName == "workbook";
 
             Text = "Flank - " + procedureName;
             FormBorderStyle = FormBorderStyle.Sizable;
@@ -90,7 +98,7 @@ namespace Flank.SsmsExtension
             grid.Columns.Add(new DataGridViewTextBoxColumn
             {
                 Name = "Note", HeaderText = "Note", FillWeight = 18,
-                ToolTipText = "Help for whoever fills it in (shown next to the Excel cell).",
+                ToolTipText = "Help for whoever fills it in (a note on the parameter's label in Excel, or shown when its cell is selected).",
             });
             grid.Columns.Add(new DataGridViewTextBoxColumn
             {
@@ -107,7 +115,7 @@ namespace Flank.SsmsExtension
             grid.Columns.Add(new DataGridViewTextBoxColumn
             {
                 Name = "Guardrails", HeaderText = "Guardrails", ReadOnly = true, FillWeight = 20,
-                ToolTipText = "Limits beyond the SQL type, e.g. a dropdown of choices.",
+                ToolTipText = "Limits beyond the SQL type, e.g. a dropdown of choices. For a table: where its rows are entered.",
             });
             // Links rather than buttons: an empty one (no guardrail to remove) shows nothing.
             grid.Columns.Add(new DataGridViewLinkColumn
@@ -135,6 +143,28 @@ namespace Flank.SsmsExtension
                     null);
 
                 var choice = (DataGridViewComboBoxCell)grid.Rows[i].Cells["IfBlank"];
+
+                if (parameter.IsTable)
+                {
+                    // Rows are entered in the workbook or report, not given a starting value here.
+                    var row = grid.Rows[i];
+                    row.Cells["Parameter"].ToolTipText = "Table columns: " +
+                        string.Join(", ", parameter.Columns.Select(c => $"{c.Name} {ProcedureCall.TypeDeclaration(c)}"));
+                    row.Cells["Initial"].ReadOnly = true;
+                    row.Cells["Initial"].Style.BackColor = SystemColors.Control;
+                    row.Cells["Initial"].ToolTipText = "Rows are entered in the " + outputName + ".";
+
+                    choice.Items.Add(RequiredRowText);
+
+                    // A multi-value report parameter needs at least one value.
+                    if (forWorkbook)
+                        choice.Items.Add(NoRowsText);
+
+                    choice.Value = setting.IfBlank == BlankValue.Required || !forWorkbook ? RequiredRowText : NoRowsText;
+                    ShowGuardrails(i);
+                    continue;
+                }
+
                 choice.Items.Add(RequiredText);
                 if (parameter.HasDefault)
                     choice.Items.Add(UseDefaultText(parameter));
@@ -154,7 +184,9 @@ namespace Flank.SsmsExtension
                 if (e.RowIndex < 0)
                     return;
 
-                if (e.ColumnIndex == grid.Columns["EditGuardrails"].Index)
+                if (e.ColumnIndex == grid.Columns["EditGuardrails"].Index && settings[e.RowIndex].Parameter.IsTable)
+                    EditTableLayout(e.RowIndex);
+                else if (e.ColumnIndex == grid.Columns["EditGuardrails"].Index)
                     EditGuardrails(e.RowIndex);
                 else if (e.ColumnIndex == grid.Columns["RemoveGuardrails"].Index && settings[e.RowIndex].HasList)
                 {
@@ -207,6 +239,14 @@ namespace Flank.SsmsExtension
             var setting = settings[row];
             var cells = grid.Rows[row].Cells;
 
+            if (setting.Parameter.IsTable)
+            {
+                cells["Guardrails"].Value = forWorkbook ? TableLayoutDialog.Summary(setting) : "Multiple values, one per row";
+                cells["EditGuardrails"].Value = forWorkbook ? "Edit..." : "";
+                cells["RemoveGuardrails"].Value = "";
+                return;
+            }
+
             cells["Guardrails"].Value = setting.HasList ? GuardrailsDialog.Summary(setting) : "None";
             cells["EditGuardrails"].Value = setting.HasList ? "Edit..." : "Add...";
             cells["RemoveGuardrails"].Value = setting.HasList ? "Remove" : "";
@@ -223,6 +263,26 @@ namespace Flank.SsmsExtension
                 setting.DisplayName = typed;
 
             using (var dialog = new GuardrailsDialog(setting, openConnection))
+            {
+                dialog.ShowDialog(this);
+            }
+
+            ShowGuardrails(row);
+        }
+
+        private void EditTableLayout(int row)
+        {
+            if (!forWorkbook)
+                return;
+
+            grid.EndEdit();
+
+            var setting = settings[row];
+            string typed = (grid.Rows[row].Cells["DisplayName"].Value as string ?? "").Trim();
+            if (typed.Length > 0)
+                setting.DisplayName = typed;
+
+            using (var dialog = new TableLayoutDialog(setting))
             {
                 dialog.ShowDialog(this);
             }
@@ -248,7 +308,7 @@ namespace Flank.SsmsExtension
                     return;
                 }
 
-                if (initial.Length > 0 && !IsValid(setting.Parameter, initial))
+                if (initial.Length > 0 && !setting.Parameter.IsTable && !IsValid(setting.Parameter, initial))
                 {
                     Problem(i, "Initial", $"\"{initial}\" isn't a valid {setting.Parameter.SqlType} for {setting.SqlName}.");
                     return;
@@ -264,8 +324,9 @@ namespace Flank.SsmsExtension
 
                 setting.DisplayName = (cells["DisplayName"].Value as string ?? "").Trim();
                 setting.Note = (cells["Note"].Value as string ?? "").Trim();
-                setting.DefaultValue = initial.Length > 0 ? initial : null;
-                setting.IfBlank = choice == RequiredText ? BlankValue.Required
+                setting.DefaultValue = initial.Length > 0 && !setting.Parameter.IsTable ? initial : null;
+                setting.IfBlank = choice == RequiredText || choice == RequiredRowText ? BlankValue.Required
+                    : choice == NoRowsText ? BlankValue.PassNull
                     : choice == NullText ? BlankValue.PassNull
                     : BlankValue.UseProcedureDefault;
             }

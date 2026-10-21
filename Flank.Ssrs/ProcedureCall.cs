@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 
 namespace Flank.Ssrs
 {
@@ -23,10 +24,48 @@ namespace Flank.Ssrs
                 : "DECLARE " + string.Join(", ", outputs.Select(p => $"{p.Name} {TypeDeclaration(p)}")) + "; ";
 
             string arguments = string.Join(", ", parameters.Select(p =>
-                p.IsOutput ? $"{p.Name} = {p.Name} OUTPUT" : $"{p.Name} = {p.Name}"));
+                p.IsOutput ? $"{p.Name} = {p.Name} OUTPUT"
+                : p.IsTable ? $"{p.Name} = {TableVariable(p)}"
+                : $"{p.Name} = {p.Name}"));
 
-            return declare + "EXEC " + qualifiedName + (arguments.Length > 0 ? " " + arguments : "");
+            return FillTables(parameters) + declare + "EXEC " + qualifiedName + (arguments.Length > 0 ? " " + arguments : "");
         }
+
+        /// <summary>
+        /// Table-valued parameters can't be passed by Power Query or SSRS, so
+        /// each is passed as JSON text under its own name (@Rows, an array of
+        /// rows, each an array of column values in order; see
+        /// <see cref="TableValues.ToJson"/>), and the call declares a variable of
+        /// the table type, fills it from the JSON with OPENJSON, and passes that.
+        /// NULL JSON is an empty table. Needs compatibility level 130 or later.
+        /// </summary>
+        private static string FillTables(IReadOnlyList<SprocParameter> parameters)
+        {
+            var fill = new StringBuilder();
+
+            foreach (var table in parameters.Where(p => p.IsTable && !p.IsOutput))
+            {
+                string variable = TableVariable(table);
+                fill.Append($"DECLARE {variable} {table.TableType};\r\n");
+
+                if (table.Columns.Count == 0)
+                    continue;
+
+                var columns = table.Columns;
+                string names = string.Join(", ", columns.Select(c => QuoteName(c.Name)));
+                string read = string.Join(", ", columns.Select((c, i) => $"[c{i}]"));
+                string with = string.Join(", ", columns.Select((c, i) => $"[c{i}] {TypeDeclaration(c)} '$[{i}]'"));
+
+                fill.Append($"INSERT INTO {variable} ({names}) SELECT {read} FROM OPENJSON({table.Name}) WITH ({with});\r\n");
+            }
+
+            return fill.ToString();
+        }
+
+        /// <summary>The variable a table-valued parameter's rows are put in: @flank_table_Rows.</summary>
+        private static string TableVariable(SprocParameter table) => "@flank_table_" + table.Name.TrimStart('@');
+
+        private static string QuoteName(string name) => "[" + name.Replace("]", "]]") + "]";
 
         /// <summary>
         /// Like <see cref="BuildExec(string, IReadOnlyList{SprocParameter})"/>, but
@@ -41,9 +80,10 @@ namespace Flank.Ssrs
             IReadOnlyList<SprocParameter> parameters,
             IReadOnlyList<ParameterSettings>? settings)
         {
+            // A table-valued parameter is always passed: with no rows, it's an empty table.
             var omitWhenNull = new HashSet<string>(
                 (settings ?? new ParameterSettings[0])
-                    .Where(s => s.IfBlank == BlankValue.UseProcedureDefault)
+                    .Where(s => s.IfBlank == BlankValue.UseProcedureDefault && !s.Parameter.IsTable)
                     .Select(s => s.SqlName),
                 System.StringComparer.OrdinalIgnoreCase);
 
@@ -66,9 +106,10 @@ namespace Flank.Ssrs
                 .Concat(outputs.Select(p => $"N', {p.Name} = {p.Name} OUTPUT'"));
 
             string definitions = string.Join(", ", inputs.Select(p => $"{p.Name} {ParameterTypeDeclaration(p)}"));
-            string passing = string.Join(", ", inputs.Select(p => $"{p.Name} = {p.Name}"));
+            string passing = string.Join(", ", inputs.Select(p => $"{p.Name} = {(p.IsTable ? TableVariable(p) : p.Name)}"));
 
             return
+                FillTables(parameters) +
                 $"DECLARE @flank_arguments nvarchar(max) = CONCAT(N'', {string.Join(", ", arguments)});\r\n" +
                 $"DECLARE @flank_call nvarchar(max) = N'{Quote(declareOutputs)}EXEC {Quote(qualifiedName)}' + " +
                 "CASE WHEN @flank_arguments = N'' THEN N'' ELSE N' ' + STUFF(@flank_arguments, 1, 2, N'') END;\r\n" +
@@ -80,6 +121,9 @@ namespace Flank.Ssrs
         // sp_executesql parameters can't be text, ntext or image.
         private static string ParameterTypeDeclaration(SprocParameter parameter)
         {
+            if (parameter.IsTable)
+                return parameter.TableType + " READONLY";
+
             switch (parameter.SqlType.ToLowerInvariant())
             {
                 case "text": return "varchar(max)";
@@ -92,6 +136,9 @@ namespace Flank.Ssrs
         /// <summary>The T-SQL type for a parameter, e.g. varchar(50), decimal(10, 2), nvarchar(max).</summary>
         public static string TypeDeclaration(SprocParameter parameter)
         {
+            if (parameter.IsTable)
+                return parameter.TableType!;
+
             string type = parameter.SqlType.ToLowerInvariant();
 
             switch (type)

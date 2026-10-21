@@ -1,6 +1,6 @@
 ---
 name: smoke-test
-description: Build, install and smoke-test the Flank SSMS extension end to end, driving SSMS with computer use. Scenarios - menus, query-excel, query-ssrs, query-params, sproc-excel, sproc-ssrs, review-excel, dropdown, query-pbi, sproc-pbi, access, large, or all. Use when asked to smoke-test, run, or check that the extension works in SSMS.
+description: Build, install and smoke-test the Flank SSMS extension end to end, driving SSMS with computer use. Scenarios - menus, query-excel, query-ssrs, query-params, sproc-excel, sproc-ssrs, review-excel, dropdown, tables, query-pbi, sproc-pbi, access, large, or all. Use when asked to smoke-test, run, or check that the extension works in SSMS.
 ---
 
 # Smoke test
@@ -24,6 +24,7 @@ The argument picks the scenario; default `menus`.
 | `sproc-ssrs` | Stored procedure > SSRS: SSMS creates a report with blank parameters, and it renders with rows |
 | `review-excel` | Parameter review page, then Excel guardrails: labels/notes, type validation, required highlight, refresh catches a pasted bad value, blank uses the procedure default |
 | `dropdown` | A dropdown guardrail: procedure picked from a list, Show/Pass columns; dropdown on the run page; Excel dropdown from the hidden DropdownOptions sheet, refresh looks up the value; Power BI report with valid values |
+| `tables` | Table-valued parameters: review page layout choice, rows grid on the run page, Excel inline table (adding rows keeps the parameters below aligned) and own-sheet table refresh; one-column table as an SSRS multi-value parameter |
 | `query-pbi` | Query window > Power BI: signed in silently, the Gateway / Cloud Connection for the database preselected, report publishes and exports with rows |
 | `sproc-pbi` | Stored procedure > Power BI: report with a blank parameter publishes; exports with a value |
 | `access` | The Excel wizard's access steps: a new SQL user gets SELECT on a query's tables, an existing one EXECUTE on a query turned into a procedure, and each runs exactly what it was granted |
@@ -331,12 +332,14 @@ Right to expand, and type-ahead (`dbo.flank_t`) to select.
    Return with League blank: "Enter a value for League: it's required." Then
    `1`, Return: Team 3 and Team 5, with name_like `%` and since 2000-01-01.
    Create workbook, save as `C:\temp\flank-smoke\review-excel.xlsx`.
-3. In Excel: row 4 is a bold `Parameter` / `User Input` / `Note` header; A5 `League`, C5 `1 = NBA, ...` (no "Required." text), B7 a ticked checkbox, B8 a date
-   without a time. Go to B5: the note shows as a tooltip. Delete: B5 turns red.
+3. In Excel: row 4 is a bold `Parameter` / `User Input` header (no Note
+   column); A5 `League` has a red-triangle cell note `1 = NBA, ...`, B7 a
+   ticked checkbox, B8 a date without a time. Go to B5: the note also shows
+   as a tooltip. Delete: B5 turns red.
    Type `abc`, Return: "Enter a whole number between ..." (Escape).
 4. Paste past validation: type `abc` in D20, copy it, paste into B5. Refresh
-   All (ctrl+alt+F5), security notice **OK**: "[Flank] League (cell B5) must
-   be a whole number ...".
+   All (ctrl+alt+F5), security notice **OK**: "[Flank] League must be a whole
+   number ...".
 5. B5 = `2`, refresh: a **Native Database Query** prompt (Run), then Privacy
    levels. Clicks don't reach that dialog: Tab twice (focus ring on the
    checkbox), Space, Return. Pass: Team 1 and Team 2; the date in B8 still
@@ -378,6 +381,41 @@ quickest):
   workbook, no query).
 - Setup page, **Turn it into a stored procedure** named `dbo.get_leagues`:
   Next says it already exists and stays on the first page.
+
+### tables
+
+Uses `dbo.flank_test_table_rows` (`@League_Id int`, `@Rows
+dbo.flank_test_rows READONLY`: team_id int NOT NULL, label nvarchar(50),
+active bit, since date, amount decimal(9,2); it echoes the rows it got) and
+`dbo.flank_test_table_ids` (`@Ids dbo.flank_test_ids READONLY`: one column,
+team_id; returns those teams). The integration tests create them.
+
+1. **Excel (Power Query)** on `flank_test_table_rows`. Review page: the
+   `@Rows` row shows `[dbo].[flank_test_rows]`, its Initial value is greyed,
+   If left blank offers "Require a row" / "Allow no rows (empty table)", and
+   Guardrails says "Rows in the list, 3 to start" with **Edit...** (a dialog:
+   in the list with N rows, or on a sheet of its own). Keep the defaults, Next.
+2. Wizard: Return (Skip). The run page shows a grid for Rows with the five
+   columns. Run with no rows: "Enter at least one row for Rows". Enter
+   `1`, Tab, `a'b"c`, Tab, `true` and a second row `2`; League `3`; Run: two
+   rows echoed, league_id 3. Create workbook, save as
+   `C:\temp\flank-smoke\tables-inline.xlsx`.
+3. In Excel: A6 `Rows` with a grey hint in B6, the table's header in row 7
+   from column A, the two rows filled in, then a blank row and the query
+   table. Tab in the table's last cell adds a row: with the query table below
+   wider than it, Excel says it "would move cells in a table" (expected);
+   right-click a row number inside the table > Insert works, and the
+   parameters below stay beside their labels. Refresh (Native Database Query:
+   Run; privacy levels): the echoed rows. Clear team_id in a filled row and
+   refresh: "[Flank] Rows (row 1, team_id) is required ...".
+4. Again with Guardrails > Edit... > **On a sheet of its own**: B6 links to a
+   `Rows` sheet whose table starts at A1 (header frozen); paste several rows
+   below it (the table grows) and refresh.
+5. **SSRS Report** on `flank_test_table_ids`: run page grid, enter `1` and
+   `2`, Run (2 teams), create in `/FlankSmoke`. Check:
+   `.\tests\verify-ssrs.ps1 -Report (Get-Clipboard) -Parameters "Ids=1;Ids=2"`
+   (2 rows). On `flank_test_table_rows`, SSRS says the table has 5 columns
+   and suggests Excel instead.
 
 ### query-pbi
 

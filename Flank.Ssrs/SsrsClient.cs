@@ -227,11 +227,11 @@ namespace Flank.Ssrs
                 out reportParametersXml,
                 out queryParametersXml);
 
-            // SSRS can't supply OUTPUT parameters to a stored procedure call, or
-            // leave a parameter out when it's blank, so then the procedure is
-            // called from a batch.
+            // SSRS can't supply OUTPUT or table-valued parameters to a stored
+            // procedure call, or leave a parameter out when it's blank, so then
+            // the procedure is called from a batch.
             string call = ProcedureCall.BuildExec(procedureName, parameters, settings);
-            bool needsBatch = parameters.Any(p => p.IsOutput) || call.StartsWith("DECLARE @flank_arguments");
+            bool needsBatch = parameters.Any(p => p.IsOutput || p.IsTable) || call.Contains("@flank_arguments");
 
             string queryXml = needsBatch
                 ? $@"
@@ -247,8 +247,40 @@ namespace Flank.Ssrs
                 dataSource,
                 queryXml,
                 reportParametersXml,
-                ListDataSetsXml(settings, dataSource));
+                ListDataSetsXml(settings, dataSource),
+                parameters.Any(p => p.IsTable && !p.IsOutput) ? TableCodeXml : "");
         }
+
+        /// <summary>
+        /// Report code that turns a multi-value parameter's values into the
+        /// JSON a one-column table-valued parameter is passed as (see
+        /// <see cref="TableValues"/>): [["a"],["b"]].
+        /// </summary>
+        private const string TableCodeXml = @"
+  <Code>Public Function FlankTable(ByVal values As Object) As String
+  If values Is Nothing Then Return Nothing
+  Dim q As String = ChrW(34)
+  Dim json As New System.Text.StringBuilder(""["")
+  Dim first As Boolean = True
+  For Each v As Object In values
+    If Not first Then json.Append("","")
+    first = False
+    json.Append(""["")
+    If v Is Nothing Then
+      json.Append(""null"")
+    ElseIf TypeOf v Is String Then
+      json.Append(q).Append(CStr(v).Replace(""\"", ""\\"").Replace(q, ""\"" &amp; q).Replace(vbCr, ""\r"").Replace(vbLf, ""\n"").Replace(vbTab, ""\t"")).Append(q)
+    ElseIf TypeOf v Is Boolean Then
+      json.Append(If(CBool(v), ""true"", ""false""))
+    ElseIf TypeOf v Is DateTime Then
+      json.Append(q).Append(CDate(v).ToString(""yyyy-MM-dd'T'HH:mm:ss"", System.Globalization.CultureInfo.InvariantCulture)).Append(q)
+    Else
+      json.Append(System.Convert.ToString(v, System.Globalization.CultureInfo.InvariantCulture))
+    End If
+    json.Append(""]"")
+  Next
+  Return json.Append(""]"").ToString()
+End Function</Code>";
 
         private static string ListDataSetName(string reportParameterName) =>
             "List_" + MakeSafeRdlName(reportParameterName, 0);
@@ -318,9 +350,12 @@ namespace Flank.Ssrs
                 string reportParameterName =
                     sqlParameterName.TrimStart('@');
 
+                // A one-column table-valued parameter is a multi-value parameter of its column's type.
+                bool multiValue = parameter.IsTable;
+
                 string rdlType =
                     GetRdlParameterType(
-                        parameter.SqlType);
+                        multiValue ? parameter.Columns[0].SqlType : parameter.SqlType);
 
                 var setting = settings?.FirstOrDefault(s =>
                     string.Equals(s.SqlName, sqlParameterName, StringComparison.OrdinalIgnoreCase));
@@ -338,7 +373,7 @@ namespace Flank.Ssrs
                 {
                     defaultValue = given;
                 }
-                else if (setting?.DefaultValue != null)
+                else if (setting?.DefaultValue != null && !multiValue)
                 {
                     defaultValue = StoredProcedureRunner.ParseValue(parameter.SqlType, setting.DefaultValue);
                 }
@@ -354,7 +389,7 @@ namespace Flank.Ssrs
         </Values>
       </DefaultValue>";
                 }
-                else if (setting != null && !required)
+                else if (setting != null && !required && !multiValue)
                 {
                     // Starts as NULL (blank), so the report opens with data.
                     defaultXml = @"
@@ -386,16 +421,22 @@ namespace Flank.Ssrs
         </DataSetReference>
       </ValidValues>";
 
+                // Multi-value parameters can't be null: there's at least one value.
                 reportParameters.Append($@"
     <ReportParameter Name=""{XmlEscape(reportParameterName)}"">
       <DataType>{rdlType}</DataType>
-      <Nullable>{(required ? "false" : "true")}</Nullable>{defaultXml}
-      <Prompt>{XmlEscape(prompt)}</Prompt>{validValuesXml}
+      <Nullable>{(required || multiValue ? "false" : "true")}</Nullable>{defaultXml}
+      <Prompt>{XmlEscape(prompt)}</Prompt>{validValuesXml}{(multiValue ? @"
+      <MultiValue>true</MultiValue>" : "")}
     </ReportParameter>");
+
+                string value = multiValue
+                    ? $"=Code.FlankTable(Parameters!{reportParameterName}.Value)"
+                    : $"=Parameters!{reportParameterName}.Value";
 
                 queryParameters.Append($@"
         <QueryParameter Name=""{XmlEscape(sqlParameterName)}"">
-          <Value>=Parameters!{XmlEscape(reportParameterName)}.Value</Value>
+          <Value>{XmlEscape(value)}</Value>
         </QueryParameter>");
             }
 
@@ -429,7 +470,8 @@ namespace Flank.Ssrs
             RdlDataSource dataSource,
             string queryXml,
             string reportParametersXml,
-            string extraDataSetsXml = "")
+            string extraDataSetsXml = "",
+            string codeXml = "")
         {
             TableRdl table =
                 BuildTableRdl(columns);
@@ -461,7 +503,7 @@ namespace Flank.Ssrs
   </DataSets>
 
 {reportParametersXml}
-
+{codeXml}
   <ReportSections>
     <ReportSection>
 

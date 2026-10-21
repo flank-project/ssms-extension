@@ -21,6 +21,23 @@ namespace Flank.SsmsExtension
                 Required = setting.IfBlank == BlankValue.Required,
             };
 
+            if (parameter.IsTable)
+            {
+                // A table: a column per column of the table type, each checked like a parameter.
+                cell.Table = new WorkbookTable(parameter.Columns.Select(column =>
+                {
+                    var tableColumn = new WorkbookParameter(column.Name, column.Name) { Required = !column.IsNullable };
+                    ApplyType(tableColumn, column);
+                    return tableColumn;
+                }).ToList())
+                {
+                    Layout = setting.TableLayout == TableLayout.Sheet ? WorkbookTableLayout.Sheet : WorkbookTableLayout.Inline,
+                    Rows = setting.TableRows,
+                };
+
+                return cell;
+            }
+
             if (setting.HasList)
             {
                 cell.List = new WorkbookList(setting.ListSql, setting.ListValueColumn!, setting.ListLabelColumn!)
@@ -29,6 +46,13 @@ namespace Flank.SsmsExtension
                 };
             }
 
+            ApplyType(cell, parameter);
+            return cell;
+        }
+
+        /// <summary>Checks for the SQL type: kind, range, length.</summary>
+        private static void ApplyType(WorkbookParameter cell, SprocParameter parameter)
+        {
             switch ((parameter.SqlType ?? "").ToLowerInvariant())
             {
                 case "tinyint":
@@ -87,8 +111,6 @@ namespace Flank.SsmsExtension
                     cell.Kind = WorkbookParameterKind.Text;
                     break;
             }
-
-            return cell;
         }
 
         private static void WholeNumber(WorkbookParameter cell, long minimum, long maximum)
