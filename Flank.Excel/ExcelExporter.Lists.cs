@@ -16,7 +16,7 @@ namespace Flank.Excel;
 /// </summary>
 public static partial class ExcelExporter
 {
-    private const string ListsSheetName = "Lists";
+    private const string ListsSheetName = "DropdownOptions";
 
     // The template has two connections, tables and query tables (Query1 and
     // LastRefreshed); list n uses number n + 2 of each.
@@ -31,11 +31,47 @@ public static partial class ExcelExporter
     private static readonly XNamespace ContentTypes =
         "http://schemas.openxmlformats.org/package/2006/content-types";
 
-    /// <summary>The parameters with lists, numbered from 1.</summary>
-    private static IReadOnlyList<(WorkbookParameter Parameter, int Number)> Lists(IReadOnlyList<WorkbookParameter> parameters) =>
-        parameters.Where(p => p.List != null).Select((p, i) => (p, i + 1)).ToList();
+    /// <summary>
+    /// The parameters with lists, numbered from 1, each list's query named
+    /// after its parameter (<see cref="WorkbookList.QueryName"/>).
+    /// </summary>
+    private static IReadOnlyList<(WorkbookParameter Parameter, int Number)> Lists(IReadOnlyList<WorkbookParameter> parameters)
+    {
+        var lists = parameters.Where(p => p.List != null).Select((p, i) => (p, i + 1)).ToList();
+        var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Query1", "LastRefreshed" };
 
-    private static string ListQueryName(int number) => "List" + number;
+        foreach (var (parameter, _) in lists)
+        {
+            string name = SafeName(parameter.DisplayName) + "_options";
+            string unique = name;
+
+            for (int n = 2; !used.Add(unique); n++)
+                unique = name + "_" + n;
+
+            parameter.List!.QueryName = unique;
+        }
+
+        return lists;
+    }
+
+    /// <summary>
+    /// A name both Power Query and an Excel table accept: letters, digits and
+    /// underscores, not starting with a digit ("Team name" -> Team_name).
+    /// </summary>
+    private static string SafeName(string text)
+    {
+        var name = new StringBuilder();
+
+        foreach (char c in text.Trim())
+            name.Append(char.IsLetterOrDigit(c) ? c : '_');
+
+        string result = name.ToString().Trim('_');
+
+        if (result.Length == 0)
+            return "Parameter";
+
+        return char.IsDigit(result[0]) ? "_" + result : result;
+    }
 
     private static string ListRangeName(int number) => "FlankList" + number;
 
@@ -51,7 +87,7 @@ public static partial class ExcelExporter
 
             m.Append($@"
 
-shared {ListQueryName(number)} = let
+shared {list.QueryName} = let
     Source = Sql.Database(""{EscapeM(server)}"", ""{EscapeM(database)}"", [Query=""{EscapeM(list.Sql)}""]),
     Choices = Table.SelectColumns(Source, {{{columns}}})
 in
@@ -72,7 +108,7 @@ in
         var list = parameter.List!;
 
         return
-            $"let match = Table.SelectRows({ListQueryName(number)}, each Text.From(Record.Field(_, \"{EscapeM(list.LabelColumn)}\")) = Text.From(v)) in " +
+            $"let match = Table.SelectRows({list.QueryName}, each Text.From(Record.Field(_, \"{EscapeM(list.LabelColumn)}\")) = Text.From(v)) in " +
             $"if Table.IsEmpty(match) then {fail($"{label} must be one of the choices in its list.")} " +
             $"else Record.Field(match{{0}}, \"{EscapeM(list.ValueColumn)}\")";
     }
@@ -119,9 +155,9 @@ in
         var xml = XDocument.Parse(Encoding.UTF8.GetString(xmlBytes, bom ? 3 : 0, xmlBytes.Length - (bom ? 3 : 0)));
         var items = xml.Root!.Element("Items")!;
 
-        foreach (var (_, number) in lists)
+        foreach (var (parameter, _) in lists)
         {
-            string name = ListQueryName(number);
+            string name = parameter.List!.QueryName;
 
             XElement Entry(string type, string value) =>
                 new XElement("Entry", new XAttribute("Type", type), new XAttribute("Value", value));
@@ -249,7 +285,7 @@ in
                     new XAttribute("tableColumnId", c + 1)));
             }
 
-            string name = ListQueryName(number);
+            string name = list.QueryName;
 
             CreateXml(workbook, $"xl/tables/table{id}.xml", new XElement(Sheet + "table",
                 new XAttribute("id", id),

@@ -77,7 +77,7 @@ Flank currently supports:
   - Uses Power Query's "native SQL query" support
   - Includes `SELECT` queries, CTEs, temp tables, variables, and stored procedures that return a result set
 - **Stored procedures with parameters**, from Object Explorer
-  - The parameters are listed at the top (labels in column A, values in column B, notes in column C). End users change the values and refresh
+  - The parameters are listed at the top under a **Parameter** / **User Input** header (labels in column A, values in column B, notes in column C). End users change the values and refresh
   - Each value cell only accepts its type: whole numbers in the SQL type's range, numbers, dates, text up to its length, and a checkbox for `bit` (a TRUE/FALSE dropdown in Excel versions before Microsoft 365's checkboxes; left blank, it shows greyed out and counts as blank). Selecting a cell shows its note, and required cells are highlighted while empty
   - Refreshing checks the values again, since pasting gets past Excel's checks, and says which cell is wrong
   - See [Reviewing parameters](#reviewing-parameters)
@@ -180,24 +180,28 @@ Before creating a workbook or report from a stored procedure with parameters,
 Flank shows them for review. For each one:
 
 - **Shown as**: the name people see (the Excel label, or the report prompt)
-- **Note for the user**: shown next to the Excel cell and when it's selected.
-  SSRS and Power BI have nowhere to show it
-- **Starts with**: the value it starts with. Flank fills this in from the
-  procedure's own default where it declares one (`@n int = 5`)
+- **Note**: shown next to the Excel cell and when it's selected. SSRS and
+  Power BI have nowhere to show it
+- **Initial value**: what it's filled in with when the workbook or report
+  opens. Flank fills this in from the procedure's own default where it
+  declares one (`@n int = 5`)
 - **If left blank**:
-  - **Required**: a value must be entered
-  - **Use procedure default**: the parameter is left out of the call, so the
+  - **Require input**: a value must be entered
+  - **Omit (defaults to …)**: the parameter is left out of the `EXEC`, so the
     procedure's own default applies (only for parameters that have one)
   - **Pass NULL**
-- **Choices from (procedure)**: makes the parameter a dropdown. Name a stored
-  procedure that takes no parameters (or only ones with defaults): its first
-  column is the value passed, its second (optional) the label shown, e.g.
-  `dbo.get_leagues` returning `id, name`
+- **Guardrails** (**Add…**): limits beyond the SQL type. For now, a
+  **dropdown list**: pick a stored procedure that returns the choices (ones
+  taking no parameters are listed; type one whose parameters all have
+  defaults), then choose which of its columns people pick from (**Show**) and
+  which the procedure receives (**Pass**), e.g. `dbo.get_leagues`: show `name`,
+  pass `id`. The run on the next page offers the same dropdown
   - **SSRS and Power BI**: the report parameter's available values come from the procedure
-  - **Excel**: the choices load to a table on a hidden **Lists** sheet, and the
-    cell becomes a dropdown of the labels. **Refresh All** reloads the choices,
-    and the workbook looks up the value for the label chosen, always from the
-    freshly loaded choices
+  - **Excel**: the choices load to a table on a hidden **DropdownOptions**
+    sheet, one table and query per dropdown, named after its parameter (e.g.
+    `League_options`), and the cell becomes a dropdown of the labels.
+    **Refresh All** reloads the choices, and the workbook looks up the value
+    for the label chosen, always from the freshly loaded choices
 
 ## Uninstall
 

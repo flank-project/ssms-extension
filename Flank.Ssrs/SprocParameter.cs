@@ -21,5 +21,8 @@ namespace Flank.Ssrs
         /// or null if there's none or it's NULL or an expression.
         /// </summary>
         public string? DefaultValue { get; set; }
+
+        /// <summary>The declared default as written: 5, N'abc', NULL, GETDATE(). Null if there's none.</summary>
+        public string? DefaultText { get; set; }
     }
 }

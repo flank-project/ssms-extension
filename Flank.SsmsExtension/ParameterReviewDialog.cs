@@ -16,7 +16,7 @@ namespace Flank.SsmsExtension
     /// </summary>
     internal sealed class ParameterReviewDialog : Form
     {
-        private const string RequiredText = "Required";
+        private const string RequiredText = "Require input";
         private const string NullText = "Pass NULL";
 
         private readonly IReadOnlyList<ParameterSettings> settings;
@@ -38,7 +38,7 @@ namespace Flank.SsmsExtension
             FormBorderStyle = FormBorderStyle.Sizable;
             StartPosition = FormStartPosition.CenterScreen;
             MinimizeBox = false;
-            ClientSize = new Size(980, 150 + Math.Min(settings.Count, 10) * 30 + 70);
+            ClientSize = new Size(1060, 150 + Math.Min(settings.Count, 10) * 30 + 70);
             MinimumSize = new Size(760, 320);
 
             Controls.Add(new Label
@@ -60,7 +60,7 @@ namespace Flank.SsmsExtension
             grid = new DataGridView
             {
                 Location = new Point(16, 78),
-                Size = new Size(948, ClientSize.Height - 78 - 56),
+                Size = new Size(1028, ClientSize.Height - 78 - 56),
                 Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
                 AllowUserToAddRows = false,
                 AllowUserToDeleteRows = false,
@@ -79,36 +79,43 @@ namespace Flank.SsmsExtension
 
             grid.Columns.Add(new DataGridViewTextBoxColumn
             {
-                Name = "Parameter", HeaderText = "Parameter", ReadOnly = true, FillWeight = 20,
+                Name = "Parameter", HeaderText = "Parameter", ReadOnly = true, FillWeight = 18,
                 ToolTipText = "The procedure's parameter and its SQL type.",
             });
             grid.Columns.Add(new DataGridViewTextBoxColumn
             {
-                Name = "DisplayName", HeaderText = "Shown as", FillWeight = 16,
+                Name = "DisplayName", HeaderText = "Shown as", FillWeight = 15,
                 ToolTipText = "The label in Excel, or the prompt in the report.",
             });
             grid.Columns.Add(new DataGridViewTextBoxColumn
             {
-                Name = "Note", HeaderText = "Note", FillWeight = 22,
+                Name = "Note", HeaderText = "Note", FillWeight = 18,
                 ToolTipText = "Help for whoever fills it in (shown next to the Excel cell).",
             });
             grid.Columns.Add(new DataGridViewTextBoxColumn
             {
-                Name = "Initial", HeaderText = "Initial value", FillWeight = 12,
+                Name = "Initial", HeaderText = "Initial value", FillWeight = 10,
                 ToolTipText = "What it's filled in with when the workbook or report opens. Leave empty to start blank.",
             });
             grid.Columns.Add(new DataGridViewComboBoxColumn
             {
-                Name = "IfBlank", HeaderText = "If left blank", FillWeight = 18, FlatStyle = FlatStyle.Flat,
-                ToolTipText = "Required; use the procedure's own default (the parameter is left out of the call); or pass NULL.",
+                Name = "IfBlank", HeaderText = "If left blank", FillWeight = 27, FlatStyle = FlatStyle.Flat,
+                ToolTipText = "Require input; omit the parameter from the call, so the procedure's own default applies; or pass NULL.",
             });
             grid.Columns.Add(new DataGridViewTextBoxColumn
             {
-                Name = "Guardrails", HeaderText = "Guardrails", ReadOnly = true, FillWeight = 22,
+                Name = "Guardrails", HeaderText = "Guardrails", ReadOnly = true, FillWeight = 20,
                 ToolTipText = "Limits beyond the SQL type, e.g. a dropdown of choices from a procedure.",
             });
-            grid.Columns.Add(new DataGridViewButtonColumn { Name = "EditGuardrails", HeaderText = "", FillWeight = 7, FlatStyle = FlatStyle.System });
-            grid.Columns.Add(new DataGridViewButtonColumn { Name = "RemoveGuardrails", HeaderText = "", FillWeight = 7, FlatStyle = FlatStyle.System });
+            // Links rather than buttons: an empty one (no guardrail to remove) shows nothing.
+            grid.Columns.Add(new DataGridViewLinkColumn
+            {
+                Name = "EditGuardrails", HeaderText = "", FillWeight = 6, TrackVisitedState = false, LinkBehavior = LinkBehavior.HoverUnderline,
+            });
+            grid.Columns.Add(new DataGridViewLinkColumn
+            {
+                Name = "RemoveGuardrails", HeaderText = "", FillWeight = 7, TrackVisitedState = false, LinkBehavior = LinkBehavior.HoverUnderline,
+            });
 
             grid.Columns["Parameter"].DefaultCellStyle.ForeColor = SystemColors.GrayText;
             grid.Columns["Guardrails"].DefaultCellStyle.ForeColor = SystemColors.GrayText;
@@ -179,10 +186,19 @@ namespace Flank.SsmsExtension
             CancelButton = cancelButton;
         }
 
-        private static string UseDefaultText(SprocParameter parameter) =>
-            parameter.DefaultValue != null
-                ? $"Use procedure default ({parameter.DefaultValue})"
-                : "Use procedure default";
+        // Long defaults are cut short so the column stays narrow.
+        private const int DefaultTextLength = 24;
+
+        /// <summary>"Omit (defaults to 5)": in SQL terms, what leaving it out of the EXEC does.</summary>
+        private static string UseDefaultText(SprocParameter parameter)
+        {
+            string text = parameter.DefaultText ?? parameter.DefaultValue ?? "its default";
+
+            if (text.Length > DefaultTextLength)
+                text = text.Substring(0, DefaultTextLength - 1).TrimEnd() + "…";
+
+            return $"Omit (defaults to {text})";
+        }
 
         private void ShowGuardrails(int row)
         {

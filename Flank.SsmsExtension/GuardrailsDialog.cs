@@ -18,8 +18,7 @@ namespace Flank.SsmsExtension
         private readonly ParameterSettings setting;
         private readonly Func<IDbConnection> openConnection;
         private readonly CheckBox useList;
-        private readonly TextBox procedureTextBox;
-        private readonly Button loadButton;
+        private readonly ComboBox procedureComboBox;
         private readonly Label listStatus;
         private readonly ComboBox labelComboBox;
         private readonly ComboBox valueComboBox;
@@ -74,24 +73,42 @@ namespace Flank.SsmsExtension
 
             Controls.Add(new Label { Text = "Procedure:", Location = new Point(36, 135), Width = 110 });
 
-            procedureTextBox = new TextBox
+            // The database's procedures without parameters; others (all parameters
+            // defaulted) can be typed. Picking or leaving the box loads the columns.
+            procedureComboBox = new ComboBox
             {
                 Text = setting.ListProcedure ?? "",
                 Location = new Point(150, 132),
-                Width = 300,
+                Width = 388,
+                DropDownStyle = ComboBoxStyle.DropDown,
+                AutoCompleteMode = AutoCompleteMode.SuggestAppend,
+                AutoCompleteSource = AutoCompleteSource.ListItems,
             };
-            procedureTextBox.TextChanged += (s, e) =>
+            // Picking a procedure means wanting the dropdown: tick it too.
+            procedureComboBox.SelectionChangeCommitted += (s, e) =>
+                BeginInvoke((Action)(() =>
+                {
+                    useList.Checked = true;
+                    LoadList(keepSelection: false);
+                }));
+            procedureComboBox.TextUpdate += (s, e) =>
             {
                 list = null;
                 ShowColumns();
             };
-
-            loadButton = new Button { Text = "Load", Location = new Point(458, 131), Width = 80 };
-            loadButton.Click += (s, e) => LoadList(keepSelection: false);
+            procedureComboBox.Leave += (s, e) =>
+            {
+                if (list == null && procedureComboBox.Text.Trim().Length > 0)
+                {
+                    useList.Checked = true;
+                    LoadList(keepSelection: false);
+                }
+            };
 
             listStatus = new Label
             {
-                Text = "Takes no parameters (or only ones with defaults). Click Load to see its columns.",
+                Text = "Pick the procedure that returns the choices. Procedures that take parameters aren't listed; " +
+                       "type one whose parameters all have defaults.",
                 ForeColor = SystemColors.GrayText,
                 Location = new Point(150, 158),
                 Size = new Size(388, 32),
@@ -128,7 +145,7 @@ namespace Flank.SsmsExtension
 
             Controls.AddRange(new Control[]
             {
-                useList, procedureTextBox, loadButton, listStatus, labelComboBox, valueComboBox, preview, okButton, cancelButton,
+                useList, procedureComboBox, listStatus, labelComboBox, valueComboBox, preview, okButton, cancelButton,
             });
 
             AcceptButton = okButton;
@@ -136,16 +153,44 @@ namespace Flank.SsmsExtension
 
             UpdateEnabled();
 
-            // Editing an existing list: load it so its columns can be changed.
-            if (setting.HasList)
-                Shown += (s, e) => LoadList(keepSelection: true);
+            Shown += (s, e) =>
+            {
+                LoadProcedures();
+
+                // Editing an existing list: load it so its columns can be changed.
+                if (setting.HasList)
+                    LoadList(keepSelection: true);
+            };
+        }
+
+        private void LoadProcedures()
+        {
+            try
+            {
+                Cursor = Cursors.WaitCursor;
+                string typed = procedureComboBox.Text;
+
+                using (var connection = openConnection())
+                {
+                    procedureComboBox.Items.AddRange(ProcedureList.Candidates(connection).Cast<object>().ToArray());
+                }
+
+                procedureComboBox.Text = typed;
+            }
+            catch (Exception ex)
+            {
+                // The box still takes a typed name.
+                System.Diagnostics.Debug.WriteLine($"Flank: could not list procedures: {ex.Message}");
+            }
+            finally
+            {
+                Cursor = Cursors.Default;
+            }
         }
 
         private void UpdateEnabled()
         {
             bool on = useList.Checked;
-            procedureTextBox.Enabled = on;
-            loadButton.Enabled = on;
             labelComboBox.Enabled = on && list != null;
             valueComboBox.Enabled = on && list != null;
             preview.Enabled = on;
@@ -153,7 +198,7 @@ namespace Flank.SsmsExtension
 
         private void LoadList(bool keepSelection)
         {
-            string name = procedureTextBox.Text.Trim();
+            string name = procedureComboBox.Text.Trim();
 
             if (name.Length == 0)
             {
@@ -170,7 +215,8 @@ namespace Flank.SsmsExtension
                     list = ProcedureList.Describe(name, connection);
                 }
 
-                procedureTextBox.Text = list.Procedure;
+                // Text, not TextUpdate (which only typing raises): the list stays loaded.
+                procedureComboBox.Text = list.Procedure;
                 SetStatus($"{list.Rows.Count:N0} choice(s), {list.Columns.Count} column(s).", error: false);
             }
             catch (Exception ex)

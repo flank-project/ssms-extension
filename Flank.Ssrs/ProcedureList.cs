@@ -93,6 +93,35 @@ namespace Flank.Ssrs
             Apply(settings, list, list.Columns[0], list.Columns[list.Columns.Count > 1 ? 1 : 0]);
         }
 
+        /// <summary>
+        /// The database's own procedures that take no input parameters, as
+        /// [schema].[name]: the ones that can obviously supply a list. (Ones
+        /// whose parameters all have defaults can too, but telling needs their
+        /// definitions parsed, so they're typed in rather than listed.)
+        /// </summary>
+        public static IReadOnlyList<string> Candidates(IDbConnection connection)
+        {
+            var names = new List<string>();
+
+            using (var command = connection.CreateCommand())
+            {
+                command.CommandText = @"
+SELECT QUOTENAME(SCHEMA_NAME(p.schema_id)) + '.' + QUOTENAME(p.name)
+FROM sys.procedures AS p
+WHERE p.is_ms_shipped = 0
+  AND NOT EXISTS (SELECT 1 FROM sys.parameters AS pa WHERE pa.object_id = p.object_id AND pa.is_output = 0)
+ORDER BY SCHEMA_NAME(p.schema_id), p.name;";
+
+                using (var reader = command.ExecuteReader())
+                {
+                    while (reader.Read())
+                        names.Add(reader.GetString(0));
+                }
+            }
+
+            return names;
+        }
+
         /// <summary>Removes the list from the settings.</summary>
         public static void Clear(ParameterSettings settings)
         {

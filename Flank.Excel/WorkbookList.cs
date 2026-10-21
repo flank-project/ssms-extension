@@ -27,7 +27,14 @@ public sealed class WorkbookList
     /// <summary>The choices to start with (from a preview run): value, then label.</summary>
     public IReadOnlyList<(object? Value, object? Label)> Rows { get; set; } = Array.Empty<(object?, object?)>();
 
-    /// <summary>The list's columns on the Lists sheet: the label first, then the value if it's different.</summary>
+    /// <summary>
+    /// The name of its query and table, after the parameter it fills (e.g.
+    /// League_options), as people see it under Data > Queries &amp; Connections.
+    /// Set when the workbook is generated.
+    /// </summary>
+    internal string QueryName { get; set; } = "";
+
+    /// <summary>The list's columns on the DropdownOptions sheet: the label first, then the value if it's different.</summary>
     internal IReadOnlyList<string> Columns =>
         string.Equals(LabelColumn, ValueColumn, StringComparison.Ordinal)
             ? new[] { LabelColumn }

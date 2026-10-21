@@ -15,13 +15,17 @@ namespace Flank.Ssrs
     {
         public sealed class Default
         {
-            public Default(string? value)
+            public Default(string? value, string text)
             {
                 Value = value;
+                Text = text;
             }
 
             /// <summary>The literal as a value (5, abc, 2024-01-01); null for NULL or an expression.</summary>
             public string? Value { get; }
+
+            /// <summary>As written in the definition: 5, N'abc', NULL, GETDATE().</summary>
+            public string Text { get; }
         }
 
         /// <summary>
@@ -60,7 +64,11 @@ namespace Flank.Ssrs
                 if (parameter.Value == null)
                     continue;
 
-                defaults[parameter.VariableName.Value] = new Default(LiteralValue(parameter.Value));
+                string text = string.Concat(
+                    Enumerable.Range(parameter.Value.FirstTokenIndex, parameter.Value.LastTokenIndex - parameter.Value.FirstTokenIndex + 1)
+                        .Select(i => parameter.Value.ScriptTokenStream[i].Text));
+
+                defaults[parameter.VariableName.Value] = new Default(LiteralValue(parameter.Value), text.Trim());
             }
 
             return defaults;

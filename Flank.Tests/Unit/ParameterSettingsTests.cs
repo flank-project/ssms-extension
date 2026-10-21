@@ -38,6 +38,12 @@ AS SELECT 1;");
         Assert.Equal("-1.5", defaults["@negative"].Value);
         Assert.Equal("1", defaults["@flag"].Value);
         Assert.True(defaults.ContainsKey("@COUNT"));
+
+        // As written, for "Omit (defaults to ...)".
+        Assert.Equal("N'it''s'", defaults["@name"].Text);
+        Assert.Equal("NULL", defaults["@maybe"].Text);
+        Assert.Equal("-1.5", defaults["@negative"].Text);
+        Assert.Equal("GETDATE", defaults["@computed"].Text);
     }
 
     [Theory]

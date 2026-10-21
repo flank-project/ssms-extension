@@ -17,7 +17,10 @@ public static partial class ExcelExporter
     // the data table from row 4. Parameters go in rows 4.. and push the table
     // down, with a blank row between.
     private const int TemplateTableRow = 4;
-    private const int FirstParameterRow = 4;
+
+    // With parameters: a header row (Parameter / User Input), then one row each.
+    private const int ParameterHeaderRow = 4;
+    private const int FirstParameterRow = 5;
 
     private const string RefreshNote =
         "To update: Data > Refresh All. The first time, Excel asks you to sign in to the database.";
@@ -600,16 +603,15 @@ in
         return $"let v = Cells{{{index}}} in if v = null or (v is text and Text.Trim(v) = \"\") then {ifBlank} else {convert}";
     }
 
-    /// <summary>Column C: "Required." and the note, if there's anything to say.</summary>
-    private static string NoteText(WorkbookParameter parameter)
-    {
-        string note = parameter.Note.Trim();
-        return parameter.Required ? ("Required. " + note).Trim() : note;
-    }
+    /// <summary>
+    /// Column C: the note. (Required cells say so with their highlight and,
+    /// on refresh, an error, not with text.)
+    /// </summary>
+    private static string NoteText(WorkbookParameter parameter) => parameter.Note.Trim();
 
     /// <summary>
-    /// Puts the parameter names in column A from row 4, leaves a blank row, and
-    /// moves the query table below them.
+    /// A bold header row (Parameter, User Input, and Note if any) in row 4, the
+    /// parameter names in column A below it, a blank row, then the query table.
     /// </summary>
     private static void AddParameterCells(
         ZipArchive workbook,
@@ -642,6 +644,23 @@ in
             // Rows must stay in order: insert before the (shifted) table rows.
             var firstTableRow = sheetData.Elements(Sheet + "row")
                 .FirstOrDefault(r => (int)r.Attribute("r")! >= tableRow);
+
+            var headings = new List<string> { "Parameter", "User Input" };
+            if (parameters.Any(p => NoteText(p).Length > 0))
+                headings.Add("Note");
+
+            var header = new XElement(Sheet + "row", new XAttribute("r", ParameterHeaderRow));
+            for (int c = 0; c < headings.Count; c++)
+            {
+                var heading = cells.Cell(ColumnLetter(c + 1) + ParameterHeaderRow, headings[c])!;
+                heading.SetAttributeValue("s", cells.BoldStyle());
+                header.Add(heading);
+            }
+
+            if (firstTableRow != null)
+                firstTableRow.AddBeforeSelf(header);
+            else
+                sheetData.Add(header);
 
             for (int i = 0; i < count; i++)
             {
@@ -1047,6 +1066,43 @@ in
             }
 
             return styles;
+        }
+
+        private int? boldStyle;
+
+        /// <summary>A cell format in the workbook's default font, bold (for headings).</summary>
+        public int BoldStyle()
+        {
+            if (boldStyle != null)
+                return boldStyle.Value;
+
+            var root = Styles().Root!;
+            var fonts = root.Element(Sheet + "fonts") ?? throw new Exception("Could not find fonts");
+
+            // The default font plus <b/>, which comes first in a font's elements.
+            var bold = new XElement(fonts.Elements(Sheet + "font").First());
+            bold.Element(Sheet + "b")?.Remove();
+            bold.AddFirst(new XElement(Sheet + "b"));
+            fonts.Add(bold);
+
+            int fontId = fonts.Elements(Sheet + "font").Count() - 1;
+            fonts.SetAttributeValue("count", fontId + 1);
+
+            var cellXfs = root.Element(Sheet + "cellXfs") ?? throw new Exception("Could not find cellXfs");
+
+            cellXfs.Add(new XElement(Sheet + "xf",
+                new XAttribute("numFmtId", 0),
+                new XAttribute("fontId", fontId),
+                new XAttribute("fillId", 0),
+                new XAttribute("borderId", 0),
+                new XAttribute("xfId", 0),
+                new XAttribute("applyFont", 1)));
+
+            int index = cellXfs.Elements(Sheet + "xf").Count() - 1;
+            cellXfs.SetAttributeValue("count", index + 1);
+
+            boldStyle = index;
+            return index;
         }
 
         private int? checkboxStyle;

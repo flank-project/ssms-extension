@@ -22,7 +22,7 @@ The argument picks the scenario; default `menus`.
 | `sproc-excel` | Stored procedure > Excel: workbook for `EXEC` refreshes with rows; with parameters, the user types values above the table and refreshes |
 | `sproc-ssrs` | Stored procedure > SSRS: SSMS creates a report with blank parameters, and it renders with rows |
 | `review-excel` | Parameter review page, then Excel guardrails: labels/notes, type validation, required highlight, refresh catches a pasted bad value, blank uses the procedure default |
-| `dropdown` | "Choices from" a procedure: Excel dropdown from the hidden Lists sheet, refresh looks up the value; Power BI report with valid values |
+| `dropdown` | A dropdown guardrail: procedure picked from a list, Show/Pass columns; dropdown on the run page; Excel dropdown from the hidden DropdownOptions sheet, refresh looks up the value; Power BI report with valid values |
 | `query-pbi` | Query window > Power BI: signed in silently, SQL login pre-filled from SSMS, report publishes and exports with rows |
 | `sproc-pbi` | Stored procedure > Power BI: report with a blank parameter publishes; exports with a value |
 | `access` | The Excel wizard's access steps: a new SQL user gets SELECT on a query's tables, an existing one EXECUTE on a query turned into a procedure, and each runs exactly what it was granted |
@@ -197,9 +197,9 @@ menu should not have it.
    in the `@League_Id (int)` box: press `2`, Return (Run). Pass: Team 1 and
    Team 2 in the grid. Return (Create workbook); save to that path.
 8. Excel opens it. Check the layout: note in row 1, "Last refreshed" with
-   the run time in row 2, `League_Id` / `2` in A4:B4, then the table from
-   row 6 already showing Team 1 and Team 2. Set the value to 1 with the
-   keyboard (Excel ignores some clicks too): ctrl+g, `b`, `4`, Return, then
+   the run time in row 2, a bold `Parameter` / `User Input` header in row 4,
+   `League_Id` / `2` in A5:B5, then the table from row 7 already showing Team 1 and Team 2. Set the value to 1 with the
+   keyboard (Excel ignores some clicks too): ctrl+g, `b`, `5`, Return, then
    `1`, Return. Refresh All with ctrl+alt+F5.
    - **Security notice** ("connects to an external data source"): click
      **OK**. Return picks Cancel.
@@ -207,9 +207,9 @@ menu should not have it.
      file per user): Tab until the "Ignore Privacy Levels checks for this
      file" checkbox has focus (zoom to check; focus order varies), Space,
      Return to Save.
-   Pass: Team 3 and Team 5, and `League_Id` / `1` are still in A4:B4 (not
+   Pass: Team 3 and Team 5, and `League_Id` / `1` are still in A5:B5 (not
    shifted right).
-9. Set B4 to `2` the same way and refresh. Pass: Team 1 and Team 2.
+9. Set B5 to `2` the same way and refresh. Pass: Team 1 and Team 2.
 10. ctrl+s (keeps the privacy choice), ctrl+w. Then check it unattended:
     ```powershell
     .\tests\verify-excel.ps1 -Path C:\temp\flank-smoke\sproc-excel-params.xlsx -Parameters "League_Id=3"
@@ -253,20 +253,20 @@ Right to expand, and type-ahead (`dbo.flank_t`) to select.
 
 1. **Excel (Power Query)** on it. **Review parameters**: the defaults `%`, `1`,
    `2000-01-01` are filled in from the definition; League_Id is Required, the
-   others "Use procedure default". Tab to "Shown as", ctrl+a, paste `League`;
+   others "Omit (defaults to ...)". Tab to "Shown as", ctrl+a, paste `League`;
    Tab to the note, paste `1 = NBA, 2 = NFL, 3 = MLB`; Tab; click **Next**
    (Return stays in the grid).
 2. Wizard: Return (Skip). The run page shows `League (int) *` and the defaults.
    Return with League blank: "Enter a value for League: it's required." Then
    `1`, Return: Team 3 and Team 5, with name_like `%` and since 2000-01-01.
    Create workbook, save as `C:\temp\flank-smoke\review-excel.xlsx`.
-3. In Excel: A4 `League`, C4 `Required. 1 = NBA, ...`, B7 a ticked checkbox, B8 a date
-   without a time. Go to B4: the note shows as a tooltip. Delete: B4 turns red.
+3. In Excel: row 4 is a bold `Parameter` / `User Input` / `Note` header; A5 `League`, C5 `1 = NBA, ...` (no "Required." text), B7 a ticked checkbox, B8 a date
+   without a time. Go to B5: the note shows as a tooltip. Delete: B5 turns red.
    Type `abc`, Return: "Enter a whole number between ..." (Escape).
-4. Paste past validation: type `abc` in D20, copy it, paste into B4. Refresh
-   All (ctrl+alt+F5), security notice **OK**: "[Flank] League (cell B4) must
+4. Paste past validation: type `abc` in D20, copy it, paste into B5. Refresh
+   All (ctrl+alt+F5), security notice **OK**: "[Flank] League (cell B5) must
    be a whole number ...".
-5. B4 = `2`, refresh: a **Native Database Query** prompt (Run), then Privacy
+5. B5 = `2`, refresh: a **Native Database Query** prompt (Run), then Privacy
    levels. Clicks don't reach that dialog: Tab twice (focus ring on the
    checkbox), Space, Return. Pass: Team 1 and Team 2; the date in B8 still
    shows (columns aren't re-fitted). Go to B7, Space (unticks), refresh:
@@ -275,15 +275,18 @@ Right to expand, and type-ahead (`dbo.flank_t`) to select.
 
 ### dropdown
 
-`review-excel` with a list: on the review page, Tab past "Shown as", "Note"
-and "Starts with" to **Choices from**, paste `dbo.get_leagues`, Tab, Next
-(Flank checks the procedure: one that needs values, e.g.
-`dbo.sgm_ListTeamsByLeague`, is refused with a message). Run with League `2`,
-create `C:\temp\flank-smoke\dropdown-excel.xlsx`. In Excel, B4 shows `NFL`
-(the label for 2); Alt+Down in B4 lists the five leagues. Pick MLB, refresh
-(security OK, privacy levels as in `review-excel`): Team 4, league_id 3.
-Then Power BI on the same procedure with the same list, publish, and
-`verify-pbi.ps1 -Report (Get-Clipboard) -Parameters "League_Id=3"`: 1 row.
+`review-excel` with a list: on the review page, click **Add...** in League's
+Guardrails cell (or Tab to it and Space). In **Guardrails for League**, tick
+the dropdown checkbox, pick `[dbo].[get_leagues]` from the Procedure list (it
+loads the columns: Show `name`, Pass `id`, with a preview), OK. The row shows
+"Dropdown: [dbo].[get_leagues] (name → id)" with Edit... and Remove. Next.
+The run page shows League as a dropdown of league names; pick NFL, run (Team 1
+and Team 2), create `C:\temp\flank-smoke\dropdown-excel.xlsx`. In Excel, B5
+shows `NFL`; Alt+Down in B5 lists the five leagues. Pick MLB, refresh (security
+OK, privacy levels as in `review-excel`): Team 4, league_id 3. Data > Queries &
+Connections shows `League_options`. Then Power BI on the same procedure with
+the same dropdown, publish, and `verify-pbi.ps1 -Report (Get-Clipboard)
+-Parameters "League_Id=3"`: 1 row.
 
 ### query-pbi
 

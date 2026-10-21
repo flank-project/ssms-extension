@@ -139,10 +139,15 @@ public class ExcelExporterTests : IDisposable
                 .Elements(Sheet + "c").SingleOrDefault(c => (string)c.Attribute("r")! == column + row)?
                 .Descendants(Sheet + "t").SingleOrDefault()?.Value ?? "";
 
-        Assert.Equal("League", Text(4, "A"));
-        Assert.Equal("Required. 1 = NBA, 2 = NFL", Text(4, "C"));
-        Assert.Equal("Team name", Text(5, "A"));
-        Assert.Equal("", Text(5, "C"));
+        Assert.Equal("League", Text(5, "A"));
+        Assert.Equal("1 = NBA, 2 = NFL", Text(5, "C"));
+        Assert.Equal("Team name", Text(6, "A"));
+        Assert.Equal("", Text(6, "C"));
+
+        // A bold header row above the parameters.
+        Assert.Equal("Parameter", Text(4, "A"));
+        Assert.Equal("User Input", Text(4, "B"));
+        Assert.Equal("Note", Text(4, "C"));
 
         string m = MashupReader.ReadSection1(outputPath);
         Assert.Contains("{\"League_Id\", \"Name\", \"Active\"}", m);
@@ -156,18 +161,18 @@ public class ExcelExporterTests : IDisposable
         var sheet = ReadPart("xl/worksheets/sheet1.xml").Root!;
         var validations = sheet.Descendants(Sheet + "dataValidation").ToDictionary(v => (string)v.Attribute("sqref")!);
 
-        Assert.Equal("whole", (string)validations["B4"].Attribute("type")!);
-        Assert.Equal("2147483647", (string)validations["B4"].Element(Sheet + "formula2")!);
-        Assert.Equal("1 = NBA, 2 = NFL", (string)validations["B4"].Attribute("prompt")!);
-        Assert.Equal("textLength", (string)validations["B5"].Attribute("type")!);
-        Assert.Equal("50", (string)validations["B5"].Element(Sheet + "formula1")!);
-        Assert.Equal("list", (string)validations["B6"].Attribute("type")!);
-        Assert.Equal("\"TRUE,FALSE\"", (string)validations["B6"].Element(Sheet + "formula1")!);
+        Assert.Equal("whole", (string)validations["B5"].Attribute("type")!);
+        Assert.Equal("2147483647", (string)validations["B5"].Element(Sheet + "formula2")!);
+        Assert.Equal("1 = NBA, 2 = NFL", (string)validations["B5"].Attribute("prompt")!);
+        Assert.Equal("textLength", (string)validations["B6"].Attribute("type")!);
+        Assert.Equal("50", (string)validations["B6"].Element(Sheet + "formula1")!);
+        Assert.Equal("list", (string)validations["B7"].Attribute("type")!);
+        Assert.Equal("\"TRUE,FALSE\"", (string)validations["B7"].Element(Sheet + "formula1")!);
 
         // Only the required cell is highlighted while empty.
         var format = sheet.Elements(Sheet + "conditionalFormatting").Single();
-        Assert.Equal("B4", (string)format.Attribute("sqref")!);
-        Assert.Equal("LEN(TRIM(B4))=0", (string)format.Descendants(Sheet + "formula").Single());
+        Assert.Equal("B5", (string)format.Attribute("sqref")!);
+        Assert.Equal("LEN(TRIM(B5))=0", (string)format.Descendants(Sheet + "formula").Single());
 
         // Schema order: right after sheetData, validations after formatting, before pageMargins.
         var order = sheet.Elements().Select(e => e.Name.LocalName).ToList();
@@ -201,11 +206,11 @@ public class ExcelExporterTests : IDisposable
     {
         ExcelExporter.Generate(outputPath, ReviewedRequest());
 
-        var active = ParameterCell("B6");
+        var active = ParameterCell("B7");
         Assert.Equal("b", (string)active.Attribute("t")!);
         Assert.Equal("1", (string)active.Element(Sheet + "v")!);
         Assert.Equal("0", CheckboxComplement(active));
-        Assert.Null(CheckboxComplement(ParameterCell("B4")));
+        Assert.Null(CheckboxComplement(ParameterCell("B5")));
 
         // Complement 0 is the checkbox control, as Excel saves it.
         var bags = ReadPart("xl/featurePropertyBag/featurePropertyBag.xml").Root!.Elements(FeaturePropertyBag + "bag").ToList();
@@ -221,7 +226,7 @@ public class ExcelExporterTests : IDisposable
                  (string?)o.Attribute("ContentType") == "application/vnd.ms-excel.featurepropertybag+xml");
 
         var validation = ReadPart("xl/worksheets/sheet1.xml").Descendants(Sheet + "dataValidation")
-            .Single(v => (string)v.Attribute("sqref")! == "B6");
+            .Single(v => (string)v.Attribute("sqref")! == "B7");
         Assert.Equal("\"TRUE,FALSE\"", (string)validation.Element(Sheet + "formula1")!);
     }
 
@@ -234,7 +239,7 @@ public class ExcelExporterTests : IDisposable
         ExcelExporter.Generate(outputPath, request);
 
         // Shown greyed out in Excel; the query reads it as blank (the procedure's default, or NULL).
-        var active = ParameterCell("B6");
+        var active = ParameterCell("B7");
         Assert.Null(active.Element(Sheet + "v"));
         Assert.Equal("0", CheckboxComplement(active));
     }
@@ -254,10 +259,10 @@ public class ExcelExporterTests : IDisposable
         ExcelExporter.Generate(outputPath, ReviewedRequest());
         string m = MashupReader.ReadSection1(outputPath);
 
-        Assert.Contains("League (cell B4) is required. Enter a value, then refresh.", m);
-        Assert.Contains("League (cell B4) must be a whole number between -2,147,483,648 and 2,147,483,647.", m);
-        Assert.Contains("Team name (cell B5) can be at most 50 characters.", m);
-        Assert.Contains("Active only (cell B6) must be TRUE or FALSE.", m);
+        Assert.Contains("League (cell B5) is required. Enter a value, then refresh.", m);
+        Assert.Contains("League (cell B5) must be a whole number between -2,147,483,648 and 2,147,483,647.", m);
+        Assert.Contains("Team name (cell B6) can be at most 50 characters.", m);
+        Assert.Contains("Active only (cell B7) must be TRUE or FALSE.", m);
     }
 
     private WorkbookRequest ListRequest() =>
@@ -283,7 +288,7 @@ public class ExcelExporterTests : IDisposable
         ExcelExporter.Generate(outputPath, ListRequest());
 
         var sheet = ReadPart("xl/worksheets/sheet1.xml").Root!;
-        var b4 = sheet.Descendants(Sheet + "c").Single(c => (string)c.Attribute("r")! == "B4");
+        var b4 = sheet.Descendants(Sheet + "c").Single(c => (string)c.Attribute("r")! == "B5");
         Assert.Equal("NFL", b4.Descendants(Sheet + "t").Single().Value);
 
         var validation = sheet.Descendants(Sheet + "dataValidation").Single();
@@ -291,21 +296,21 @@ public class ExcelExporterTests : IDisposable
         Assert.Equal("FlankList1", (string)validation.Element(Sheet + "formula1")!);
 
         var book = ReadPart("xl/workbook.xml").Root!;
-        var lists = book.Descendants(Sheet + "sheet").Single(s => (string)s.Attribute("name")! == "Lists");
+        var lists = book.Descendants(Sheet + "sheet").Single(s => (string)s.Attribute("name")! == "DropdownOptions");
         Assert.Equal("hidden", (string)lists.Attribute("state")!);
         var names = book.Descendants(Sheet + "definedName").ToDictionary(n => (string)n.Attribute("name")!, n => n.Value);
-        Assert.Equal("List1[name]", names["FlankList1"]);
-        Assert.Equal("Lists!$A$1:$B$4", names["ExternalData_3"]);
+        Assert.Equal("League_options[name]", names["FlankList1"]);
+        Assert.Equal("DropdownOptions!$A$1:$B$4", names["ExternalData_3"]);
 
         var table = ReadPart("xl/tables/table3.xml").Root!;
-        Assert.Equal("List1", (string)table.Attribute("name")!);
+        Assert.Equal("League_options", (string)table.Attribute("name")!);
         Assert.Equal(new[] { "name", "id" }, table.Descendants(Sheet + "tableColumn").Select(c => (string)c.Attribute("name")!));
 
         var listSheet = ReadPart("xl/worksheets/sheet2.xml").Root!;
         Assert.Equal(4, listSheet.Descendants(Sheet + "row").Count());
 
         var connection = ReadPart("xl/connections.xml").Root!.Elements(Sheet + "connection").Single(c => (string)c.Attribute("id")! == "3");
-        Assert.Contains("Location=List1", (string)connection.Element(Sheet + "dbPr")!.Attribute("connection")!);
+        Assert.Contains("Location=League_options", (string)connection.Element(Sheet + "dbPr")!.Attribute("connection")!);
 
         var types = ReadPart("[Content_Types].xml").ToString();
         Assert.Contains("/xl/worksheets/sheet2.xml", types);
@@ -314,17 +319,40 @@ public class ExcelExporterTests : IDisposable
     }
 
     [Fact]
+    public void Lists_are_named_after_their_parameters_and_kept_unique()
+    {
+        WorkbookParameter Listed(string sqlName, string displayName) =>
+            new WorkbookParameter(sqlName, displayName)
+            {
+                List = new WorkbookList("EXEC [dbo].[get_leagues]", "id", "name")
+                {
+                    Rows = new (object?, object?)[] { (1, "NBA") },
+                },
+            };
+
+        ExcelExporter.Generate(outputPath, new WorkbookRequest("EXEC [dbo].[p] @a = @a, @b = @b", "s", "d")
+        {
+            Parameters = new[] { Listed("a", "Home team"), Listed("b", "Home team") },
+        });
+
+        string m = MashupReader.ReadSection1(outputPath);
+        Assert.Contains("shared Home_team_options = let", m);
+        Assert.Contains("shared Home_team_options_2 = let", m);
+        Assert.Equal("Home_team_options_2", (string)ReadPart("xl/tables/table4.xml").Root!.Attribute("name")!);
+    }
+
+    [Fact]
     public void The_list_is_its_own_query_and_the_main_query_looks_up_the_value()
     {
         ExcelExporter.Generate(outputPath, ListRequest());
         string m = MashupReader.ReadSection1(outputPath);
 
-        Assert.Contains("shared List1 = let", m);
+        Assert.Contains("shared League_options = let", m);
         Assert.Contains("[Query=\"EXEC [dbo].[get_leagues]\"]", m);
         Assert.Contains("Table.SelectColumns(Source, {\"name\", \"id\"})", m);
-        Assert.Contains("Table.SelectRows(List1, each Text.From(Record.Field(_, \"name\")) = Text.From(v))", m);
+        Assert.Contains("Table.SelectRows(League_options, each Text.From(Record.Field(_, \"name\")) = Text.From(v))", m);
         Assert.Contains("Record.Field(match{0}, \"id\")", m);
-        Assert.Contains("League (cell B4) must be one of the choices in its list.", m);
+        Assert.Contains("League (cell B5) must be one of the choices in its list.", m);
     }
 
     [Fact]
@@ -332,16 +360,23 @@ public class ExcelExporterTests : IDisposable
     {
         GenerateWithParameters("League_Id", "Name");
 
-        // Note (1), last refreshed (2), gap (3), parameters (4-5), gap (6), table (7).
+        // Note (1), last refreshed (2), gap (3), header (4), parameters (5-6), gap (7), table (8).
         var rows = ReadPart("xl/worksheets/sheet1.xml").Descendants(Sheet + "row").ToList();
-        Assert.Equal(new[] { "1", "2", "4", "5", "7" }, rows.Select(r => (string)r.Attribute("r")!));
-        Assert.Equal("League_Id", (string)rows[2].Descendants(Sheet + "t").Single());
-        Assert.Equal("Name", (string)rows[3].Descendants(Sheet + "t").Single());
-        Assert.Equal("A7", (string)rows[4].Element(Sheet + "c")!.Attribute("r")!);
+        Assert.Equal(new[] { "1", "2", "4", "5", "6", "8" }, rows.Select(r => (string)r.Attribute("r")!));
+        Assert.Equal(new[] { "Parameter", "User Input" }, rows[2].Descendants(Sheet + "t").Select(t => (string)t));
+        Assert.Equal("League_Id", (string)rows[3].Descendants(Sheet + "t").Single());
+        Assert.Equal("Name", (string)rows[4].Descendants(Sheet + "t").Single());
+        Assert.Equal("A8", (string)rows[5].Element(Sheet + "c")!.Attribute("r")!);
+
+        // The header is bold.
+        int style = (int)rows[2].Elements(Sheet + "c").First().Attribute("s")!;
+        var styles = ReadPart("xl/styles.xml").Root!;
+        int font = (int)styles.Element(Sheet + "cellXfs")!.Elements(Sheet + "xf").ElementAt(style).Attribute("fontId")!;
+        Assert.NotNull(styles.Element(Sheet + "fonts")!.Elements(Sheet + "font").ElementAt(font).Element(Sheet + "b"));
 
         var table = ReadPart("xl/tables/table1.xml").Root!;
-        Assert.Equal("A7:A8", (string)table.Attribute("ref")!);
-        Assert.Equal("A7:A8", (string)table.Element(Sheet + "autoFilter")!.Attribute("ref")!);
+        Assert.Equal("A8:A9", (string)table.Attribute("ref")!);
+        Assert.Equal("A8:A9", (string)table.Element(Sheet + "autoFilter")!.Attribute("ref")!);
     }
 
     [Fact]
@@ -351,8 +386,8 @@ public class ExcelExporterTests : IDisposable
 
         var names = ReadPart("xl/workbook.xml").Descendants(Sheet + "definedName")
             .ToDictionary(n => (string)n.Attribute("name")!, n => n.Value);
-        Assert.Equal("Query1!$A$4:$B$5", names["FlankParameters"]);
-        Assert.Equal("Query1!$A$7:$A$8", names["ExternalData_1"]);
+        Assert.Equal("Query1!$A$5:$B$6", names["FlankParameters"]);
+        Assert.Equal("Query1!$A$8:$A$9", names["ExternalData_1"]);
 
         var queryTable = ReadPart("xl/queryTables/queryTable1.xml").Root!;
         Assert.Equal("overwriteClear", (string)queryTable.Attribute("growShrinkType")!);
@@ -366,9 +401,9 @@ public class ExcelExporterTests : IDisposable
             new[] { "League_Id" },
             new[] { "team_name", "team_id", "league_id" });
 
-        // One parameter row (4), a gap, then the table at row 6.
+        // The header row (4), one parameter row (5), a gap, then the table at row 7.
         var table = ReadPart("xl/tables/table1.xml").Root!;
-        Assert.Equal("A6:C7", (string)table.Attribute("ref")!);
+        Assert.Equal("A7:C8", (string)table.Attribute("ref")!);
         Assert.Equal(
             new[] { "team_name", "team_id", "league_id" },
             table.Descendants(Sheet + "tableColumn").Select(c => (string)c.Attribute("name")!));
@@ -377,13 +412,13 @@ public class ExcelExporterTests : IDisposable
         Assert.Equal(new[] { "team_name", "team_id", "league_id" }, fields.Select(f => (string)f.Attribute("name")!));
         Assert.Equal(new[] { "1", "2", "3" }, fields.Select(f => (string)f.Attribute("tableColumnId")!));
 
-        var header = ReadPart("xl/worksheets/sheet1.xml").Descendants(Sheet + "row").Single(r => (string)r.Attribute("r")! == "6");
+        var header = ReadPart("xl/worksheets/sheet1.xml").Descendants(Sheet + "row").Single(r => (string)r.Attribute("r")! == "7");
         Assert.Equal(new[] { "team_name", "team_id", "league_id" }, header.Descendants(Sheet + "t").Select(t => (string)t));
 
         var names = ReadPart("xl/workbook.xml").Descendants(Sheet + "definedName")
             .ToDictionary(n => (string)n.Attribute("name")!, n => n.Value);
-        Assert.Equal("Query1!$A$6:$C$7", names["ExternalData_1"]);
-        Assert.Equal("Query1!$A$4:$B$4", names["FlankParameters"]);
+        Assert.Equal("Query1!$A$7:$C$8", names["ExternalData_1"]);
+        Assert.Equal("Query1!$A$5:$B$5", names["FlankParameters"]);
     }
 
     [Fact]
@@ -468,11 +503,11 @@ public class ExcelExporterTests : IDisposable
             ParameterValues = new object?[] { 1, "abc", null },
         });
 
-        Assert.Equal("1", (string)CellElement("B4").Element(Sheet + "v")!);
-        Assert.Equal("abc", Cell("B5"));
+        Assert.Equal("1", (string)CellElement("B5").Element(Sheet + "v")!);
+        Assert.Equal("abc", Cell("B6"));
         Assert.DoesNotContain(
             ReadPart("xl/worksheets/sheet1.xml").Descendants(Sheet + "c"),
-            c => (string)c.Attribute("r")! == "B6");
+            c => (string)c.Attribute("r")! == "B7");
     }
 
     [Fact]
@@ -539,11 +574,11 @@ public class ExcelExporterTests : IDisposable
             Rows = new IReadOnlyList<object?>[] { new object?[] { 1 }, new object?[] { 2 }, new object?[] { 3 } },
         });
 
-        // Parameter at row 4, gap, header at 6, data 7-9.
-        Assert.Equal("A6:A9", (string)ReadPart("xl/tables/table1.xml").Root!.Attribute("ref")!);
-        Assert.Equal("3", (string)CellElement("A9").Element(Sheet + "v")!);
+        // Parameter header at row 4, parameter at 5, gap, table header at 7, data 8-10.
+        Assert.Equal("A7:A10", (string)ReadPart("xl/tables/table1.xml").Root!.Attribute("ref")!);
+        Assert.Equal("3", (string)CellElement("A10").Element(Sheet + "v")!);
         Assert.Equal(
-            new[] { "1", "2", "4", "6", "7", "8", "9" },
+            new[] { "1", "2", "4", "5", "7", "8", "9", "10" },
             ReadPart("xl/worksheets/sheet1.xml").Descendants(Sheet + "row").Select(r => (string)r.Attribute("r")!));
     }
 
