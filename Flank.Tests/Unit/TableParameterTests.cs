@@ -183,21 +183,21 @@ public class TableParameterTests : IDisposable
         ExcelExporter.Generate(outputPath, TableRequest(WorkbookTableLayout.Inline));
         var sheet = ReadPart("xl/worksheets/sheet1.xml");
 
-        // League (5); Teams' label (6), its table's header (7) and rows (8-10), blank (11);
-        // Since (12); query table (14). The table starts in A, so a row added to it
-        // shifts the labels and values below it together.
+        // League (5); Teams' label and its table's header (6), rows (7-9), a hint (10);
+        // Since (11); blank (12); query table (13). Column A only has names.
         Assert.Equal("League", Text(sheet, "A5"));
         Assert.Equal("Teams", Text(sheet, "A6"));
-        Assert.StartsWith("Enter rows in the table below.", Text(sheet, "B6"));
-        Assert.Equal("team_id", Text(sheet, "A7"));
-        Assert.Equal("team_name", Text(sheet, "B7"));
-        Assert.Equal("7", sheet.Descendants(Sheet + "c").Single(c => (string)c.Attribute("r")! == "A8").Element(Sheet + "v")!.Value);
-        Assert.Equal("Lakers", Text(sheet, "B8"));
-        Assert.Equal("Since", Text(sheet, "A12"));
+        Assert.Equal("team_id", Text(sheet, "B6"));
+        Assert.Equal("team_name", Text(sheet, "C6"));
+        Assert.Equal("7", sheet.Descendants(Sheet + "c").Single(c => (string)c.Attribute("r")! == "B7").Element(Sheet + "v")!.Value);
+        Assert.Equal("Lakers", Text(sheet, "C7"));
+        Assert.Equal("", Text(sheet, "A7"));
+        Assert.StartsWith("More rows:", Text(sheet, "B10"));
+        Assert.Equal("Since", Text(sheet, "A11"));
 
         var table = ReadPart("xl/tables/table3.xml").Root!;
         Assert.Equal("Teams", (string)table.Attribute("name")!);
-        Assert.Equal("A7:B10", (string)table.Attribute("ref")!);
+        Assert.Equal("B6:C9", (string)table.Attribute("ref")!);
         Assert.Equal(new[] { "team_id", "team_name" }, table.Descendants(Sheet + "tableColumn").Select(c => (string)c.Attribute("name")!));
 
         Assert.Equal("3", (string)sheet.Root!.Element(Sheet + "tableParts")!.Attribute("count")!);
@@ -206,9 +206,9 @@ public class TableParameterTests : IDisposable
 
         var names = Names();
         Assert.Equal("Query1!$B$5", names["Flank_League_Id"]);
-        Assert.Equal("Query1!$B$12", names["Flank_Since"]);
+        Assert.Equal("Query1!$B$11", names["Flank_Since"]);
         Assert.False(names.ContainsKey("Flank_Teams"));
-        Assert.Equal("A14:A15", (string)ReadPart("xl/tables/table1.xml").Root!.Attribute("ref")!);
+        Assert.Equal("A13:A14", (string)ReadPart("xl/tables/table1.xml").Root!.Attribute("ref")!);
 
         // The note goes on the table's label.
         Assert.Equal("A6", (string)ReadPart("xl/comments1.xml").Descendants(Sheet + "comment").Single().Attribute("ref")!);
@@ -223,8 +223,8 @@ public class TableParameterTests : IDisposable
 
         ExcelExporter.Generate(outputPath, request);
 
-        Assert.Equal("A7:B9", (string)ReadPart("xl/tables/table3.xml").Root!.Attribute("ref")!);
-        Assert.Equal("Query1!$B$11", Names()["Flank_Since"]);
+        Assert.Equal("B6:C8", (string)ReadPart("xl/tables/table3.xml").Root!.Attribute("ref")!);
+        Assert.Equal("Query1!$B$10", Names()["Flank_Since"]);
     }
 
     [Fact]
@@ -234,11 +234,11 @@ public class TableParameterTests : IDisposable
         var sheet = ReadPart("xl/worksheets/sheet1.xml").Root!;
 
         var validations = sheet.Descendants(Sheet + "dataValidation").ToDictionary(v => (string)v.Attribute("sqref")!);
-        Assert.Equal("whole", (string)validations["A8:A10"].Attribute("type")!);
-        Assert.Equal("textLength", (string)validations["B8:B10"].Attribute("type")!);
+        Assert.Equal("whole", (string)validations["B7:B9"].Attribute("type")!);
+        Assert.Equal("textLength", (string)validations["C7:C9"].Attribute("type")!);
 
-        var format = sheet.Elements(Sheet + "conditionalFormatting").Single(f => (string)f.Attribute("sqref")! == "A8:A10");
-        Assert.Equal("AND(COUNTA($A8:$B8)>0,LEN(TRIM(A8))=0)", (string)format.Descendants(Sheet + "formula").Single());
+        var format = sheet.Elements(Sheet + "conditionalFormatting").Single(f => (string)f.Attribute("sqref")! == "B7:B9");
+        Assert.Equal("AND(COUNTA($B7:$C7)>0,LEN(TRIM(B7))=0)", (string)format.Descendants(Sheet + "formula").Single());
     }
 
     [Fact]

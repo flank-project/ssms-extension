@@ -68,6 +68,10 @@ namespace Flank.SsmsExtension
         // From the parameter review page, for the procedure's or query's parameters.
         private readonly IReadOnlyList<ParameterSettings>? parameterSettings;
 
+        // Back on the first page closes with DialogResult.Retry, for the caller
+        // to show the review page again.
+        private readonly bool canGoBack;
+
         /// <param name="procedure">[schema].[name] when creating from a stored procedure.</param>
         /// <param name="procedureParameters">
         /// The procedure's parameters; for a query, its @parameters (also
@@ -80,6 +84,11 @@ namespace Flank.SsmsExtension
         /// Calls the action with a connection to the database. It may be
         /// borrowed (the query window's), so it's never closed here.
         /// </param>
+        /// <param name="canGoBack">
+        /// There was a review page before this: Back on the first page closes
+        /// the wizard with <see cref="DialogResult.Retry"/>. The wizard can be
+        /// shown again afterwards, keeping its choices.
+        /// </param>
         public ExcelWorkbookWizard(
             string server,
             string database,
@@ -90,9 +99,11 @@ namespace Flank.SsmsExtension
             IReadOnlyList<string> queryTables,
             string? queryTablesProblem,
             Action<Action<IDbConnection>> useConnection,
-            IReadOnlyList<ParameterSettings>? parameterSettings = null)
+            IReadOnlyList<ParameterSettings>? parameterSettings = null,
+            bool canGoBack = false)
         {
             this.parameterSettings = parameterSettings;
+            this.canGoBack = canGoBack;
             this.server = server;
             this.database = database;
             this.isAzureSqlDatabase = isAzureSqlDatabase;
@@ -351,7 +362,9 @@ namespace Flank.SsmsExtension
 
         private void Back()
         {
-            if (page == 2)
+            if (page == 0 && canGoBack)
+                DialogResult = DialogResult.Retry;
+            else if (page == 2)
                 ShowPage(SelectedSignIn == null ? 0 : 1);
             else if (page == 1)
                 ShowPage(0);
@@ -363,7 +376,7 @@ namespace Flank.SsmsExtension
             passwordLabel.Visible = password.Visible = newPassword.Visible =
                 SelectedSignIn == AccessSignIn.SqlLogin && newUser.Checked;
 
-            backButton.Enabled = page > 0;
+            backButton.Enabled = page > 0 || canGoBack;
             nextButton.Text = page == 1 ? "Run SQL" : page == 2 ? "Create workbook" : "Next >";
 
             nextButton.Enabled =

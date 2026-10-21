@@ -27,6 +27,10 @@ namespace Flank.SsmsExtension
         /// For a query rather than a procedure: runs it with the values, in
         /// parameter order. <paramref name="procedureName"/> is then just its name in messages.
         /// </param>
+        /// <param name="canGoBack">
+        /// There was a review page before this: a Back button closes the dialog
+        /// with <see cref="DialogResult.Retry"/>, for the caller to show it again.
+        /// </param>
         public StoredProcedureRunDialog(
             string procedureName,
             IReadOnlyList<SprocParameter> parameters,
@@ -34,7 +38,8 @@ namespace Flank.SsmsExtension
             string createText,
             string outputName,
             IReadOnlyList<ParameterSettings>? reviewed = null,
-            Func<IReadOnlyList<object?>, IReadOnlyList<ResultSet>>? runQuery = null)
+            Func<IReadOnlyList<object?>, IReadOnlyList<ResultSet>>? runQuery = null,
+            bool canGoBack = false)
         {
             this.procedureName = procedureName;
             this.outputName = outputName;
@@ -109,6 +114,19 @@ namespace Flank.SsmsExtension
                 createButton.Enabled = preview.HasResults;
                 AcceptButton = preview.HasResults ? createButton : preview.RunButton;
             };
+
+            if (canGoBack)
+            {
+                var backButton = new Button
+                {
+                    Text = "< Back",
+                    DialogResult = DialogResult.Retry,
+                    Location = new Point(ClientSize.Width - 356, ClientSize.Height - 40),
+                    Width = 90,
+                    Anchor = AnchorStyles.Bottom | AnchorStyles.Right,
+                };
+                Controls.Add(backButton);
+            }
 
             Controls.Add(cancelButton);
             Controls.Add(createButton);

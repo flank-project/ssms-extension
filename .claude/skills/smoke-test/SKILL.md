@@ -409,12 +409,12 @@ team_id; returns those teams). The integration tests create them.
    `1`, Tab, `a'b"c`, Tab, `true` and a second row `2`; League `3`; Run: two
    rows echoed, league_id 3. Create workbook, save as
    `C:\temp\flank-smoke\tables-inline.xlsx`.
-3. In Excel: A6 `Rows` with a grey hint in B6, the table's header in row 7
-   from column A, the two rows filled in, then a blank row and the query
-   table. Tab in the table's last cell adds a row: with the query table below
-   wider than it, Excel says it "would move cells in a table" (expected);
-   right-click a row number inside the table > Insert works, and the
-   parameters below stay beside their labels. Refresh (Native Database Query:
+3. In Excel: A6 `Rows` with the table's header beside it from B6, the two
+   rows filled in, a grey hint under the table, then the query table; column
+   A has only names. Tab in the table's last cell: Excel says it "would move
+   cells in a table" (expected: the query table below is wider); right-click
+   a row number inside the table > Insert works, and the parameters below
+   stay beside their labels. Refresh (Native Database Query:
    Run; privacy levels): the echoed rows. Clear team_id in a filled row and
    refresh: "[Flank] Rows (row 1, team_id) is required ...".
 4. Again with Guardrails > Edit... > **On a sheet of its own**: B6 links to a

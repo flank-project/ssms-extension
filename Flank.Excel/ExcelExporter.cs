@@ -16,8 +16,8 @@ public static partial class ExcelExporter
     private const int TemplateTableRow = 4;
 
     // With parameters: a header row (Parameter / User Input), then a row each
-    // (an inline table takes its label's row, its own header row and rows,
-    // and a blank row after).
+    // (an inline table takes its header row, beside its label, its rows, and
+    // a row after with a hint).
     private const int ParameterHeaderRow = 4;
     private const int FirstParameterRow = 5;
 
@@ -31,8 +31,8 @@ public static partial class ExcelExporter
         }
 
         /// <summary>
-        /// Each parameter's row: its label in A, and its value in B; for an
-        /// inline table, a hint in B, with the table (from column A) below.
+        /// Each parameter's row: its label in A, and its value in B, or for an
+        /// inline table, the table's header row from B with its rows below.
         /// </summary>
         public IReadOnlyList<int> Rows { get; }
 
@@ -47,29 +47,21 @@ public static partial class ExcelExporter
 
         var rows = new List<int>();
         int row = FirstParameterRow;
-        bool blankAfter = false;
 
         foreach (var parameter in parameters)
         {
             rows.Add(row);
 
-            if (parameter.Table?.Layout == WorkbookTableLayout.Inline)
-            {
-                // Label, the table's header and rows, then a blank row, so
-                // typing a value in the next parameter's cell doesn't extend
-                // the table over it.
-                row += 2 + parameter.Table.DataRowCount + 1;
-                blankAfter = true;
-            }
-            else
-            {
-                row++;
-                blankAfter = false;
-            }
+            // An inline table: header and rows, then a row for the hint, so
+            // typing a value in the next parameter's cell doesn't extend the
+            // table over it.
+            row += parameter.Table?.Layout == WorkbookTableLayout.Inline
+                ? 1 + parameter.Table.DataRowCount + 1
+                : 1;
         }
 
         // A blank row before the query's table.
-        return new SheetLayout(rows, blankAfter ? row : row + 1);
+        return new SheetLayout(rows, row + 1);
     }
 
     private const string RefreshNote =
@@ -724,11 +716,13 @@ $@"let
     /// <summary>
     /// A bold header row (Parameter, User Input) in row 4, the parameter
     /// names in column A below it with their values in B, then the query
-    /// table. An inline table goes below its label, from column A: a row
-    /// added to a table shifts only the table's columns down, so starting in
-    /// A keeps the labels and values below it together (for a table at least
-    /// two columns wide). A table on its own sheet gets a link to it instead
-    /// of a value. Each value cell gets a name (see <see cref="WorkbookParameter.CellName"/>),
+    /// table. An inline table's header row is its parameter's row (from B),
+    /// with its rows below and a hint under them, so column A only has names.
+    /// The hint says to insert whole rows: adding a table row (Tab, Insert >
+    /// Table Rows) shifts only the table's columns, which Excel refuses when
+    /// that would move part of the query table below, and which would
+    /// otherwise move values away from their labels. A table on its own sheet
+    /// gets a link to it instead of a value. Each value cell gets a name (see <see cref="WorkbookParameter.CellName"/>),
     /// which the query reads it by.
     /// </summary>
     private static void AddParameterCells(
@@ -786,26 +780,25 @@ $@"let
 
                 if (table?.Layout == WorkbookTableLayout.Inline)
                 {
-                    // A hint on how to add rows, then the table's header row and rows.
-                    var hint = cells.Cell("B" + r, InlineTableHint)!;
-                    hint.SetAttributeValue("s", cells.HintStyle());
-                    row.Add(hint);
-
-                    var tableHeader = new XElement(Sheet + "row", new XAttribute("r", r + 1));
+                    // The table's header row, then its rows, then a hint on adding more.
                     for (int c = 0; c < table.Columns.Count; c++)
-                        tableHeader.Add(cells.Cell(ColumnLetter(c + 1) + (r + 1), table.Columns[c].DisplayName));
-                    rows.Add(tableHeader);
+                        row.Add(cells.Cell(ColumnLetter(c + 2) + r, table.Columns[c].DisplayName));
 
                     for (int d = 0; d < table.DataRowCount; d++)
                     {
-                        int dataRow = r + 2 + d;
+                        int dataRow = r + 1 + d;
                         var data = new XElement(Sheet + "row", new XAttribute("r", dataRow));
-                        AddTableRowCells(data, table, d, dataRow, firstColumn: 1, cells);
+                        AddTableRowCells(data, table, d, dataRow, firstColumn: 2, cells);
                         rows.Add(data);
                     }
 
-                    inlineTables.Add((parameter, r + 1));
-                    lastColumn = Math.Max(lastColumn, table.Columns.Count);
+                    int hintRow = r + 1 + table.DataRowCount;
+                    var hint = cells.Cell("B" + hintRow, InlineTableHint)!;
+                    hint.SetAttributeValue("s", cells.HintStyle());
+                    rows.Add(new XElement(Sheet + "row", new XAttribute("r", hintRow), hint));
+
+                    inlineTables.Add((parameter, r));
+                    lastColumn = Math.Max(lastColumn, table.Columns.Count + 1);
                     continue;
                 }
 
@@ -899,14 +892,14 @@ $@"let
         if (inlineTables.Count > 0)
         {
             var parts = inlineTables
-                .Select(t => (t.Parameter.Table!, $"A{t.Row}:{ColumnLetter(t.Parameter.Table!.Columns.Count)}{t.Row + t.Parameter.Table!.DataRowCount}"))
+                .Select(t => (t.Parameter.Table!, $"B{t.Row}:{ColumnLetter(t.Parameter.Table!.Columns.Count + 1)}{t.Row + t.Parameter.Table!.DataRowCount}"))
                 .ToList();
 
             AddTableParts(workbook, "xl/worksheets/sheet1.xml", parts);
         }
     }
 
-    private const string InlineTableHint = "Enter rows in the table below. For more, right-click a row number in it > Insert";
+    private const string InlineTableHint = "More rows: right-click a row number in the table above > Insert";
 
     /// <summary>A sheet name as a formula or link refers to it: 'Team list'.</summary>
     private static string SheetReference(string sheetName) => "'" + sheetName.Replace("'", "''") + "'";
@@ -951,7 +944,7 @@ $@"let
 
             if (parameter.Table?.Layout == WorkbookTableLayout.Inline)
             {
-                TableChecks(parameter.Table, layout.Rows[i] + 2, 1, cells, validations, formats, ref priority);
+                TableChecks(parameter.Table, layout.Rows[i] + 1, 2, cells, validations, formats, ref priority);
                 continue;
             }
 

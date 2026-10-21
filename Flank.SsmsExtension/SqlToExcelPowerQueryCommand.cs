@@ -211,9 +211,25 @@ namespace Flank.SsmsExtension
                 queryTables: tables,
                 queryTablesProblem: tablesProblem,
                 action => SsmsQueryHelper.UseBorrowedConnection(queryConnection, action),
-                settings))
+                settings,
+                canGoBack: settings.Count > 0))
             {
-                if (wizard.ShowDialog() != System.Windows.Forms.DialogResult.OK || wizard.Request == null)
+                System.Windows.Forms.DialogResult result;
+
+                // Back on the wizard's first page returns to the review page.
+                while ((result = wizard.ShowDialog()) == System.Windows.Forms.DialogResult.Retry)
+                {
+                    if (!ProcedureWorkflows.Review(
+                            QueryWorkflows.QueryName,
+                            settings,
+                            "workbook",
+                            () => new BorrowedConnection(queryConnection)))
+                    {
+                        return;
+                    }
+                }
+
+                if (result != System.Windows.Forms.DialogResult.OK || wizard.Request == null)
                     return;
 
                 request = wizard.Request;

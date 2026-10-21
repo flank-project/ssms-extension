@@ -113,9 +113,19 @@ namespace Flank.SsmsExtension
                         action(connection);
                     }
                 },
-                settings))
+                settings,
+                canGoBack: settings.Count > 0))
             {
-                if (wizard.ShowDialog() != DialogResult.OK || wizard.Request == null)
+                DialogResult result;
+
+                // Back on the wizard's first page returns to the review page.
+                while ((result = wizard.ShowDialog()) == DialogResult.Retry)
+                {
+                    if (!Review(sproc.QualifiedName, settings, "workbook", sproc.Open))
+                        return;
+                }
+
+                if (result != DialogResult.OK || wizard.Request == null)
                     return;
 
                 request = wizard.Request;
@@ -167,20 +177,34 @@ namespace Flank.SsmsExtension
             // Run it first to preview the results and get the report's columns.
             // The values entered aren't used as report defaults: those come
             // from the review page.
-            ResultSet result;
+            ResultSet? result = null;
 
-            using (var dialog = new StoredProcedureRunDialog(
-                sproc.QualifiedName,
-                parameters,
-                () => sproc.Open(),
-                "Continue",
-                "SSRS",
-                settings))
+            // Back returns to the review page, then runs again with what it says.
+            while (result == null)
             {
-                if (dialog.ShowDialog() != DialogResult.OK)
-                    return;
+                using (var dialog = new StoredProcedureRunDialog(
+                    sproc.QualifiedName,
+                    parameters,
+                    () => sproc.Open(),
+                    "Continue",
+                    "SSRS",
+                    settings,
+                    canGoBack: settings.Count > 0))
+                {
+                    var answer = dialog.ShowDialog();
 
-                result = dialog.Results[0];
+                    if (answer == DialogResult.Retry)
+                    {
+                        if (!Review(sproc.QualifiedName, settings, "report", sproc.Open))
+                            return;
+                        continue;
+                    }
+
+                    if (answer != DialogResult.OK)
+                        return;
+
+                    result = dialog.Results[0];
+                }
             }
 
             var columns = result.Columns
@@ -242,20 +266,34 @@ namespace Flank.SsmsExtension
                 return;
 
             // As for SSRS: run it to preview the results and get the report's columns.
-            ResultSet result;
+            ResultSet? result = null;
 
-            using (var dialog = new StoredProcedureRunDialog(
-                sproc.QualifiedName,
-                parameters,
-                () => sproc.Open(),
-                "Continue",
-                "Power BI",
-                settings))
+            // Back returns to the review page, then runs again with what it says.
+            while (result == null)
             {
-                if (dialog.ShowDialog() != DialogResult.OK)
-                    return;
+                using (var dialog = new StoredProcedureRunDialog(
+                    sproc.QualifiedName,
+                    parameters,
+                    () => sproc.Open(),
+                    "Continue",
+                    "Power BI",
+                    settings,
+                    canGoBack: settings.Count > 0))
+                {
+                    var answer = dialog.ShowDialog();
 
-                result = dialog.Results[0];
+                    if (answer == DialogResult.Retry)
+                    {
+                        if (!Review(sproc.QualifiedName, settings, "report", sproc.Open))
+                            return;
+                        continue;
+                    }
+
+                    if (answer != DialogResult.OK)
+                        return;
+
+                    result = dialog.Results[0];
+                }
             }
 
             var columns = result.Columns
@@ -335,13 +373,26 @@ namespace Flank.SsmsExtension
             Func<IDbConnection> openConnection)
         {
             var settings = ParameterSettings.FromProcedure(parameters);
+            return Review(name, settings, outputName, openConnection) ? settings : null;
+        }
 
+        /// <summary>
+        /// The review page for settings, e.g. again after Back on the next
+        /// page, starting from what was chosen. False if the user cancels;
+        /// true without showing it when there are no parameters.
+        /// </summary>
+        internal static bool Review(
+            string name,
+            IReadOnlyList<ParameterSettings> settings,
+            string outputName,
+            Func<IDbConnection> openConnection)
+        {
             if (settings.Count == 0)
-                return settings;
+                return true;
 
             using (var dialog = new ParameterReviewDialog(name, settings, outputName, openConnection))
             {
-                return dialog.ShowDialog() == DialogResult.OK ? settings : null;
+                return dialog.ShowDialog() == DialogResult.OK;
             }
         }
     }
