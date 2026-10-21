@@ -74,7 +74,7 @@ namespace Flank.SsmsExtension
             this.allowConnections = allowConnections;
             preferredConnectionId = settings.ConnectionId;
 
-            Text = "Create Power BI Paginated Report (Beta)";
+            Text = "Create Power BI Paginated Report";
             FormBorderStyle = FormBorderStyle.FixedDialog;
             StartPosition = FormStartPosition.CenterScreen;
             MaximizeBox = false;

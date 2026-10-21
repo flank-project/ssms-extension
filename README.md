@@ -6,7 +6,7 @@ Right-click a query (or a stored procedure in Object Explorer) and choose:
 
 - **SSRS Report** — deploy the query as a report to an existing SSRS server.
 - **Excel (Power Query)** — create an .xlsx workbook that users can refresh themselves.
-- **Power BI (Paginated Report) (Beta)** — publish the query as a paginated report to a Power BI workspace.
+- **Power BI (Paginated Report)** — publish the query as a paginated report to a Power BI workspace.
 
 Using Flank? I'd love to hear how — email [anguspmitchell@gmail.com](mailto:anguspmitchell@gmail.com), or use **Make Self-Serve → Feedback...** in SSMS.
 
@@ -26,7 +26,7 @@ Download [Flank-SSMS-Setup-0.2.7.exe](https://github.com/flank-project/ssms-exte
 
 Close SSMS, run the installer, then reopen SSMS.
 
-Right-click inside a SQL query, or on a stored procedure in Object Explorer, and you should see **Make Self-Serve**, with options for **SSRS Report**, **Excel (Power Query)** and **Power BI (Paginated Report) (Beta)**.
+Right-click inside a SQL query, or on a stored procedure in Object Explorer, and you should see **Make Self-Serve**, with options for **SSRS Report**, **Excel (Power Query)** and **Power BI (Paginated Report)**.
 
 ## SSRS Reports
 
@@ -164,7 +164,7 @@ Not supported yet:
 
 ### Create a report
 
-Right-click a query and choose **Make Self-Serve → Power BI (Paginated Report) (Beta)**,
+Right-click a query and choose **Make Self-Serve → Power BI (Paginated Report)**,
 or right-click a stored procedure in Object Explorer. Sign in if Flank asks,
 then choose the workspace, name the report, pick the connection, and click
 **Publish**.

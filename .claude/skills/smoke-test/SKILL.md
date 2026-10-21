@@ -154,7 +154,7 @@ Procedures used (all read-only):
 
 ### menus
 
-The submenu shows **Excel (Power Query)**, **SSRS Report**, **Power BI (Paginated Report) (Beta)** and **Feedback...**; zoom: Power BI has its own icon (three gold bars). Escape twice.
+The submenu shows **Excel (Power Query)**, **SSRS Report**, **Power BI (Paginated Report)** and **Feedback...**; zoom: Power BI has its own icon (three gold bars). Escape twice.
 
 Then in Object Explorer, expand Databases > (database) > Programmability >
 Stored Procedures (double-click a folder's label to expand it), click a
@@ -223,8 +223,7 @@ Set-Clipboard -Value "-- Flank smoke test`r`nSELECT t.team_name, t.team_id`r`nFR
    SQL box is read-only; default name "SSMS Query"). Check:
    `.\tests\verify-ssrs.ps1 -Report (Get-Clipboard) -Parameters "League_Id=1;Name_Like=%"`
    (2 rows).
-2. **Power BI, as a procedure.** Submenu > **Power BI (Paginated Report)
-   (Beta)**. Setup page 1: click the title bar, Down (**Turn it into a stored
+2. **Power BI, as a procedure.** Submenu > **Power BI (Paginated Report)**. Setup page 1: click the title bar, Down (**Turn it into a stored
    procedure**), Tab, ctrl+a, paste `dbo.flank_smoke_teams`, Return. SQL
    page: click **Next**. Types page shows the `CREATE PROCEDURE` script;
    click **Create procedure**. The procedure's review page follows ("Flank -
@@ -390,10 +389,9 @@ and "Connections API (silent): OK". If not, ask the user to run it without
 `--check` (`--device` on this server: its own browser can't run the sign-in
 page). Never sign out: that drops the cache.
 
-1. In the query window's submenu, highlight **Power BI (Paginated Report)
-   (Beta)** (third item, gold bars icon), Return, then the query setup
+1. In the query window's submenu, highlight **Power BI (Paginated Report)** (third item, gold bars icon), Return, then the query setup
    (section 3).
-2. **Create Power BI Paginated Report (Beta)**: "Signed in to Power BI as
+2. **Create Power BI Paginated Report**: "Signed in to Power BI as
    ...", Workspace `FlankSmoke`, and **Gateway / Cloud Connection** set to
    the cloud connection for `fomf-ss-sandbox-db` (or the one used last time).
 3. `Set-Clipboard -Value "Smoke - Query"`; Tab (to Report Name), ctrl+a,
@@ -408,7 +406,7 @@ page). Never sign out: that drops the cache.
 ### sproc-pbi
 
 1. On `dbo.sgm_ListTeamsByLeague`, open the submenu, highlight **Power BI
-   (Paginated Report) (Beta)**, Return. Run dialog: `2`, Return (Run: Team 1 and
+   (Paginated Report)**, Return. Run dialog: `2`, Return (Run: Team 1 and
    Team 2), Return (Continue).
 2. The Power BI dialog shows the procedure read-only and the connection
    for the database preselected. `Set-Clipboard -Value

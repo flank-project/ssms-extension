@@ -207,7 +207,7 @@ namespace Flank.SsmsExtension
                     (s, e) => owner.RunForSelection((node, sproc) => ProcedureWorkflows.CreateSsrsReportAsync(Source(node, sproc))));
 
                 submenu.DropDownItems.Add(
-                    "Power BI (Paginated Report) (Beta)",
+                    "Power BI (Paginated Report)",
                     MenuIcons.PowerBi,
                     (s, e) => owner.RunForSelection((node, sproc) => ProcedureWorkflows.CreatePowerBiReportAsync(Source(node, sproc))));
 
