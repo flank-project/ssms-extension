@@ -32,8 +32,6 @@ Flank can turn a SQL query into a basic SSRS report and deploy it directly to yo
 
 ### Current support
 
-Flank currently supports:
-
 - SSRS
   - Windows Authentication
   - Existing shared data sources
@@ -44,7 +42,7 @@ Flank currently supports:
   - Stored procedures, from Object Explorer. After you [review the parameters](#reviewing-parameters), Flank asks for values and runs the procedure so you can preview the results; the report's parameters use the names, starting values and blank behaviour you chose
 
 
-Not supported yet:
+### Not supported yet
 
 - SSRS
   - Creating or configuring SSRS data sources
