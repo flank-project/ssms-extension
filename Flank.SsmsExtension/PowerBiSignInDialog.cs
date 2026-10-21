@@ -161,11 +161,13 @@ namespace Flank.SsmsExtension
             if (IsDisposed || cancellation.IsCancellationRequested)
                 return;
 
-            messageLabel.Text = "Signing in didn't work: " + ex.Message;
+            messageLabel.Text = "Signing in didn't work. Try again, or see the details.";
             codeTextBox.Visible = false;
             openPageButton.Visible = false;
             browserButton.Enabled = true;
             codeButton.Enabled = true;
+
+            MessageBox.Show(this, PowerBiHelp.Explain(PowerBiStep.SignIn, ex), "Flank", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
 
         private static void Open(string url)

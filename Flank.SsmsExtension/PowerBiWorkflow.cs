@@ -58,6 +58,9 @@ namespace Flank.SsmsExtension
                 progressDialog = null;
             }
 
+            // What Flank was doing, for the error message.
+            var step = PowerBiStep.SignIn;
+
             try
             {
                 var signIn = await PowerBiSignIn.CreateAsync();
@@ -88,12 +91,19 @@ namespace Flank.SsmsExtension
                         (await signIn.GetTokenSilentAsync(PowerBiSignIn.ConnectionScopes, cancellationToken))?.AccessToken);
 
                 ShowProgress("Loading your Power BI workspaces...");
+                step = PowerBiStep.Workspaces;
 
                 IReadOnlyList<PowerBiWorkspace> workspaces = await client.GetWorkspacesAsync();
                 IReadOnlyList<PowerBiConnection>? connections = await TryGetConnectionsAsync(client);
 
                 await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
                 CloseProgress();
+
+                if (workspaces.Count == 0)
+                {
+                    SsmsUiHelper.ShowMessage(PowerBiHelp.NoWorkspaces, OLEMSGICON.OLEMSGICON_WARNING, "Flank");
+                    return;
+                }
 
                 var settings = PowerBiSettings.Load();
                 PowerBiReportOptions options;
@@ -121,10 +131,7 @@ namespace Flank.SsmsExtension
 
                         if (allowed == null)
                         {
-                            SsmsUiHelper.ShowMessage(
-                                "Flank still can't list Power BI connections. Ask your admin to grant the " +
-                                "Flank app the Power BI Connection.Read.All permission.",
-                                OLEMSGICON.OLEMSGICON_WARNING);
+                            SsmsUiHelper.ShowMessage(PowerBiHelp.ConnectionsNotAllowed, OLEMSGICON.OLEMSGICON_WARNING, "Flank");
                         }
 
                         return allowed;
@@ -141,6 +148,8 @@ namespace Flank.SsmsExtension
                 }
 
                 ShowProgress(preparingStatus);
+                step = PowerBiStep.Upload;
+
                 // The report reads the database the connection points at, through it.
                 var connection = options.Connection;
                 string rdl = buildRdl(options, RdlDataSource.ForPowerBiConnection(
@@ -176,8 +185,11 @@ namespace Flank.SsmsExtension
                 await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
                 CloseProgress();
 
+                // Upload and Connect are told apart by the publisher.
+                var failed = (ex as PowerBiException)?.Step ?? step;
+
                 SsmsUiHelper.ShowMessage(
-                    "Flank couldn't create the Power BI report.\n\n" + ex.Message,
+                    PowerBiHelp.Explain(failed, ex),
                     OLEMSGICON.OLEMSGICON_CRITICAL,
                     "Flank Error");
             }

@@ -92,14 +92,49 @@ namespace Flank.PowerBi
             CancellationToken cancellationToken = default)
         {
             progress?.Report("Uploading the report to Power BI...");
-            string reportId = await client.ImportReportAsync(workspaceId, reportName, rdl, cancellationToken).ConfigureAwait(false);
+            string reportId;
+            PowerBiReportDataSource dataSource;
 
-            var dataSource = (await client.GetReportDataSourcesAsync(workspaceId, reportId, cancellationToken).ConfigureAwait(false))
-                .FirstOrDefault()
-                ?? throw new PowerBiException("Power BI didn't find the report's data source.");
+            try
+            {
+                reportId = await client.ImportReportAsync(workspaceId, reportName, rdl, cancellationToken).ConfigureAwait(false);
+
+                dataSource = (await client.GetReportDataSourcesAsync(workspaceId, reportId, cancellationToken).ConfigureAwait(false))
+                    .FirstOrDefault()
+                    ?? throw new PowerBiException("Power BI didn't find the report's data source.");
+            }
+            catch (Exception ex) when (!(ex is OperationCanceledException))
+            {
+                throw Tagged(ex, PowerBiStep.Upload);
+            }
 
             progress?.Report("Connecting the report to the database...");
 
+            try
+            {
+                return await ConnectAsync(client, workspaceId, reportId, dataSource, server, database, access, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (!(ex is OperationCanceledException))
+            {
+                throw Tagged(ex, PowerBiStep.Connect);
+            }
+        }
+
+        private static PowerBiException Tagged(Exception ex, PowerBiStep step) =>
+            ex is PowerBiException { Step: not null } tagged
+                ? tagged
+                : new PowerBiException(ex.Message, ex) { Step = step };
+
+        private static async Task<PublishedReport> ConnectAsync(
+            PowerBiClient client,
+            string workspaceId,
+            string reportId,
+            PowerBiReportDataSource dataSource,
+            string server,
+            string database,
+            PowerBiDataAccess access,
+            CancellationToken cancellationToken)
+        {
             switch (access)
             {
                 case PowerBiDataAccess.ReportLogin login:

@@ -17,6 +17,9 @@ namespace Flank.PowerBi
             : base(message, innerException)
         {
         }
+
+        /// <summary>The publishing step that failed, when known.</summary>
+        public PowerBiStep? Step { get; set; }
     }
 
     public sealed class PowerBiWorkspace
