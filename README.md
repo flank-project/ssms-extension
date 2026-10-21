@@ -8,7 +8,7 @@ Right-click a query (or a stored procedure in Object Explorer) and choose:
 - **SSRS Report**
 - **Power BI (Paginated Report) (Beta)**
 
-<img width="1600" height="682" alt="Flank SSRS SSMS README" src="https://github.com/user-attachments/assets/1f21ef93-ad61-408b-bfa9-9300cef3bd66" />
+<img width="1600" height="682" alt="Flank 0 3 0 README" src="https://github.com/user-attachments/assets/db03a126-3fac-4682-bd81-8d23fc62f8b4" />
 
 ---
 
