@@ -4,23 +4,21 @@ Flank is an SSMS extension that turns SQL queries into self-serve reports.
 
 Right-click a query (or a stored procedure in Object Explorer) and choose:
 
-- **SSRS Report** — deploy the query as a report to an existing SSRS server.
-- **Excel (Power Query)** — create an .xlsx workbook that users can refresh themselves.
-- **Power BI (Paginated Report)** — publish the query as a paginated report to a Power BI workspace.
-
-Using Flank? I'd love to hear how — email [anguspmitchell@gmail.com](mailto:anguspmitchell@gmail.com), or use **Make Self-Serve → Feedback...** in SSMS.
+- **Excel (Power Query)**
+- **SSRS Report**
+- **Power BI (Paginated Report)**
 
 <img width="1600" height="682" alt="Flank SSRS SSMS README" src="https://github.com/user-attachments/assets/1f21ef93-ad61-408b-bfa9-9300cef3bd66" />
 
 ---
 
-**Jump to:** [Install](#install) · [SSRS Reports](#ssrs-reports) · [Excel (Power Query)](#excel-power-query) · [Power BI Paginated Reports](#power-bi-paginated-reports) · [Parameters in a query](#parameters-in-a-query) · [Reviewing parameters](#reviewing-parameters) · [Uninstall](#uninstall)
+**Jump to:** [Install](#install) · [Excel (Power Query)](#excel-power-query) · [SSRS Reports](#ssrs-reports) · [Power BI Paginated Reports](#power-bi-paginated-reports) · [Parameters in a query](#parameters-in-a-query) · [Reviewing parameters](#reviewing-parameters) · [Uninstall](#uninstall)
 
 ---
 
 ## Install
 
-Flank currently supports **SSMS 22 on Windows**. For more detailed compatibility information, see [SSRS Reports](#ssrs-reports) and [Excel (Power Query)](#excel-power-query).
+Flank currently supports **SSMS 22 on Windows**. For more detailed compatibility information, see [Excel (Power Query)](#excel-power-query), [SSRS Reports](#ssrs-reports) and [Power BI Paginated Reports](#power-bi-paginated-reports).
 
 Download [Flank-SSMS-Setup-0.2.7.exe](https://github.com/flank-project/ssms-extension/releases/download/v0.2.7/Flank-SSMS-Setup-0.2.7.exe).
 
@@ -36,18 +34,23 @@ Flank can turn a SQL query into a basic SSRS report and deploy it directly to yo
 
 Flank currently supports:
 
-- SSRS with Windows Authentication
-- Existing shared data sources
-- Selected SQL, or the entire query if nothing is selected
-- [Parameters in a query](#parameters-in-a-query) (`WHERE league_id = @League_Id`), or turning the query into a stored procedure first
-- Stored procedures, from Object Explorer. After you [review the parameters](#reviewing-parameters), Flank asks for values and runs the procedure so you can preview the results; the report's parameters use the names, starting values and blank behaviour you chose
-- Basic tabular reports using the columns returned by the query
+- SSRS
+  - Windows Authentication
+  - Existing shared data sources
+  - Basic tabular reports using the columns returned by the query
+- SQL
+  - Selected SQL, or the entire query if nothing is selected
+  - [Parameters in a query](#parameters-in-a-query) (`WHERE league_id = @League_Id`), or turning the query into a stored procedure first
+  - Stored procedures, from Object Explorer. After you [review the parameters](#reviewing-parameters), Flank asks for values and runs the procedure so you can preview the results; the report's parameters use the names, starting values and blank behaviour you chose
+
 
 Not supported yet:
 
-- Multiple result sets: an SSRS dataset only reads a procedure's first result set
-- Report formatting and customization
-- Creating or configuring SSRS data sources
+- SSRS
+  - Creating or configuring SSRS data sources
+  - Report formatting and customization
+- SQL
+  - Multiple result sets
 
 ### Create a report
 
