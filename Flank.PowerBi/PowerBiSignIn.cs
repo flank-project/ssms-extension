@@ -16,10 +16,10 @@ namespace Flank.PowerBi
     /// </summary>
     public sealed class PowerBiSignIn
     {
-        // "Flank (dev)": a public client, single tenant (the test tenant).
-        // TODO before release: a multi-tenant registration in Flank's own tenant.
-        public const string ClientId = "80624e1f-0487-4fd3-9ea6-828e89464990";
-        public const string TenantId = "da8d720b-2bc9-468d-b78d-08d46f3d3628";
+        // "Flank SSMS Extension": a public client (no secret) registered for
+        // multiple Entra ID tenants, so anyone with a work or school account
+        // can sign in; their organization approves its permissions once.
+        public const string ClientId = "24929788-2465-4fba-9a3f-1f2145a661a5";
 
         private const string CacheFileName = "powerbi.msalcache";
 
@@ -52,7 +52,8 @@ namespace Flank.PowerBi
         public static async Task<PowerBiSignIn> CreateAsync()
         {
             var app = PublicClientApplicationBuilder.Create(ClientId)
-                .WithAuthority(AzureCloudInstance.AzurePublic, TenantId)
+                // Work or school accounts in any tenant; Power BI has no personal accounts.
+                .WithAuthority(AzureCloudInstance.AzurePublic, AadAuthorityAudience.AzureAdMultipleOrgs)
                 .WithRedirectUri("http://localhost")
                 .Build();
 
