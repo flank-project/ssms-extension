@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <SignAssembly>True</SignAssembly>
+    <AssemblyOriginatorKeyFile>Flank.snk</AssemblyOriginatorKeyFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <!--
+      Exactly the version SSMS 22 ships in Common7\IDE\PrivateAssemblies: inside
+      SSMS, SSMS's copy is used and Flank doesn't install its own.
+    -->
+    <PackageReference Include="Microsoft.Identity.Client" Version="[4.84.1]" />
+    <PackageReference Include="Microsoft.Identity.Client.Extensions.Msal" Version="[4.84.1]" />
+    <!-- Assembly version 13.0.0.0, the one SSMS 22 ships in PrivateAssemblies. -->
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Flank.Ssrs\Flank.Ssrs.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="System.Net.Http" />
+  </ItemGroup>
+</Project>

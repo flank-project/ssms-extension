@@ -107,6 +107,25 @@
 
 			<Button
 				guid="guidSqlToExcelPowerQueryCommandPackageCmdSet"
+				id="SqlToPowerBiCommandId"
+				priority="0x0120"
+				type="Button">
+
+				<Parent
+					guid="guidSqlToExcelPowerQueryCommandPackageCmdSet"
+					id="MakeSelfServeMenuGroup"/>
+
+				<!-- Paginated reports are SSRS reports hosted in Power BI. -->
+				<Icon guid="guidImages" id="bmpSsrs"/>
+
+				<Strings>
+					<ButtonText>Power BI Paginated Report</ButtonText>
+				</Strings>
+
+			</Button>
+
+			<Button
+				guid="guidSqlToExcelPowerQueryCommandPackageCmdSet"
 				id="FeedbackCommandId"
 				priority="0x0100"
 				type="Button">
@@ -162,6 +181,10 @@
 			<IDSymbol
 				name="SqlToSsrsCommandId"
 				value="0x0110"/>
+
+			<IDSymbol
+				name="SqlToPowerBiCommandId"
+				value="0x0130"/>
 
 			<IDSymbol
 				name="FeedbackMenuGroup"

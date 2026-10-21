@@ -11,11 +11,12 @@ namespace Flank.SsmsExtension
 
         public SsrsSuccessDialog(
             string reportName,
-            string reportUrl)
+            string reportUrl,
+            string title = "SSRS Report Created")
         {
             this.reportUrl = reportUrl;
 
-            Text = "SSRS Report Created";
+            Text = title;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             StartPosition = FormStartPosition.CenterScreen;
             MaximizeBox = false;

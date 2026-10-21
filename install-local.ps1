@@ -152,6 +152,8 @@ while ($true) {
         Copy-Item "$build\Flank.SsmsExtension.pkgdef" $dest
         Copy-Item "$build\Flank.Excel.dll" $dest
         Copy-Item "$build\Flank.Ssrs.dll" $dest
+# MSAL and Newtonsoft.Json aren't copied: SSMS ships the versions Flank.PowerBi uses.
+Copy-Item "$build\Flank.PowerBi.dll" $dest
         break
     }
     catch [System.IO.IOException] {

@@ -20,6 +20,14 @@ Three layers, cheapest first.
   `/FlankTests`, which they empty at the start of each run.
 - **`FLANK_TEST_SQL`**: a connection string for the test database, used to
   discover columns and parameters. Tests that need it are skipped without it.
+  Power BI tests also save its SQL login on the reports they publish.
+- **Power BI** (optional; skipped without `FLANK_TEST_PBI`): a workspace on
+  Premium or Fabric (trial) capacity, which export needs, and a service
+  principal that's a Member of it, with "Service principals can use Fabric
+  APIs" on in the tenant settings. `FLANK_TEST_PBI` is
+  `TenantId=...;ClientId=...;ClientSecret=...;Workspace=...`. Tests publish
+  reports named `Test - ...` (deleted at the start of each run) and delete the
+  shared connections they create.
 
 Optional overrides: `FLANK_TEST_REPORT_SERVER`, `FLANK_TEST_REPORT_PORTAL`,
 `FLANK_TEST_REPORT_DATA_SOURCE`.
@@ -42,9 +50,15 @@ same thing:
   (`sproc-excel`) covers it.
 - `verify-ssrs.ps1 -Report <path or portal link> [-Parameters "Name=value;..."]`:
   renders the report as CSV and fails unless it returns rows.
+- `verify-pbi.ps1 -Report <name or link> [-Parameters "Name=value;..."]`:
+  exports a Power BI paginated report as CSV, signed in as the
+  `FLANK_TEST_PBI` service principal, and fails unless it returns rows.
 - `verify-access.ps1 -User <name> -Allowed <sql...> -Denied <sql...>`: signs in
   as a user created by the Excel wizard's access step (password via -Script)
   and fails unless exactly the allowed statements succeed.
 
 The console apps (`Flank.TestExcelApp`, `Flank.TestSsrsApp`) are still there
-for manual poking.
+for manual poking. `Flank.TestPbiApp` signs in to Power BI the way Flank does,
+filling the same token cache, so the SSMS smoke tests run without a sign-in
+prompt: run it once (`--device` signs in with a code, for machines whose
+browser can't run the sign-in page); `--check` says whether a silent sign-in works.
