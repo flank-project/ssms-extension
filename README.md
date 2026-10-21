@@ -14,7 +14,7 @@ Using Flank? I'd love to hear how — email [anguspmitchell@gmail.com](mailto:an
 
 ---
 
-**Jump to:** [Install](#install) · [SSRS Reports](#ssrs-reports) · [Excel (Power Query)](#excel-power-query) · [Power BI Paginated Reports](#power-bi-paginated-reports) · [Uninstall](#uninstall)
+**Jump to:** [Install](#install) · [SSRS Reports](#ssrs-reports) · [Excel (Power Query)](#excel-power-query) · [Power BI Paginated Reports](#power-bi-paginated-reports) · [Reviewing parameters](#reviewing-parameters) · [Uninstall](#uninstall)
 
 ---
 
@@ -39,7 +39,7 @@ Flank currently supports:
 - SSRS with Windows Authentication
 - Existing shared data sources
 - Selected SQL, or the entire query if nothing is selected
-- Stored procedures, from Object Explorer. Flank asks for parameter values and runs the procedure so you can preview the results; the report calls the procedure directly, and its parameters become report parameters with no defaults, so people enter values when they run the report
+- Stored procedures, from Object Explorer. After you [review the parameters](#reviewing-parameters), Flank asks for values and runs the procedure so you can preview the results; the report's parameters use the names, starting values and blank behaviour you chose
 - Basic tabular reports using the columns returned by the query
 
 Not supported yet:
@@ -77,7 +77,10 @@ Flank currently supports:
   - Uses Power Query's "native SQL query" support
   - Includes `SELECT` queries, CTEs, temp tables, variables, and stored procedures that return a result set
 - **Stored procedures with parameters**, from Object Explorer
-  - The parameters are listed at the top (names in column A, values in column B). End users change the values and refresh
+  - The parameters are listed at the top (labels in column A, values in column B, notes in column C). End users change the values and refresh
+  - Each value cell only accepts its type: whole numbers in the SQL type's range, numbers, dates, text up to its length, and TRUE/FALSE (a dropdown) for `bit`. Selecting a cell shows its note, and required cells are highlighted while empty
+  - Refreshing checks the values again, since pasting gets past Excel's checks, and says which cell is wrong
+  - See [Reviewing parameters](#reviewing-parameters)
 - A short wizard: who will refresh the workbook and what they can do (see [Giving end users access](#giving-end-users-access)), then a run as that person to preview the results
 - The workbook starts with the previewed values and rows, so end users see data straight away
   - Over 50,000 rows, the preview shows the first 50,000 and the workbook starts with just the column headings; the first **Refresh All** loads everything
@@ -97,7 +100,7 @@ The first time someone refreshes a workbook with parameters, Excel asks about **
 
 Flank can't make that choice in advance: Excel stores it encrypted per Windows user.
 
-For a stored procedure with `OUTPUT` parameters, Excel also asks once to approve the workbook's **native database query** (the procedure call, with a variable declared for each output). Click **Run**.
+For a stored procedure with `OUTPUT` parameters, or with a parameter that uses the procedure's default when it's left blank, Excel also asks once to approve the workbook's **native database query** (the procedure call, built so it can leave out blank parameters or declare a variable for each output). Click **Run**.
 
 ### Giving end users access
 
@@ -142,7 +145,7 @@ Flank currently supports:
   doesn't set up yet
 - Selected SQL, or the entire query if nothing is selected
 - Stored procedures, from Object Explorer, with their parameters as report
-  parameters (no defaults; people enter values when they run the report)
+  parameters, set up on the [review page](#reviewing-parameters)
 - Signing in to Power BI with your work or school account, in the browser or
   with a code you enter in any browser. Flank remembers the sign-in (per
   Windows user), so you sign in once
@@ -159,7 +162,7 @@ Not supported yet:
 
 - On-premises SQL Server (needs a data gateway)
 - Viewers reading the database as themselves (single sign-on)
-- Multiple result sets, report formatting, parameter defaults
+- Multiple result sets, report formatting
 
 ### Create a report
 
@@ -170,6 +173,22 @@ and click **Publish**.
 
 The workspace needs a Power BI Pro or Premium Per User licence, or Premium/Fabric
 capacity, to hold paginated reports.
+
+## Reviewing parameters
+
+Before creating a workbook or report from a stored procedure with parameters,
+Flank shows them for review. For each one:
+
+- **Shown as**: the name people see (the Excel label, or the report prompt)
+- **Note for the user**: shown next to the Excel cell and when it's selected.
+  SSRS and Power BI have nowhere to show it
+- **Starts with**: the value it starts with. Flank fills this in from the
+  procedure's own default where it declares one (`@n int = 5`)
+- **If left blank**:
+  - **Required**: a value must be entered
+  - **Use procedure default**: the parameter is left out of the call, so the
+    procedure's own default applies (only for parameters that have one)
+  - **Pass NULL**
 
 ## Uninstall
 

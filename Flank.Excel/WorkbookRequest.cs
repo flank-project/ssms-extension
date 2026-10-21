@@ -23,6 +23,16 @@ public sealed class WorkbookRequest
     /// <summary>Parameter names without '@'. Each gets a row: name in A, value in B.</summary>
     public IReadOnlyList<string> ParameterNames { get; set; } = Array.Empty<string>();
 
+    /// <summary>
+    /// The parameter cells with display names, notes and checks. When set it
+    /// replaces <see cref="ParameterNames"/>, which is the same with no checks
+    /// (each name is both the label and the SQL parameter).
+    /// </summary>
+    public IReadOnlyList<WorkbookParameter>? Parameters { get; set; }
+
+    internal IReadOnlyList<WorkbookParameter> EffectiveParameters =>
+        Parameters ?? ParameterNames.Select(n => new WorkbookParameter(n, n)).ToList();
+
     /// <summary>Initial values for the parameter cells, in the same order. Null leaves a cell empty.</summary>
     public IReadOnlyList<object?>? ParameterValues { get; set; }
 

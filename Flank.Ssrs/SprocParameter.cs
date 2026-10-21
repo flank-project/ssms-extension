@@ -1,9 +1,3 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
 namespace Flank.Ssrs
 {
     public sealed class SprocParameter
@@ -14,5 +8,18 @@ namespace Flank.Ssrs
         public byte Precision { get; set; }
         public byte Scale { get; set; }
         public bool IsOutput { get; set; }
+
+        /// <summary>
+        /// Whether the procedure declares a default (@p int = 5). SQL Server
+        /// doesn't record T-SQL defaults in its metadata, so this comes from
+        /// parsing the procedure's definition (see <see cref="ProcedureDefaults"/>).
+        /// </summary>
+        public bool HasDefault { get; set; }
+
+        /// <summary>
+        /// The declared default as a value to show and enter (5, abc, 2024-01-01),
+        /// or null if there's none or it's NULL or an expression.
+        /// </summary>
+        public string? DefaultValue { get; set; }
     }
 }
