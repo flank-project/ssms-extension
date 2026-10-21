@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+
 namespace Flank.Ssrs
 {
     public sealed class SprocParameter
@@ -24,5 +27,23 @@ namespace Flank.Ssrs
 
         /// <summary>The declared default as written: 5, N'abc', NULL, GETDATE(). Null if there's none.</summary>
         public string? DefaultText { get; set; }
+
+        /// <summary>
+        /// For a table-valued parameter: its table type, [schema].[name].
+        /// Null for any other parameter.
+        /// </summary>
+        public string? TableType { get; set; }
+
+        public bool IsTable => TableType != null;
+
+        /// <summary>
+        /// For a table-valued parameter: the type's columns that take values
+        /// (not identity, computed or rowversion columns), in order, each
+        /// described like a parameter (name, type, size).
+        /// </summary>
+        public IReadOnlyList<SprocParameter> Columns { get; set; } = Array.Empty<SprocParameter>();
+
+        /// <summary>For a column of a table type: whether it allows NULL.</summary>
+        public bool IsNullable { get; set; } = true;
     }
 }

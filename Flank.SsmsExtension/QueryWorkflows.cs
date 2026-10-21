@@ -52,29 +52,43 @@ namespace Flank.SsmsExtension
             if (settings == null)
                 return null;
 
-            using (var dialog = new StoredProcedureRunDialog(
-                QueryName,
-                setup.Parameters,
-                open,
-                "Continue",
-                outputName,
-                settings,
-                values =>
-                {
-                    using (var connection = open())
-                    {
-                        return StoredProcedureRunner.RunQuery(connection, setup.Sql, setup.Parameters, values, PreviewPanel.MaxRows);
-                    }
-                }))
+            // Back returns to the review page, then runs again with what it says.
+            while (true)
             {
-                if (dialog.ShowDialog() != DialogResult.OK)
-                    return null;
+                using (var dialog = new StoredProcedureRunDialog(
+                    QueryName,
+                    setup.Parameters,
+                    open,
+                    "Continue",
+                    outputName,
+                    settings,
+                    values =>
+                    {
+                        using (var connection = open())
+                        {
+                            return StoredProcedureRunner.RunQuery(connection, setup.Sql, setup.Parameters, values, PreviewPanel.MaxRows);
+                        }
+                    },
+                    canGoBack: settings.Count > 0))
+                {
+                    var answer = dialog.ShowDialog();
 
-                var columns = dialog.Results[0].Columns
-                    .Select(name => new ReportColumn { Name = name })
-                    .ToList();
+                    if (answer == DialogResult.Retry)
+                    {
+                        if (!ProcedureWorkflows.Review(QueryName, settings, outputName, open))
+                            return null;
+                        continue;
+                    }
 
-                return new ReviewedQuery(settings, columns);
+                    if (answer != DialogResult.OK)
+                        return null;
+
+                    var columns = dialog.Results[0].Columns
+                        .Select(name => new ReportColumn { Name = name })
+                        .ToList();
+
+                    return new ReviewedQuery(settings, columns);
+                }
             }
         }
     }

@@ -60,6 +60,7 @@ namespace Flank.SsmsExtension
             string step = "Reading stored procedure";
             IReadOnlyList<SprocParameter> parameters;
             bool isAzure;
+            string? problem;
 
             try
             {
@@ -72,11 +73,18 @@ namespace Flank.SsmsExtension
                         objectId, connection);
 
                     isAzure = AccessDiscovery.IsAzureSqlDatabase(connection);
+                    problem = TableParameterProblem(sproc, parameters, connection, forReport: false);
                 }
             }
             catch (Exception ex)
             {
                 ExcelWorkflow.ShowFailure(step, ex, sproc.Server, sproc.Database, null);
+                return;
+            }
+
+            if (problem != null)
+            {
+                SsmsUiHelper.ShowMessage(problem, OLEMSGICON.OLEMSGICON_INFO, "Flank");
                 return;
             }
 
@@ -105,9 +113,19 @@ namespace Flank.SsmsExtension
                         action(connection);
                     }
                 },
-                settings))
+                settings,
+                canGoBack: settings.Count > 0))
             {
-                if (wizard.ShowDialog() != DialogResult.OK || wizard.Request == null)
+                DialogResult result;
+
+                // Back on the wizard's first page returns to the review page.
+                while ((result = wizard.ShowDialog()) == DialogResult.Retry)
+                {
+                    if (!Review(sproc.QualifiedName, settings, "workbook", sproc.Open))
+                        return;
+                }
+
+                if (result != DialogResult.OK || wizard.Request == null)
                     return;
 
                 request = wizard.Request;
@@ -122,6 +140,7 @@ namespace Flank.SsmsExtension
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
             IReadOnlyList<SprocParameter> parameters;
+            string? problem;
 
             try
             {
@@ -132,6 +151,8 @@ namespace Flank.SsmsExtension
 
                     parameters = SqlMetadataDiscovery.DiscoverStoredProcedureParameters(
                         objectId, connection);
+
+                    problem = TableParameterProblem(sproc, parameters, connection, forReport: true);
                 }
             }
             catch (Exception ex)
@@ -143,6 +164,12 @@ namespace Flank.SsmsExtension
                 return;
             }
 
+            if (problem != null)
+            {
+                SsmsUiHelper.ShowMessage(problem, OLEMSGICON.OLEMSGICON_INFO, "Flank");
+                return;
+            }
+
             var settings = ReviewParameters(sproc, parameters, "report");
             if (settings == null)
                 return;
@@ -150,20 +177,34 @@ namespace Flank.SsmsExtension
             // Run it first to preview the results and get the report's columns.
             // The values entered aren't used as report defaults: those come
             // from the review page.
-            ResultSet result;
+            ResultSet? result = null;
 
-            using (var dialog = new StoredProcedureRunDialog(
-                sproc.QualifiedName,
-                parameters,
-                () => sproc.Open(),
-                "Continue",
-                "SSRS",
-                settings))
+            // Back returns to the review page, then runs again with what it says.
+            while (result == null)
             {
-                if (dialog.ShowDialog() != DialogResult.OK)
-                    return;
+                using (var dialog = new StoredProcedureRunDialog(
+                    sproc.QualifiedName,
+                    parameters,
+                    () => sproc.Open(),
+                    "Continue",
+                    "SSRS",
+                    settings,
+                    canGoBack: settings.Count > 0))
+                {
+                    var answer = dialog.ShowDialog();
 
-                result = dialog.Results[0];
+                    if (answer == DialogResult.Retry)
+                    {
+                        if (!Review(sproc.QualifiedName, settings, "report", sproc.Open))
+                            return;
+                        continue;
+                    }
+
+                    if (answer != DialogResult.OK)
+                        return;
+
+                    result = dialog.Results[0];
+                }
             }
 
             var columns = result.Columns
@@ -190,6 +231,7 @@ namespace Flank.SsmsExtension
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
             IReadOnlyList<SprocParameter> parameters;
+            string? problem;
 
             try
             {
@@ -200,6 +242,8 @@ namespace Flank.SsmsExtension
 
                     parameters = SqlMetadataDiscovery.DiscoverStoredProcedureParameters(
                         objectId, connection);
+
+                    problem = TableParameterProblem(sproc, parameters, connection, forReport: true);
                 }
             }
             catch (Exception ex)
@@ -211,25 +255,45 @@ namespace Flank.SsmsExtension
                 return;
             }
 
+            if (problem != null)
+            {
+                SsmsUiHelper.ShowMessage(problem, OLEMSGICON.OLEMSGICON_INFO, "Flank");
+                return;
+            }
+
             var settings = ReviewParameters(sproc, parameters, "report");
             if (settings == null)
                 return;
 
             // As for SSRS: run it to preview the results and get the report's columns.
-            ResultSet result;
+            ResultSet? result = null;
 
-            using (var dialog = new StoredProcedureRunDialog(
-                sproc.QualifiedName,
-                parameters,
-                () => sproc.Open(),
-                "Continue",
-                "Power BI",
-                settings))
+            // Back returns to the review page, then runs again with what it says.
+            while (result == null)
             {
-                if (dialog.ShowDialog() != DialogResult.OK)
-                    return;
+                using (var dialog = new StoredProcedureRunDialog(
+                    sproc.QualifiedName,
+                    parameters,
+                    () => sproc.Open(),
+                    "Continue",
+                    "Power BI",
+                    settings,
+                    canGoBack: settings.Count > 0))
+                {
+                    var answer = dialog.ShowDialog();
 
-                result = dialog.Results[0];
+                    if (answer == DialogResult.Retry)
+                    {
+                        if (!Review(sproc.QualifiedName, settings, "report", sproc.Open))
+                            return;
+                        continue;
+                    }
+
+                    if (answer != DialogResult.OK)
+                        return;
+
+                    result = dialog.Results[0];
+                }
             }
 
             var columns = result.Columns
@@ -249,6 +313,43 @@ namespace Flank.SsmsExtension
                     columns,
                     dataSource,
                     settings: settings));
+        }
+
+        /// <summary>
+        /// Why the procedure's table-valued parameters can't be supported, or
+        /// null if they can (or it has none). Their rows are passed as JSON and
+        /// read with OPENJSON, which needs compatibility level 130. A report
+        /// takes one as a multi-value parameter, so only a one-column table.
+        /// </summary>
+        private static string? TableParameterProblem(
+            ProcedureSource sproc,
+            IReadOnlyList<SprocParameter> parameters,
+            IDbConnection connection,
+            bool forReport)
+        {
+            var tables = parameters.Where(p => p.IsTable).ToList();
+
+            if (tables.Count == 0)
+                return null;
+
+            int level = SqlMetadataDiscovery.GetCompatibilityLevel(connection);
+            if (level < 130)
+            {
+                return $"{sproc.QualifiedName} takes a table ({tables[0].Name}). Flank passes tables as JSON, " +
+                       $"which needs the database's compatibility level to be 130 (SQL Server 2016) or later; {sproc.Database} is at {level}.";
+            }
+
+            if (tables.FirstOrDefault(t => t.Columns.Count == 0) is SprocParameter empty)
+                return $"{empty.Name}'s table type {empty.TableType} has no columns to fill in, so Flank can't pass rows to it.";
+
+            if (forReport && tables.FirstOrDefault(t => t.Columns.Count > 1) is SprocParameter wide)
+            {
+                return $"{sproc.QualifiedName} takes a table with {wide.Columns.Count} columns ({wide.Name} {wide.TableType}).\n\n" +
+                       "Reports can take a table with one column, as a parameter with multiple values, but not a wider one. " +
+                       "Create an Excel workbook from it instead: people enter the rows in a table.";
+            }
+
+            return null;
         }
 
         /// <summary>
@@ -272,13 +373,26 @@ namespace Flank.SsmsExtension
             Func<IDbConnection> openConnection)
         {
             var settings = ParameterSettings.FromProcedure(parameters);
+            return Review(name, settings, outputName, openConnection) ? settings : null;
+        }
 
+        /// <summary>
+        /// The review page for settings, e.g. again after Back on the next
+        /// page, starting from what was chosen. False if the user cancels;
+        /// true without showing it when there are no parameters.
+        /// </summary>
+        internal static bool Review(
+            string name,
+            IReadOnlyList<ParameterSettings> settings,
+            string outputName,
+            Func<IDbConnection> openConnection)
+        {
             if (settings.Count == 0)
-                return settings;
+                return true;
 
             using (var dialog = new ParameterReviewDialog(name, settings, outputName, openConnection))
             {
-                return dialog.ShowDialog() == DialogResult.OK ? settings : null;
+                return dialog.ShowDialog() == DialogResult.OK;
             }
         }
     }

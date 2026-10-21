@@ -29,6 +29,19 @@ namespace Flank.Ssrs
         Values,
     }
 
+    /// <summary>Where a workbook has people enter a table-valued parameter's rows.</summary>
+    public enum TableLayout
+    {
+        /// <summary>
+        /// In the parameter list, a table with a set number of rows to start
+        /// with, between the parameter above and the one below.
+        /// </summary>
+        Inline,
+
+        /// <summary>A table on a sheet of its own, linked from the parameter list: for pasting many rows.</summary>
+        Sheet,
+    }
+
     /// <summary>
     /// How one input parameter of a stored procedure is presented to the
     /// people using the report or workbook, chosen on the parameter review page.
@@ -57,7 +70,17 @@ namespace Flank.Ssrs
         /// <summary>The value it starts with, as text; null to start blank.</summary>
         public string? DefaultValue { get; set; }
 
+        /// <summary>
+        /// For a table-valued parameter, <see cref="BlankValue.Required"/> means
+        /// at least one row; anything else allows none (an empty table).
+        /// </summary>
         public BlankValue IfBlank { get; set; }
+
+        /// <summary>For a table-valued parameter in a workbook: where its rows are entered.</summary>
+        public TableLayout TableLayout { get; set; }
+
+        /// <summary>For an <see cref="TableLayout.Inline"/> table: the rows it starts with. People can insert more.</summary>
+        public int TableRows { get; set; } = 3;
 
         /// <summary>Where a dropdown's choices come from.</summary>
         public ListSource ListSource { get; set; }

@@ -92,7 +92,10 @@ SELECT
     p.max_length,
     p.precision,
     p.scale,
-    p.is_output
+    p.is_output,
+    CASE WHEN t.is_table_type = 1
+        THEN QUOTENAME(SCHEMA_NAME(t.schema_id)) + N'.' + QUOTENAME(t.name)
+    END AS table_type
 FROM sys.parameters p
 JOIN sys.types t
     ON p.user_type_id = t.user_type_id
@@ -115,10 +118,17 @@ ORDER BY p.parameter_id;";
                             MaxLength = reader.GetInt16(2),
                             Precision = reader.GetByte(3),
                             Scale = reader.GetByte(4),
-                            IsOutput = reader.GetBoolean(5)
+                            IsOutput = reader.GetBoolean(5),
+                            TableType = reader.IsDBNull(6) ? null : reader.GetString(6),
                         });
                     }
                 }
+            }
+
+            foreach (var p in parameters)
+            {
+                if (p.IsTable)
+                    p.Columns = DiscoverTableTypeColumns(p.TableType!, connection);
             }
 
             if (parameters.Count > 0)
@@ -148,6 +158,74 @@ ORDER BY p.parameter_id;";
             }
 
             return parameters;
+        }
+
+        /// <summary>
+        /// The columns of a table type that take values, described like
+        /// parameters. Identity, computed and rowversion columns are left out:
+        /// SQL Server fills them in. Alias types are reported as their base type.
+        /// </summary>
+        public static IReadOnlyList<SprocParameter> DiscoverTableTypeColumns(
+            string tableType,
+            IDbConnection connection)
+        {
+            var columns = new List<SprocParameter>();
+
+            using (var command = connection.CreateCommand())
+            {
+                command.CommandText = @"
+SELECT
+    c.name,
+    TYPE_NAME(c.system_type_id) AS type_name,
+    c.max_length,
+    c.precision,
+    c.scale,
+    c.is_nullable
+FROM sys.table_types tt
+JOIN sys.columns c
+    ON c.object_id = tt.type_table_object_id
+WHERE tt.user_type_id = TYPE_ID(@TableType)
+  AND c.is_identity = 0
+  AND c.is_computed = 0
+  AND TYPE_NAME(c.system_type_id) <> N'timestamp'
+ORDER BY c.column_id;";
+
+                var parameter = command.CreateParameter();
+                parameter.ParameterName = "@TableType";
+                parameter.Value = tableType;
+                command.Parameters.Add(parameter);
+
+                using (var reader = command.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        columns.Add(new SprocParameter
+                        {
+                            Name = reader.GetString(0),
+                            SqlType = reader.GetString(1),
+                            MaxLength = reader.GetInt16(2),
+                            Precision = reader.GetByte(3),
+                            Scale = reader.GetByte(4),
+                            IsNullable = reader.GetBoolean(5),
+                        });
+                    }
+                }
+            }
+
+            return columns;
+        }
+
+        /// <summary>
+        /// The database's compatibility level. Flank passes table-valued
+        /// parameters as JSON, read with OPENJSON, which needs 130 (SQL Server 2016) or later.
+        /// </summary>
+        public static int GetCompatibilityLevel(IDbConnection connection)
+        {
+            using (var command = connection.CreateCommand())
+            {
+                command.CommandText = "SELECT compatibility_level FROM sys.databases WHERE name = DB_NAME();";
+                return Convert.ToInt32(command.ExecuteScalar());
+            }
         }
 
         public static IReadOnlyList<ReportColumn> DiscoverStoredProcedureColumns(

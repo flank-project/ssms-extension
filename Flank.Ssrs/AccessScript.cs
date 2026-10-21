@@ -69,6 +69,13 @@ namespace Flank.Ssrs
 
         /// <summary>For <see cref="AccessScope.Objects"/>: [schema].[name] of each table or view.</summary>
         public IReadOnlyList<string> Objects { get; set; } = Array.Empty<string>();
+
+        /// <summary>
+        /// For <see cref="AccessScope.Procedure"/>: [schema].[name] of the table
+        /// types of its table-valued parameters. Declaring a variable of one
+        /// (as the workbook's call does) needs EXECUTE on the type.
+        /// </summary>
+        public IReadOnlyList<string> TableTypes { get; set; } = Array.Empty<string>();
     }
 
     public static class AccessScript
@@ -141,6 +148,8 @@ namespace Flank.Ssrs
             {
                 case AccessScope.Procedure:
                     statements.Add($"GRANT EXECUTE ON OBJECT::{request.Procedure} TO {user};");
+                    foreach (var type in request.TableTypes.Distinct(StringComparer.OrdinalIgnoreCase))
+                        statements.Add($"GRANT EXECUTE ON TYPE::{type} TO {user};");
                     break;
 
                 case AccessScope.Objects:

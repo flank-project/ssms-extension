@@ -126,7 +126,47 @@ namespace Flank.Ssrs
             }
         }
 
-        /// <summary>Adds each parameter, typed, with its value (missing or null: NULL).</summary>
+        /// <summary>
+        /// Runs a procedure through the call Power Query and SSRS make
+        /// (<see cref="ProcedureCall.BuildExec(string, IReadOnlyList{SprocParameter}, IReadOnlyList{ParameterSettings})"/>),
+        /// needed for table-valued parameters: their rows are passed as JSON.
+        /// </summary>
+        /// <param name="parameters">All of the procedure's parameters.</param>
+        /// <param name="inputValues">
+        /// Values for the input parameters, in order; for a table-valued one,
+        /// its rows (IReadOnlyList of rows, each an IReadOnlyList of column values).
+        /// Null or DBNull is NULL, which the call leaves out where the settings
+        /// say to use the procedure's default.
+        /// </param>
+        public static IReadOnlyList<ResultSet> RunCall(
+            IDbConnection connection,
+            string procedureName,
+            IReadOnlyList<SprocParameter> parameters,
+            IReadOnlyList<ParameterSettings>? settings,
+            IReadOnlyList<object?> inputValues,
+            int maxRows,
+            int timeoutSeconds = 120)
+        {
+            var inputs = new List<SprocParameter>();
+            foreach (var parameter in parameters)
+            {
+                if (!parameter.IsOutput)
+                    inputs.Add(parameter);
+            }
+
+            return RunQuery(
+                connection,
+                ProcedureCall.BuildExec(procedureName, parameters, settings),
+                inputs,
+                inputValues,
+                maxRows,
+                timeoutSeconds);
+        }
+
+        /// <summary>
+        /// Adds each parameter, typed, with its value (missing or null: NULL).
+        /// A table-valued parameter's rows are passed as JSON text (see <see cref="TableValues"/>).
+        /// </summary>
         internal static void AddQueryParameters(IDbCommand command, IReadOnlyList<SprocParameter> parameters, IReadOnlyList<object?>? values)
         {
             for (int i = 0; i < parameters.Count; i++)
@@ -134,7 +174,12 @@ namespace Flank.Ssrs
                 var p = command.CreateParameter();
                 p.ParameterName = parameters[i].Name;
                 SetSqlType(p, parameters[i]);
-                p.Value = values != null && i < values.Count && values[i] != null ? values[i] : DBNull.Value;
+
+                object? value = values != null && i < values.Count ? values[i] : null;
+                if (parameters[i].IsTable)
+                    value = TableValues.ToJson(value as IReadOnlyList<IReadOnlyList<object?>>);
+
+                p.Value = value ?? DBNull.Value;
                 command.Parameters.Add(p);
             }
         }
@@ -190,6 +235,14 @@ namespace Flank.Ssrs
         // System.Data.SqlClient ones.
         private static void SetSqlType(IDbDataParameter parameter, SprocParameter source)
         {
+            if (source.IsTable)
+            {
+                // Its rows, as JSON.
+                parameter.DbType = DbType.String;
+                parameter.Size = -1;
+                return;
+            }
+
             switch ((source.SqlType ?? "").ToLowerInvariant())
             {
                 case "bit": parameter.DbType = DbType.Boolean; break;

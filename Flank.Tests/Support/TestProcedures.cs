@@ -27,6 +27,53 @@ BEGIN
       AND (@Max_Id IS NULL OR t.team_id <= @Max_Id);
 END";
 
+    /// <summary>
+    /// Takes a table of rows (several columns) and a league; returns the rows
+    /// it received, so tests can see what the JSON call passed.
+    /// </summary>
+    public const string TableRows = "dbo.flank_test_table_rows";
+
+    /// <summary>Takes a one-column table of team ids; returns those teams.</summary>
+    public const string TableIds = "dbo.flank_test_table_ids";
+
+    // Table types can't be altered, only created once.
+    private static readonly string[] TableDefinitions =
+    {
+        @"
+IF TYPE_ID(N'dbo.flank_test_rows') IS NULL
+    CREATE TYPE dbo.flank_test_rows AS TABLE (
+        seq int IDENTITY,
+        team_id int NOT NULL,
+        label nvarchar(50) NULL,
+        active bit NULL,
+        since date NULL,
+        amount decimal(9, 2) NULL);",
+        @"
+IF TYPE_ID(N'dbo.flank_test_ids') IS NULL
+    CREATE TYPE dbo.flank_test_ids AS TABLE (team_id int NOT NULL);",
+        @"
+CREATE OR ALTER PROCEDURE dbo.flank_test_table_rows
+    @League_Id int,
+    @Rows dbo.flank_test_rows READONLY
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT @League_Id AS league_id, r.seq, r.team_id, r.label, r.active, r.since, r.amount
+    FROM @Rows AS r
+    ORDER BY r.seq;
+END",
+        @"
+CREATE OR ALTER PROCEDURE dbo.flank_test_table_ids
+    @Ids dbo.flank_test_ids READONLY
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT t.team_id, t.team_name
+    FROM dbo.sgm_teams AS t
+    WHERE t.team_id IN (SELECT team_id FROM @Ids);
+END",
+    };
+
     private static bool created;
 
     public static void EnsureCreated()
@@ -35,9 +82,14 @@ END";
             return;
 
         using var connection = TestSettings.OpenSqlConnection();
-        using var command = connection.CreateCommand();
-        command.CommandText = ParametersDefinition;
-        command.ExecuteNonQuery();
+
+        foreach (string definition in TableDefinitions.Prepend(ParametersDefinition))
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText = definition;
+            command.ExecuteNonQuery();
+        }
+
         created = true;
     }
 }

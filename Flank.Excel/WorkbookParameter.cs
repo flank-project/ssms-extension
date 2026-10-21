@@ -52,4 +52,18 @@ public sealed class WorkbookParameter
 
     /// <summary>A dropdown of choices from a query, instead of free entry; null for none.</summary>
     public WorkbookList? List { get; set; }
+
+    /// <summary>
+    /// For a table-valued parameter: its columns and where its rows are
+    /// entered, instead of a single cell. <see cref="Required"/> then means at
+    /// least one row. Its starting value (in <see cref="WorkbookRequest.ParameterValues"/>)
+    /// is its rows: a list of rows, each a list of column values.
+    /// </summary>
+    public WorkbookTable? Table { get; set; }
+
+    /// <summary>
+    /// For a single-cell parameter: the workbook-level name of its value cell,
+    /// which the query reads it by. Set when the workbook is generated.
+    /// </summary>
+    internal string CellName { get; set; } = "";
 }

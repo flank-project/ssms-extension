@@ -139,13 +139,14 @@ in
     /// here makes it a dependency, so the lookup uses freshly loaded choices
     /// whatever order Excel refreshes the queries in.
     /// </summary>
-    private static string ListValueM(WorkbookParameter parameter, int number, string label, Func<string, string> fail)
+    /// <param name="fail">M for an error with the given message after the parameter's name.</param>
+    private static string ListValueM(WorkbookParameter parameter, int number, Func<string, string> fail)
     {
         var list = parameter.List!;
 
         return
             $"let match = Table.SelectRows({list.QueryName}, each Text.From(Record.Field(_, \"{EscapeM(list.LabelColumn)}\")) = Text.From(v)) in " +
-            $"if Table.IsEmpty(match) then {fail($"{label} must be one of the choices in its list.")} " +
+            $"if Table.IsEmpty(match) then {fail(" must be one of the choices in its list.")} " +
             $"else Record.Field(match{{0}}, \"{EscapeM(list.ValueColumn)}\")";
     }
 

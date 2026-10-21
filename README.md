@@ -36,6 +36,7 @@ Flank can turn a SQL query into an .xlsx workbook that end users can refresh the
   - Desktop Excel with Power Query. End users **Refresh All** with their own database credentials; they don't need Flank
   - Parameters at the top of the sheet. Each cell only accepts its type (`bit` is a checkbox), required cells are highlighted, and refreshing checks the values again
   - Dropdowns for parameters, with choices from a stored procedure, a query, or values you type in
+  - Table-valued parameters, entered in an Excel table: in the parameter list (starting with a set number of rows; insert more inside the table), or on a sheet of their own for pasting many rows. Needs database compatibility level 130 (SQL Server 2016) or later
   - The workbook opens with the rows from Flank's preview run (up to 50,000; with more, the first **Refresh All** loads them)
 - SQL
   - Selected SQL, or the entire query if nothing is selected
@@ -82,6 +83,7 @@ Flank can turn a SQL query into a basic SSRS report and deploy it directly to yo
   - Existing shared data sources
   - Basic tabular reports using the columns returned by the query
   - Report parameters, with dropdowns from a stored procedure, a query, or values you type in
+  - Table-valued parameters with one column, as a parameter with multiple values (compatibility level 130 or later). Wider tables are Excel only
 - SQL
   - Selected SQL, or the entire query if nothing is selected
   - Parameters in a query (`WHERE league_id = @League_Id`), run as written or turned into a stored procedure
@@ -121,6 +123,7 @@ Flank can publish a SQL query or stored procedure as a paginated report in a Pow
   - Signing in with your work or school account, in the browser or with a code. Flank remembers the sign-in (per Windows user)
   - Reading the database through a **Gateway / Cloud Connection** you already have in Power BI. Flank picks the one for the database you're connected to and remembers your choice
   - Report parameters, with dropdowns from a stored procedure, a query, or values you type in
+  - Table-valued parameters with one column, as a parameter with multiple values (compatibility level 130 or later). Wider tables are Excel only
   - Publishing again with the same name in the same workspace replaces the report
 - SQL
   - Selected SQL, or the entire query if nothing is selected

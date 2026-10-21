@@ -103,8 +103,9 @@ public class ExcelExporterTests : IDisposable
     {
         string m = GenerateWithParameters("League_Id", "Name");
 
-        Assert.Contains("Excel.CurrentWorkbook(){[Name=\"FlankParameters\"]}[Content][Column2]", m);
-        // By position, so the labels in column A can be anything.
+        // Each cell by its name, so inserting rows doesn't break the query.
+        Assert.Contains("Excel.CurrentWorkbook(){[Name=\"Flank_League_Id\"]}[Content]{0}[Column1]", m);
+        Assert.Contains("Excel.CurrentWorkbook(){[Name=\"Flank_Name\"]}[Content]{0}[Column1]", m);
         Assert.Contains("Record.FromList({Value0, Value1}, {\"League_Id\", \"Name\"})", m);
         Assert.Contains(
             "Value.NativeQuery(Sql.Database(\"my-server\", \"my-db\"), " +
@@ -140,14 +141,36 @@ public class ExcelExporterTests : IDisposable
                 .Descendants(Sheet + "t").SingleOrDefault()?.Value ?? "";
 
         Assert.Equal("League", Text(5, "A"));
-        Assert.Equal("1 = NBA, 2 = NFL", Text(5, "C"));
         Assert.Equal("Team name", Text(6, "A"));
-        Assert.Equal("", Text(6, "C"));
 
-        // A bold header row above the parameters.
+        // A bold header row above the parameters; notes aren't a column.
         Assert.Equal("Parameter", Text(4, "A"));
         Assert.Equal("User Input", Text(4, "B"));
-        Assert.Equal("Note", Text(4, "C"));
+        Assert.Equal("", Text(4, "C"));
+        Assert.Equal("", Text(5, "C"));
+
+        // The note is a cell note on the label, which moves with it.
+        var comment = ReadPart("xl/comments1.xml").Descendants(Sheet + "comment").Single();
+        Assert.Equal("A5", (string)comment.Attribute("ref")!);
+        Assert.Equal("1 = NBA, 2 = NFL", comment.Descendants(Sheet + "t").Single().Value);
+
+        var sheet = ReadPart("xl/worksheets/sheet1.xml").Root!;
+        var order = sheet.Elements().Select(e => e.Name.LocalName).ToList();
+        Assert.True(order.IndexOf("legacyDrawing") < order.IndexOf("tableParts"));
+        var relationships = ReadPart("xl/worksheets/_rels/sheet1.xml.rels").Root!.Elements().Select(r => (string)r.Attribute("Target")!).ToList();
+        Assert.Contains("../comments1.xml", relationships);
+        Assert.Contains("../drawings/vmlDrawing1.vml", relationships);
+        using (var zip = ZipFile.OpenRead(outputPath))
+        {
+            using var vml = new StreamReader(zip.GetEntry("xl/drawings/vmlDrawing1.vml")!.Open());
+            string drawing = vml.ReadToEnd();
+            Assert.Contains("<x:Row>4</x:Row>", drawing);
+            Assert.Contains("<x:Column>0</x:Column>", drawing);
+        }
+
+        var types = ReadPart("[Content_Types].xml").ToString();
+        Assert.Contains("Extension=\"vml\"", types);
+        Assert.Contains("/xl/comments1.xml", types);
 
         string m = MashupReader.ReadSection1(outputPath);
         Assert.Contains("{\"League_Id\", \"Name\", \"Active\"}", m);
@@ -185,6 +208,7 @@ public class ExcelExporterTests : IDisposable
 
         // Refreshing mustn't narrow the parameter column.
         Assert.Equal("0", (string)ReadPart("xl/queryTables/queryTable1.xml").Root!.Attribute("adjustColumnWidth")!);
+        Assert.Equal("0", (string)ReadPart("xl/queryTables/queryTable2.xml").Root!.Attribute("adjustColumnWidth")!);
     }
 
     private static readonly System.Xml.Linq.XNamespace FeaturePropertyBag =
@@ -259,10 +283,11 @@ public class ExcelExporterTests : IDisposable
         ExcelExporter.Generate(outputPath, ReviewedRequest());
         string m = MashupReader.ReadSection1(outputPath);
 
-        Assert.Contains("League (cell B5) is required. Enter a value, then refresh.", m);
-        Assert.Contains("League (cell B5) must be a whole number between -2,147,483,648 and 2,147,483,647.", m);
-        Assert.Contains("Team name (cell B6) can be at most 50 characters.", m);
-        Assert.Contains("Active only (cell B7) must be TRUE or FALSE.", m);
+        // Named by label, not cell: inserting rows would make a cell address wrong.
+        Assert.Contains("\"League is required. Enter a value, then refresh.\"", m);
+        Assert.Contains("\"League must be a whole number between -2,147,483,648 and 2,147,483,647.\"", m);
+        Assert.Contains("\"Team name can be at most 50 characters.\"", m);
+        Assert.Contains("\"Active only must be TRUE or FALSE.\"", m);
     }
 
     private WorkbookRequest ListRequest() =>
@@ -352,7 +377,7 @@ public class ExcelExporterTests : IDisposable
         Assert.Contains("Table.SelectColumns(Source, {\"name\", \"id\"})", m);
         Assert.Contains("Table.SelectRows(League_options, each Text.From(Record.Field(_, \"name\")) = Text.From(v))", m);
         Assert.Contains("Record.Field(match{0}, \"id\")", m);
-        Assert.Contains("League (cell B5) must be one of the choices in its list.", m);
+        Assert.Contains("\"League must be one of the choices in its list.\"", m);
     }
 
     [Fact]
@@ -386,7 +411,8 @@ public class ExcelExporterTests : IDisposable
 
         var names = ReadPart("xl/workbook.xml").Descendants(Sheet + "definedName")
             .ToDictionary(n => (string)n.Attribute("name")!, n => n.Value);
-        Assert.Equal("Query1!$A$5:$B$6", names["FlankParameters"]);
+        Assert.Equal("Query1!$B$5", names["Flank_League_Id"]);
+        Assert.Equal("Query1!$B$6", names["Flank_Name"]);
         Assert.Equal("Query1!$A$8:$A$9", names["ExternalData_1"]);
 
         var queryTable = ReadPart("xl/queryTables/queryTable1.xml").Root!;
@@ -418,7 +444,7 @@ public class ExcelExporterTests : IDisposable
         var names = ReadPart("xl/workbook.xml").Descendants(Sheet + "definedName")
             .ToDictionary(n => (string)n.Attribute("name")!, n => n.Value);
         Assert.Equal("Query1!$A$7:$C$8", names["ExternalData_1"]);
-        Assert.Equal("Query1!$A$5:$B$5", names["FlankParameters"]);
+        Assert.Equal("Query1!$B$5", names["Flank_League_Id"]);
     }
 
     [Fact]
@@ -439,7 +465,7 @@ public class ExcelExporterTests : IDisposable
         Assert.Equal("A4:A5", (string)ReadPart("xl/tables/table1.xml").Root!.Attribute("ref")!);
         Assert.DoesNotContain(
             ReadPart("xl/workbook.xml").Descendants(Sheet + "definedName"),
-            n => (string)n.Attribute("name")! == "FlankParameters");
+            n => ((string)n.Attribute("name")!).StartsWith("Flank_"));
         Assert.DoesNotContain("Value.NativeQuery", MashupReader.ReadSection1(outputPath));
     }
 
