@@ -182,6 +182,72 @@ public class ExcelExporterTests : IDisposable
         Assert.Equal("0", (string)ReadPart("xl/queryTables/queryTable1.xml").Root!.Attribute("adjustColumnWidth")!);
     }
 
+    private static readonly System.Xml.Linq.XNamespace FeaturePropertyBag =
+        "http://schemas.microsoft.com/office/spreadsheetml/2022/featurepropertybag";
+
+    private System.Xml.Linq.XElement ParameterCell(string reference) =>
+        ReadPart("xl/worksheets/sheet1.xml").Descendants(Sheet + "c").Single(c => (string)c.Attribute("r")! == reference);
+
+    // The cell format's complement index, if it's a checkbox.
+    private string? CheckboxComplement(System.Xml.Linq.XElement cell)
+    {
+        var xf = ReadPart("xl/styles.xml").Root!.Element(Sheet + "cellXfs")!.Elements(Sheet + "xf")
+            .ElementAt((int?)cell.Attribute("s") ?? 0);
+        return (string?)xf.Descendants(FeaturePropertyBag + "xfComplement").SingleOrDefault()?.Attribute("i");
+    }
+
+    [Fact]
+    public void Bit_parameters_are_checkboxes_with_the_dropdown_kept_for_older_excel()
+    {
+        ExcelExporter.Generate(outputPath, ReviewedRequest());
+
+        var active = ParameterCell("B6");
+        Assert.Equal("b", (string)active.Attribute("t")!);
+        Assert.Equal("1", (string)active.Element(Sheet + "v")!);
+        Assert.Equal("0", CheckboxComplement(active));
+        Assert.Null(CheckboxComplement(ParameterCell("B4")));
+
+        // Complement 0 is the checkbox control, as Excel saves it.
+        var bags = ReadPart("xl/featurePropertyBag/featurePropertyBag.xml").Root!.Elements(FeaturePropertyBag + "bag").ToList();
+        Assert.Equal(new[] { "Checkbox", "XFControls", "XFComplement", "XFComplements" }, bags.Select(b => (string)b.Attribute("type")!));
+        Assert.Equal("XFComplementsMapperExtRef", (string)bags[3].Attribute("extRef")!);
+
+        var relationship = ReadPart("xl/_rels/workbook.xml.rels").Root!.Elements()
+            .Single(r => (string)r.Attribute("Type")! == "http://schemas.microsoft.com/office/2022/11/relationships/FeaturePropertyBag");
+        Assert.Equal("featurePropertyBag/featurePropertyBag.xml", (string)relationship.Attribute("Target")!);
+
+        Assert.Contains(ReadPart("[Content_Types].xml").Root!.Elements(),
+            o => (string?)o.Attribute("PartName") == "/xl/featurePropertyBag/featurePropertyBag.xml" &&
+                 (string?)o.Attribute("ContentType") == "application/vnd.ms-excel.featurepropertybag+xml");
+
+        var validation = ReadPart("xl/worksheets/sheet1.xml").Descendants(Sheet + "dataValidation")
+            .Single(v => (string)v.Attribute("sqref")! == "B6");
+        Assert.Equal("\"TRUE,FALSE\"", (string)validation.Element(Sheet + "formula1")!);
+    }
+
+    [Fact]
+    public void A_blank_bit_parameter_is_a_blank_checkbox_not_false()
+    {
+        var request = ReviewedRequest();
+        request.ParameterValues = new object?[] { 2L, null, null };
+
+        ExcelExporter.Generate(outputPath, request);
+
+        // Shown greyed out in Excel; the query reads it as blank (the procedure's default, or NULL).
+        var active = ParameterCell("B6");
+        Assert.Null(active.Element(Sheet + "v"));
+        Assert.Equal("0", CheckboxComplement(active));
+    }
+
+    [Fact]
+    public void Workbooks_without_bit_parameters_have_no_checkbox_part()
+    {
+        GenerateWithParameters("League_Id");
+
+        using var zip = ZipFile.OpenRead(outputPath);
+        Assert.Null(zip.GetEntry("xl/featurePropertyBag/featurePropertyBag.xml"));
+    }
+
     [Fact]
     public void The_query_checks_values_again_since_pasting_skips_validation()
     {
