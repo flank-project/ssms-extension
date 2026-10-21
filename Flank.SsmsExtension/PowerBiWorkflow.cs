@@ -170,8 +170,6 @@ namespace Flank.SsmsExtension
                 {
                     success.ShowDialog();
                 }
-
-                Feedback.RecordSuccess();
             }
             catch (Exception ex)
             {

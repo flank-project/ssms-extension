@@ -4,9 +4,9 @@ Flank's SSMS Extension does not collect, transmit, or store your data.
 
 The extension does not collect telemetry or analytics. Your SQL queries, query results, database credentials, and connection information are not sent to Flank or any third party.
 
-The extension operates locally on your machine. It keeps a count of the reports and workbooks you create in your Windows user registry, so it can ask once whether you'd like to give feedback; that count never leaves your machine. Any files it creates are saved locally unless you choose to share or move them elsewhere.
+The extension operates locally on your machine. Any files it creates are saved locally unless you choose to share or move them elsewhere.
 
-When you publish a Power BI paginated report, Flank signs in to Power BI as you and sends the report definition (the SQL or procedure call, and the server and database names) to the Power BI workspace you choose, along with the SQL login you choose for the report to use. That goes to your organization's Power BI, not to Flank. Flank keeps your Power BI sign-in on your machine, encrypted for your Windows user, so you don't have to sign in each time.
+When you publish a Power BI paginated report, Flank signs in to Power BI as you and sends the report definition (the SQL or procedure call, and the server and database names) to the Power BI workspace you choose, and connects it to the gateway or cloud connection you choose. To list those connections, Flank reads their names and the servers and databases they point to. That goes to your organization's Power BI, not to Flank. Flank keeps your Power BI sign-in on your machine, encrypted for your Windows user, so you don't have to sign in each time.
 
 If this changes in a future version, this privacy policy will be updated to describe what data is collected and how it is used.
 
