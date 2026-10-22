@@ -20,7 +20,7 @@ Right-click a query (or a stored procedure in Object Explorer) and choose:
 
 | Version | Download |
 |---|---|
-| **0.3.0** | **[⬇ Flank-SSMS-Setup-0.3.0.exe](https://github.com/flank-project/ssms-extension/releases/download/v0.3.0/Flank-SSMS-Setup-0.3.0.exe)** |
+| **0.3.1** | **[⬇ Flank-SSMS-Setup-0.3.1.exe](https://github.com/flank-project/ssms-extension/releases/download/v0.3.1/Flank-SSMS-Setup-0.3.1.exe)** |
 
 Close SSMS, run the installer, then reopen SSMS.
 
